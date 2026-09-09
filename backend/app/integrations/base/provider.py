@@ -53,6 +53,12 @@ class POSProvider(ABC):
     def get_payments(self, *, updated_since: datetime | None = None, cursor: str | None = None) -> ProviderPage:
         return self._unavailable(POSCapability.PAYMENTS)
 
+    def get_refunds(self, *, updated_since: datetime | None = None, cursor: str | None = None) -> ProviderPage:
+        return self._unavailable(POSCapability.REFUNDS)
+
+    def get_discounts(self, *, updated_since: datetime | None = None, cursor: str | None = None) -> ProviderPage:
+        return self._unavailable(POSCapability.DISCOUNTS)
+
     def get_warehouses(self, *, cursor: str | None = None) -> ProviderPage:
         return self._unavailable(POSCapability.WAREHOUSES)
 

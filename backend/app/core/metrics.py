@@ -90,7 +90,14 @@ def _state_timestamp(name: str) -> float:
 
 
 def _database_gauges(db: Session) -> list[str]:
-    from app.models import BillingReconciliationIssue, NotificationJob, VenueBillingTransaction
+    from app.models import (
+        BillingReconciliationIssue,
+        IntegrationQuarantine,
+        IntegrationReconciliationRun,
+        IntegrationSyncJob,
+        NotificationJob,
+        VenueBillingTransaction,
+    )
 
     lines = ["# HELP axelio_notification_jobs Notification jobs grouped by status."]
     lines.append("# TYPE axelio_notification_jobs gauge")
@@ -136,6 +143,55 @@ def _database_gauges(db: Session) -> list[str]:
             _sample("axelio_open_reconciliation_issues", float(open_reconciliation or 0)),
         ]
     )
+    pos_job_rows = db.execute(
+        select(IntegrationSyncJob.status, func.count(IntegrationSyncJob.id)).group_by(IntegrationSyncJob.status)
+    ).all()
+    pos_job_counts = {str(status): int(count or 0) for status, count in pos_job_rows}
+    lines.extend(["# HELP axelio_pos_sync_jobs POS integration jobs grouped by status.", "# TYPE axelio_pos_sync_jobs gauge"])
+    for job_status in sorted({"PENDING", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", *pos_job_counts}):
+        lines.append(_sample("axelio_pos_sync_jobs", pos_job_counts.get(job_status, 0), _labels(status=job_status)))
+
+    quarantine_rows = db.execute(
+        select(IntegrationQuarantine.severity, func.count(IntegrationQuarantine.id))
+        .where(IntegrationQuarantine.status == "OPEN")
+        .group_by(IntegrationQuarantine.severity)
+    ).all()
+    quarantine_counts = {str(severity): int(count or 0) for severity, count in quarantine_rows}
+    lines.extend(
+        ["# HELP axelio_pos_quarantine_items Open POS quarantine items by severity.", "# TYPE axelio_pos_quarantine_items gauge"]
+    )
+    for severity in ("WARNING", "ERROR"):
+        lines.append(_sample("axelio_pos_quarantine_items", quarantine_counts.get(severity, 0), _labels(severity=severity)))
+
+    latest_reconciliation = (
+        select(
+            IntegrationReconciliationRun.integration_connection_id,
+            func.max(IntegrationReconciliationRun.completed_at).label("completed_at"),
+        )
+        .group_by(IntegrationReconciliationRun.integration_connection_id)
+        .subquery()
+    )
+    reconciliation_rows = db.execute(
+        select(IntegrationReconciliationRun.status, func.count(IntegrationReconciliationRun.id))
+        .join(
+            latest_reconciliation,
+            (latest_reconciliation.c.integration_connection_id == IntegrationReconciliationRun.integration_connection_id)
+            & (latest_reconciliation.c.completed_at == IntegrationReconciliationRun.completed_at),
+        )
+        .group_by(IntegrationReconciliationRun.status)
+    ).all()
+    reconciliation_counts = {str(run_status): int(count or 0) for run_status, count in reconciliation_rows}
+    lines.extend(
+        ["# HELP axelio_pos_reconciliation_runs POS reconciliation runs by status.", "# TYPE axelio_pos_reconciliation_runs gauge"]
+    )
+    for run_status in ("OK", "WARNING", "FAILED"):
+        lines.append(
+            _sample(
+                "axelio_pos_reconciliation_runs",
+                reconciliation_counts.get(run_status, 0),
+                _labels(status=run_status),
+            )
+        )
     return lines
 
 

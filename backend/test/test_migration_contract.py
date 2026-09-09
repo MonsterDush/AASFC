@@ -36,7 +36,9 @@ class MigrationContractTests(unittest.TestCase):
         interval_positions = scripts.get_revision("f6b4d2a8c1e0")
         catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
 
-        self.assertEqual(heads, ["e4f6a8c0b2d7"])
+        self.assertEqual(heads, ["a6b8d0f2c4e9"])
+        self.assertEqual(scripts.get_revision("a6b8d0f2c4e9").down_revision, "f5a7c9e1b3d6")
+        self.assertEqual(scripts.get_revision("f5a7c9e1b3d6").down_revision, "e4f6a8c0b2d7")
         self.assertEqual(scripts.get_revision("e4f6a8c0b2d7").down_revision, "d3e5f7a9b1c2")
         self.assertEqual(scripts.get_revision("d3e5f7a9b1c2").down_revision, "c2f4a6b8d0e1")
         self.assertEqual(scripts.get_revision("c2f4a6b8d0e1").down_revision, "b9d2e4f6a8c1")
@@ -103,13 +105,30 @@ class MigrationContractTests(unittest.TestCase):
                 self.assertTrue(expected_tables.issubset(set(inspector.get_table_names())))
                 for table_name in expected_tables:
                     model_table = Base.metadata.tables[table_name]
+                    expected_model_columns = {column.name for column in model_table.columns}
+                    expected_model_checks = {
+                        constraint.name
+                        for constraint in model_table.constraints
+                        if isinstance(constraint, sa.CheckConstraint)
+                    }
+                    expected_model_indexes = {index.name for index in model_table.indexes}
+                    if table_name == "integration_connections":
+                        expected_model_columns -= {
+                            "shadow_sync_enabled",
+                            "read_mode",
+                            "canonical_read_enabled_at",
+                        }
+                        expected_model_checks.discard("ck_integration_connections_read_mode")
+                    if table_name == "pos_orders":
+                        expected_model_columns.discard("customer_pos_identity_id")
+                        expected_model_indexes.discard("ix_pos_orders_customer_pos_identity_id")
                     self.assertEqual(
-                        {column.name for column in model_table.columns},
+                        expected_model_columns,
                         {column["name"] for column in inspector.get_columns(table_name)},
                         f"Migration columns must match the {table_name} model",
                     )
                     self.assertEqual(
-                        {index.name for index in model_table.indexes},
+                        expected_model_indexes,
                         {index["name"] for index in inspector.get_indexes(table_name)},
                         f"Migration indexes must match the {table_name} model",
                     )
@@ -123,13 +142,8 @@ class MigrationContractTests(unittest.TestCase):
                         {item["name"] for item in inspector.get_unique_constraints(table_name)},
                         f"Migration unique constraints must match the {table_name} model",
                     )
-                    expected_checks = {
-                        constraint.name
-                        for constraint in model_table.constraints
-                        if isinstance(constraint, sa.CheckConstraint)
-                    }
                     self.assertEqual(
-                        expected_checks,
+                        expected_model_checks,
                         {item["name"] for item in inspector.get_check_constraints(table_name)},
                         f"Migration check constraints must match the {table_name} model",
                     )
@@ -139,6 +153,132 @@ class MigrationContractTests(unittest.TestCase):
             inspector = sa.inspect(engine)
             self.assertTrue(expected_tables.isdisjoint(set(inspector.get_table_names())))
             self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
+
+    def test_pos_stage_two_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE venue_members (id INTEGER PRIMARY KEY)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "d3e5f7a9b1c2")
+                command.upgrade(config, "e4f6a8c0b2d7")
+                command.upgrade(config, "f5a7c9e1b3d6")
+
+                inspector = sa.inspect(engine)
+                connection_columns = {
+                    column["name"] for column in inspector.get_columns("integration_connections")
+                }
+                self.assertTrue(
+                    {"shadow_sync_enabled", "read_mode", "canonical_read_enabled_at"}.issubset(connection_columns)
+                )
+                connection_checks = {
+                    item["name"] for item in inspector.get_check_constraints("integration_connections")
+                }
+                self.assertIn("ck_integration_connections_read_mode", connection_checks)
+                for table_name in ("integration_sync_cursors", "integration_reconciliation_runs"):
+                    self.assertIn(table_name, inspector.get_table_names())
+                    model_table = Base.metadata.tables[table_name]
+                    self.assertEqual(
+                        {column.name for column in model_table.columns},
+                        {column["name"] for column in inspector.get_columns(table_name)},
+                    )
+                    self.assertEqual(
+                        {index.name for index in model_table.indexes},
+                        {index["name"] for index in inspector.get_indexes(table_name)},
+                    )
+
+                command.downgrade(config, "e4f6a8c0b2d7")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("integration_sync_cursors", inspector.get_table_names())
+            self.assertNotIn("integration_reconciliation_runs", inspector.get_table_names())
+            connection_columns = {column["name"] for column in inspector.get_columns("integration_connections")}
+            self.assertNotIn("read_mode", connection_columns)
+            self.assertNotIn("shadow_sync_enabled", connection_columns)
+
+    def test_pos_stage_three_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE venue_members (id INTEGER PRIMARY KEY)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "d3e5f7a9b1c2")
+                command.upgrade(config, "a6b8d0f2c4e9")
+
+                inspector = sa.inspect(engine)
+                expected_tables = {
+                    "pos_recipes",
+                    "pos_recipe_items",
+                    "pos_warehouses",
+                    "pos_stock_snapshots",
+                    "pos_stock_movements",
+                    "pos_suppliers",
+                    "pos_purchase_documents",
+                    "pos_purchase_items",
+                    "pos_writeoffs",
+                    "pos_writeoff_items",
+                    "pos_inventory_documents",
+                    "pos_inventory_items",
+                    "pos_attendance",
+                    "pos_customer_identities",
+                    "integration_quarantine",
+                    "integration_sync_jobs",
+                }
+                self.assertTrue(expected_tables.issubset(set(inspector.get_table_names())))
+                self.assertIn(
+                    "customer_pos_identity_id",
+                    {column["name"] for column in inspector.get_columns("pos_orders")},
+                )
+                for table_name in expected_tables:
+                    model_table = Base.metadata.tables[table_name]
+                    self.assertEqual(
+                        {column.name for column in model_table.columns},
+                        {column["name"] for column in inspector.get_columns(table_name)},
+                        table_name,
+                    )
+                    self.assertEqual(
+                        {index.name for index in model_table.indexes},
+                        {index["name"] for index in inspector.get_indexes(table_name)},
+                        table_name,
+                    )
+                    self.assertEqual(
+                        {
+                            constraint.name
+                            for constraint in model_table.constraints
+                            if isinstance(constraint, sa.UniqueConstraint)
+                        },
+                        {item["name"] for item in inspector.get_unique_constraints(table_name)},
+                        table_name,
+                    )
+                    self.assertEqual(
+                        {
+                            constraint.name
+                            for constraint in model_table.constraints
+                            if isinstance(constraint, sa.CheckConstraint)
+                        },
+                        {item["name"] for item in inspector.get_check_constraints(table_name)},
+                        table_name,
+                    )
+
+                command.downgrade(config, "f5a7c9e1b3d6")
+
+            inspector = sa.inspect(engine)
+            self.assertTrue(expected_tables.isdisjoint(set(inspector.get_table_names())))
+            self.assertIn("integration_sync_cursors", inspector.get_table_names())
+            self.assertNotIn(
+                "customer_pos_identity_id",
+                {column["name"] for column in inspector.get_columns("pos_orders")},
+            )
 
     def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

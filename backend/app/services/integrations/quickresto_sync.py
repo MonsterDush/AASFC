@@ -59,6 +59,7 @@ from app.services.integrations.quickresto_snapshot import (
     QuickRestoSnapshotError,
     seal_quickresto_source_snapshot,
 )
+from app.integrations.shadow import shadow_write_quickresto_batch
 from app.services.integrations.quickresto_scope import (
     QuickRestoLocationScopeError,
     QuickRestoScopeError,
@@ -1421,6 +1422,18 @@ def _stage_quickresto_sources(
     # This commit is intentional: encrypted allowlisted source data must survive
     # any later normalization or report conflict in the same synchronization.
     db.commit()
+    accepted_shift_ids = {str(row.external_shift_id or "") for row in snapshots}
+    scope_counts["canonical_shadow"] = shadow_write_quickresto_batch(
+        db,
+        legacy_connection=connection,
+        shifts=[
+            row
+            for row in closed_shifts
+            if str(row.get("frontId") or row.get("_id") or "").strip() in accepted_shift_ids
+        ],
+        orders_by_shift=order_details_by_shift,
+        full_reconciliation=full_reconciliation,
+    )
     db.refresh(run)
     db.refresh(connection)
     for row in snapshots:

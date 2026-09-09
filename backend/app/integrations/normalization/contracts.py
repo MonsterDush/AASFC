@@ -13,6 +13,8 @@ class NormalizationContext:
     venue_id: int
     provider: POSProviderCode
     normalization_version: str
+    timezone: str = "Europe/Moscow"
+    business_day_cutoff_hour: int = 0
 
     def __post_init__(self) -> None:
         if self.integration_connection_id <= 0:
@@ -21,6 +23,10 @@ class NormalizationContext:
             raise ValueError("Venue id must be positive")
         if not str(self.normalization_version or "").strip():
             raise ValueError("Normalization version is required")
+        if not str(self.timezone or "").strip():
+            raise ValueError("Normalization timezone is required")
+        if not 0 <= int(self.business_day_cutoff_hour) <= 23:
+            raise ValueError("Business day cutoff hour must be between 0 and 23")
 
 
 class POSNormalizer(ABC):

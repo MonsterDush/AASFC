@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +39,10 @@ class IntegrationConnection(Base):
             name="ck_integration_connections_historical_status",
         ),
         CheckConstraint(
+            "read_mode IN ('LEGACY','CANONICAL')",
+            name="ck_integration_connections_read_mode",
+        ),
+        CheckConstraint(
             "coverage_start IS NULL OR coverage_end IS NULL OR coverage_start <= coverage_end",
             name="ck_integration_connections_coverage_range",
         ),
@@ -60,6 +64,9 @@ class IntegrationConnection(Base):
     historical_sync_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="NOT_STARTED", server_default="NOT_STARTED"
     )
+    shadow_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    read_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="LEGACY", server_default="LEGACY")
+    canonical_read_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     coverage_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     coverage_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
@@ -72,3 +79,11 @@ class IntegrationConnection(Base):
         "IntegrationCapabilityState", back_populates="connection", cascade="all, delete-orphan"
     )
     raw_objects = relationship("IntegrationRawObject", back_populates="connection", cascade="all, delete-orphan")
+    sync_cursors = relationship("IntegrationSyncCursor", back_populates="connection", cascade="all, delete-orphan")
+    reconciliation_runs = relationship(
+        "IntegrationReconciliationRun", back_populates="connection", cascade="all, delete-orphan"
+    )
+    quarantine_items = relationship(
+        "IntegrationQuarantine", back_populates="connection", cascade="all, delete-orphan"
+    )
+    sync_jobs = relationship("IntegrationSyncJob", back_populates="connection", cascade="all, delete-orphan")

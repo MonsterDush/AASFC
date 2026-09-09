@@ -35,7 +35,21 @@ class MetricsTests(TestCase):
         db = MagicMock()
         failed_jobs = MagicMock()
         failed_jobs.scalar_one.return_value = 1
-        db.execute.side_effect = [rows, failed_jobs, failed_payments, reconciliation]
+        pos_jobs = MagicMock()
+        pos_jobs.all.return_value = [("PARTIAL", 2)]
+        quarantine = MagicMock()
+        quarantine.all.return_value = [("ERROR", 3)]
+        pos_reconciliation = MagicMock()
+        pos_reconciliation.all.return_value = [("FAILED", 1)]
+        db.execute.side_effect = [
+            rows,
+            failed_jobs,
+            failed_payments,
+            reconciliation,
+            pos_jobs,
+            quarantine,
+            pos_reconciliation,
+        ]
 
         metrics.observe_request(method="post", route="/auth/login", status_code=401, duration_seconds=0.3)
         metrics.record_auth_failure()
@@ -50,6 +64,9 @@ class MetricsTests(TestCase):
             'axelio_notification_jobs{status="failed_recent_24h"} 1',
             "axelio_failed_payments_24h 3",
             "axelio_open_reconciliation_issues 4",
+            'axelio_pos_sync_jobs{status="PARTIAL"} 2',
+            'axelio_pos_quarantine_items{severity="ERROR"} 3',
+            'axelio_pos_reconciliation_runs{status="FAILED"} 1',
             "axelio_backup_last_success_timestamp_seconds 123",
         ):
             self.assertIn(contract, rendered)

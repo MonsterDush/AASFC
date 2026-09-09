@@ -1,0 +1,19 @@
+{
+  "id": "purchase-1",
+  "documentDate": "2030-01-02",
+  "documentNumber": "PN-1",
+  "supplier": {"id": "supplier-1"},
+  "warehouse": {"id": "warehouse-1"},
+  "totalAmount": "123.45",
+  "documentStatus": "posted",
+  "documentItems": [
+    {
+      "id": "line-1",
+      "product": {"id": "ingredient-1"},
+      "amount": "2.5",
+      "pricePerUnit": "49.38",
+      "totalAmount": "123.45",
+      "measureUnit": "kg"
+    }
+  ]
+}

@@ -31,10 +31,15 @@ Acceptance gates:
 
 ## Stage 3 — P1/P2 operational depth
 
+Status: implemented locally, pending review, live provider probes, and canary rollout.
+
 - Add recipes, warehouses, stock balances/movements, suppliers, purchases, write-offs, inventories, and attendance where the capability audit confirms availability.
 - Add durable sync runs/cursors, retry queues, quarantine, validation rules, freshness/degraded-state monitoring, and data-quality dashboards.
 - Add provider golden fixtures and cross-provider parity tests.
 - Retire provider-specific storage only after every connected venue has passed reconciliation and rollback gates.
+
+The retirement gate remains intentionally open: no legacy QuickResto table,
+route, timer, or read path is removed in this stage.
 
 ## Compatibility rule
 

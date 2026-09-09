@@ -46,3 +46,18 @@ groups:
         for: 5m
         labels: { severity: warning }
         annotations: { summary: "Axelio login rate-limit blocks increased sharply" }
+      - alert: AxelioPosSyncJobsFailed
+        expr: axelio_pos_sync_jobs{status="FAILED"} > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio POS integration has terminal job failures" }
+      - alert: AxelioPosQuarantineErrors
+        expr: axelio_pos_quarantine_items{severity="ERROR"} > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio POS integration has blocking quarantined objects" }
+      - alert: AxelioPosReconciliationFailed
+        expr: axelio_pos_reconciliation_runs{status="FAILED"} > 0
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio POS Raw Layer and ACDM reconciliation failed" }

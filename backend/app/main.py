@@ -10,6 +10,7 @@ from app.core.observability import configure_logging, init_error_tracking, obser
 from app.core.metrics import render_prometheus
 from app.core.request_ip import resolve_client_ip
 from app.core.security_headers import apply_security_headers
+from app.integrations.providers import register_p0_providers
 from app.services.demo import build_demo_readonly_error_payload, is_demo_session_payload, should_block_demo_request
 from sqlalchemy.orm import Session
 
@@ -42,6 +43,7 @@ def _fastapi_options() -> dict[str, str | None]:
 
 configure_logging()
 init_error_tracking()
+register_p0_providers()
 
 app = FastAPI(title="Axelio API", **_fastapi_options())
 from app.routers.venues import router as venues_router

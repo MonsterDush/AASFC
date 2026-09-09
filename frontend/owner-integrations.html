@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-integrations.css?v=20260901-issuesentry1" />
+  <link rel="stylesheet" href="/styles/pages/owner-integrations.css?v=20260909-pos3" />
   <script>
     (() => {
       try {
@@ -60,7 +60,7 @@
             <span>QuickResto</span><small id="quickrestoTabStatus">Проверяем…</small>
           </button>
           <button class="integrations-provider-tab" id="iikoTab" type="button" role="tab" aria-selected="false" aria-controls="iikoPanel" tabindex="-1" data-provider="iiko">
-            <span>iiko</span><small>Скоро</small>
+            <span>iiko</span><small id="iikoTabStatus">Проверяем…</small>
           </button>
         </div>
 
@@ -85,11 +85,66 @@
         </section>
 
         <section class="integrations-provider-panel mt-12 hidden" id="iikoPanel" role="tabpanel" aria-labelledby="iikoTab" hidden>
-          <div class="integrations-coming-soon">
-            <span class="integrations-coming-soon__badge">Скоро</span>
-            <b>Интеграция с iiko в разработке</b>
-            <div class="muted small" id="iikoDescription">Здесь появятся подключение, сопоставление справочников и импорт закрытых кассовых смен.</div>
-            <button class="btn" type="button" disabled>Настройка пока недоступна</button>
+          <div class="integrations-provider-head">
+            <div>
+              <div class="integrations-provider-name"><b>iiko</b><span class="integrations-status" id="iikoStatus">Не подключено</span></div>
+              <div class="muted small mt-4" id="iikoDescription">Подключение справочников и истории продаж через API iiko.</div>
+            </div>
+          </div>
+
+          <form class="integrations-iiko-form mt-12" id="iikoForm">
+            <label class="integrations-field">
+              <span>API Login iiko</span>
+              <input id="iikoApiLogin" type="password" autocomplete="new-password" placeholder="Вставьте новый API Login" />
+              <small class="muted">Сохранённое значение зашифровано и никогда не возвращается в браузер.</small>
+            </label>
+            <label class="integrations-field">
+              <span>ID организации</span>
+              <input id="iikoOrganizationId" type="text" autocomplete="off" placeholder="Можно определить после проверки" />
+              <small class="muted">Нужен, если API Login даёт доступ к нескольким организациям.</small>
+            </label>
+            <label class="integrations-check">
+              <input id="iikoActive" type="checkbox" />
+              <span>Сделать iiko активной POS-интеграцией заведения</span>
+            </label>
+
+            <details class="integrations-advanced">
+              <summary>Дополнительные endpoints экспорта</summary>
+              <div class="integrations-iiko-grid mt-8">
+                <label class="integrations-field">
+                  <span>Продажи</span>
+                  <input id="iikoSalesEndpoint" type="text" autocomplete="off" placeholder="/api/1/…" />
+                </label>
+                <label class="integrations-field">
+                  <span>Сотрудники</span>
+                  <input id="iikoEmployeesEndpoint" type="text" autocomplete="off" placeholder="/api/1/…" />
+                </label>
+              </div>
+              <label class="integrations-field mt-8">
+                <span>Расширенные данные P1/P2</span>
+                <textarea id="iikoExtendedEndpoints" rows="5" spellcheck="false" placeholder='{"RECIPES":"/api/1/…","WAREHOUSES":"/api/1/…"}'></textarea>
+                <small class="muted">Необязательный JSON: RECIPES, WAREHOUSES, STOCK_BALANCES, STOCK_MOVEMENTS, SUPPLIERS, PURCHASES, WRITEOFFS, INVENTORY, EMPLOYEE_ATTENDANCE. Оставьте пустым, чтобы не менять сохранённые пути.</small>
+              </label>
+              <div class="muted small mt-8">Укажите только пути, выданные для вашей инсталляции iiko. Без endpoint продаж Axelio не запускает импорт и не подменяет данные пустым результатом.</div>
+            </details>
+
+            <div class="integrations-iiko-actions">
+              <button class="btn primary" id="saveIiko" type="submit">Сохранить</button>
+              <button class="btn" id="probeIiko" type="button">Проверить подключение</button>
+              <button class="btn" id="historicalIiko" type="button">Импортировать 12 месяцев</button>
+              <button class="btn" id="incrementalIiko" type="button">Обновить данные</button>
+            </div>
+          </form>
+
+          <div class="integrations-iiko-state mt-12">
+            <div><span class="muted small">Доступность данных</span><b id="iikoCapabilityHint">Сначала сохраните и проверьте подключение.</b></div>
+            <div><span class="muted small">Исторический импорт</span><b id="iikoHistoryHint">Не запускался</b></div>
+            <div><span class="muted small">Режим чтения</span><b id="iikoReadMode">Legacy · текущая логика Axelio</b></div>
+          </div>
+          <div class="integrations-iiko-state mt-8" id="iikoOperations" hidden>
+            <div><span class="muted small">Свежесть продаж</span><b id="iikoSalesFreshness">Нет данных</b></div>
+            <div><span class="muted small">Карантин данных</span><b id="iikoQuarantineHint">Нет ошибок</b></div>
+            <div><span class="muted small">Фоновые задания</span><b id="iikoJobsHint">Нет запусков</b></div>
           </div>
         </section>
         <div class="muted small mt-8" id="integrationHint" aria-live="polite"></div>
@@ -99,6 +154,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-integrations.js?v=20260901-issuesentry1"></script>
+  <script type="module" src="/owner-integrations.js?v=20260909-pos3"></script>
 </body>
 </html>

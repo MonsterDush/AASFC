@@ -1,0 +1,19 @@
+{
+  "id": "purchase-1",
+  "date": "2030-01-02",
+  "number": "PN-1",
+  "supplierId": "supplier-1",
+  "warehouseId": "warehouse-1",
+  "sum": "123.45",
+  "status": "POSTED",
+  "items": [
+    {
+      "id": "line-1",
+      "productId": "ingredient-1",
+      "quantity": "2.5",
+      "price": "49.38",
+      "sum": "123.45",
+      "unit": "kg"
+    }
+  ]
+}

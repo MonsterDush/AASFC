@@ -1,0 +1,56 @@
+{
+  "id": "order-1",
+  "frontId": "order-1",
+  "number": "101",
+  "checkNumber": "501",
+  "status": "CLOSED",
+  "localOpenedTime": "2030-01-02T10:00:00+03:00",
+  "localClosedTime": "2030-01-02T11:00:00+03:00",
+  "businessDate": "2030-01-02",
+  "orderType": "DineIn",
+  "table": {"id": "table-1", "name": "Стол 1"},
+  "guestCount": 2,
+  "waiter": {"id": "employee-1", "name": "Анна"},
+  "cashier": {"id": "employee-2", "name": "Олег"},
+  "frontTotalPrice": "450.00",
+  "subtotal": "500.00",
+  "frontTotalAbsoluteDiscount": "50.00",
+  "currency": "RUB",
+  "orderItemList": [
+    {
+      "id": "item-1",
+      "product": {"id": "product-1", "name": "Паста"},
+      "amount": "1",
+      "price": "300.00",
+      "totalPrice": "300.00",
+      "totalAbsoluteDiscount": "30.00",
+      "netAmount": "270.00",
+      "modifiers": [
+        {
+          "id": "modifier-1",
+          "product": {"id": "modifier-product-1", "name": "Сыр"},
+          "amount": "1",
+          "price": "50.00",
+          "totalPrice": "50.00",
+          "netAmount": "50.00"
+        }
+      ]
+    },
+    {
+      "id": "item-2",
+      "product": {"id": "product-2", "name": "Чай"},
+      "amount": "1",
+      "price": "150.00",
+      "totalPrice": "150.00",
+      "totalAbsoluteDiscount": "20.00",
+      "netAmount": "130.00"
+    }
+  ],
+  "payments": [
+    {"id": "payment-1", "paymentType": {"id": "cash", "name": "Cash"}, "amount": "200.00"},
+    {"id": "payment-2", "paymentType": {"id": "card", "name": "Card"}, "amount": "250.00"}
+  ],
+  "discounts": [
+    {"id": "discount-1", "discountType": {"id": "loyalty", "name": "Loyalty"}, "amount": "50.00", "percent": "10"}
+  ]
+}

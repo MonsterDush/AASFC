@@ -49,7 +49,7 @@ from app.services.payroll.calculator import (
 )
 
 
-EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "29e1e1f60238fa1b98ac841d9102a2caf0abdccea41876c1e09bd1e8919eebad"
+EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "c86aea9112285bf611078c73e4b6f02c13159fbe20f0417898483bd864d3c11d"
 
 
 def _effective_routes(router):
@@ -80,6 +80,18 @@ class VenueEconomicsRouterContractTests(TestCase):
             "put_quickresto_scope",
             "post_quickresto_historical_scope_reconcile",
             "post_quickresto_historical_scope_preview",
+            "get_iiko_connection",
+            "put_iiko_connection",
+            "probe_iiko_connection",
+            "historical_iiko_sync",
+            "incremental_iiko_sync",
+            "get_pos_employee_mappings",
+            "confirm_pos_employee_mapping",
+            "reconcile_pos_connection",
+            "switch_pos_reads_to_canonical",
+            "switch_pos_reads_to_legacy",
+            "enable_quickresto_canonical_shadow",
+            "disable_quickresto_canonical_shadow",
         }
         base_manifest = [row for row in manifest if row[2] not in new_route_names]
         base_digest = hashlib.sha256(
@@ -134,9 +146,57 @@ class VenueEconomicsRouterContractTests(TestCase):
                 "/venues/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope/preview",
                 "post_quickresto_historical_scope_preview",
             ),
+            (("GET",), "/venues/{venue_id}/integrations/iiko", "get_iiko_connection"),
+            (("PUT",), "/venues/{venue_id}/integrations/iiko", "put_iiko_connection"),
+            (("POST",), "/venues/{venue_id}/integrations/iiko/probe", "probe_iiko_connection"),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/iiko/sync/historical",
+                "historical_iiko_sync",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/iiko/sync/incremental",
+                "incremental_iiko_sync",
+            ),
+            (
+                ("GET",),
+                "/venues/{venue_id}/integrations/{provider}/employee-mappings",
+                "get_pos_employee_mappings",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/integrations/{provider}/employee-mappings/{pos_employee_id}",
+                "confirm_pos_employee_mapping",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/{provider}/reconcile",
+                "reconcile_pos_connection",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/{provider}/read-mode/canonical",
+                "switch_pos_reads_to_canonical",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/{provider}/read-mode/legacy",
+                "switch_pos_reads_to_legacy",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/canonical-shadow/enable",
+                "enable_quickresto_canonical_shadow",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/canonical-shadow/disable",
+                "disable_quickresto_canonical_shadow",
+            ),
         }
 
-        self.assertEqual(len(manifest), 184)
+        self.assertEqual(len(manifest), 203)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 

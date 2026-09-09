@@ -26,9 +26,25 @@
 .integrations-feature-grid b,.integrations-feature-grid .muted{overflow-wrap:anywhere}
 .integrations-coming-soon{display:grid;justify-items:start;gap:10px;max-width:620px;padding:8px}
 .integrations-coming-soon__badge{padding:4px 8px;border:1px solid var(--statusWarningBorder);border-radius:999px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:10px;font-weight:900;text-transform:uppercase}
+.integrations-iiko-form{display:grid;gap:12px}
+.integrations-iiko-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.integrations-field{display:grid;gap:6px;min-width:0;font-size:12px;font-weight:900}
+.integrations-field input,.integrations-field textarea{width:100%;min-width:0;box-sizing:border-box}
+.integrations-field textarea{resize:vertical;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+.integrations-field small{font-weight:600;line-height:1.4}
+.integrations-check{display:flex;align-items:flex-start;gap:8px;font-size:12px;font-weight:800;line-height:1.4}
+.integrations-check input{margin-top:2px}
+.integrations-advanced{padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.integrations-advanced summary{cursor:pointer;font-size:12px;font-weight:900}
+.integrations-iiko-actions{display:flex;flex-wrap:wrap;gap:8px}
+.integrations-iiko-actions .btn[aria-busy="true"]{cursor:wait;opacity:.7}
+.integrations-iiko-state{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.integrations-iiko-state>div{display:grid;align-content:start;gap:5px;min-width:0;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.integrations-iiko-state b{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
 @media(max-width:720px){
-  .integrations-hero__layout,.integrations-provider-head,.integrations-feature-grid{grid-template-columns:minmax(0,1fr)}
+  .integrations-hero__layout,.integrations-provider-head,.integrations-feature-grid,.integrations-iiko-grid,.integrations-iiko-state{grid-template-columns:minmax(0,1fr)}
   .integrations-hero__layout .btn,.integrations-provider-actions,.integrations-provider-head .btn{width:100%}
+  .integrations-iiko-actions .btn{width:100%}
   .integrations-provider-tabs{gap:5px;padding:4px}
   .integrations-provider-tab{flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:9px 6px;text-align:center}
   .integrations-provider-tab span{font-size:13px;line-height:1.15;white-space:nowrap}

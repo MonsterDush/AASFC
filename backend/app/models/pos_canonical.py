@@ -205,6 +205,9 @@ class POSOrder(Base):
     waiter_pos_employee_id: Mapped[int | None] = mapped_column(
         ForeignKey("pos_employees.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    customer_pos_identity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_customer_identities.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     subtotal: Mapped[Decimal] = mapped_column(_MONEY_TYPE, nullable=False, default=Decimal("0"))
     discount_amount: Mapped[Decimal] = mapped_column(_MONEY_TYPE, nullable=False, default=Decimal("0"))
     service_charge: Mapped[Decimal] = mapped_column(_MONEY_TYPE, nullable=False, default=Decimal("0"))

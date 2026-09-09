@@ -83,6 +83,10 @@ from .venue_pos_integration_selection import VenuePOSIntegrationSelection
 from .integration_connection import IntegrationConnection
 from .integration_capability_state import IntegrationCapabilityState
 from .integration_raw_object import IntegrationRawObject
+from .integration_sync_cursor import IntegrationSyncCursor
+from .integration_reconciliation_run import IntegrationReconciliationRun
+from .integration_quarantine import IntegrationQuarantine
+from .integration_sync_job import IntegrationSyncJob
 from .pos_canonical import (
     POSEmployee,
     POSEmployeeMapping,
@@ -97,6 +101,22 @@ from .pos_canonical import (
     POSRefund,
     POSTerminal,
     POSVenue,
+)
+from .pos_inventory import (
+    POSAttendance,
+    POSCustomerIdentity,
+    POSInventoryDocument,
+    POSInventoryItem,
+    POSPurchaseDocument,
+    POSPurchaseItem,
+    POSRecipe,
+    POSRecipeItem,
+    POSStockMovement,
+    POSStockSnapshot,
+    POSSupplier,
+    POSWarehouse,
+    POSWriteoff,
+    POSWriteoffItem,
 )
 
 __all__ = [
@@ -187,6 +207,10 @@ __all__ = [
     "IntegrationConnection",
     "IntegrationCapabilityState",
     "IntegrationRawObject",
+    "IntegrationSyncCursor",
+    "IntegrationReconciliationRun",
+    "IntegrationQuarantine",
+    "IntegrationSyncJob",
     "POSVenue",
     "POSTerminal",
     "POSOrder",
@@ -200,4 +224,18 @@ __all__ = [
     "POSProductGroup",
     "POSProductPrice",
     "POSRefund",
+    "POSRecipe",
+    "POSRecipeItem",
+    "POSWarehouse",
+    "POSStockSnapshot",
+    "POSStockMovement",
+    "POSSupplier",
+    "POSPurchaseDocument",
+    "POSPurchaseItem",
+    "POSWriteoff",
+    "POSWriteoffItem",
+    "POSInventoryDocument",
+    "POSInventoryItem",
+    "POSAttendance",
+    "POSCustomerIdentity",
 ]
