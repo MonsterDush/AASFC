@@ -23,6 +23,7 @@ from app.models.payment_method import PaymentMethod
 from app.models.notification_job import NotificationJob
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
@@ -48,11 +49,12 @@ def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
 
 
 class FixtureQuickRestoClient:
-    def __init__(self, *, shifts, orders, payment_types, departments):
+    def __init__(self, *, shifts, orders, payment_types, departments, category_details=None):
         self.shifts = shifts
         self.orders = orders
         self.payment_types = payment_types
         self.departments = departments
+        self.category_details = category_details or {}
         self.orders_by_id = {int(item["id"]): item for item in orders}
 
     def list_all_objects(self, *, module_name, class_name):
@@ -91,7 +93,9 @@ class FixtureQuickRestoClient:
         raise AssertionError(f"Unexpected QuickResto class: {class_name}")
 
     def read_object(self, *, module_name, class_name, object_id):
-        del module_name, class_name
+        del module_name
+        if class_name.endswith("DishCategory"):
+            return deepcopy(self.category_details[int(object_id)])
         return deepcopy(self.orders_by_id[int(object_id)])
 
 
@@ -101,6 +105,13 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
         shifts = deepcopy(fixture["shifts"])
         orders = deepcopy(fixture["orders"])
+        for order in orders:
+            for item in order.get("orderItemList") or ():
+                product = item.get("product") or {}
+                if int(product.get("parentId") or 0) == 6:
+                    # Production QuickResto orders reference a nested category,
+                    # while Axelio maps only the root group shown in settings.
+                    product["parentId"] = 608
         for shift in shifts:
             for field in ("localOpenedTime", "localClosedTime"):
                 shift[field] = shift[field].replace(fixture["report_date"], TARGET_DATE.isoformat())
@@ -131,6 +142,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
@@ -285,6 +297,21 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                     {"id": 7, "name": departments[1].title},
                     {"id": 8, "name": "Кухня QR"},
                 ],
+                category_details={
+                    608: {
+                        "id": 608,
+                        "name": "Вложенная группа",
+                        "parentItem": {
+                            "id": 5,
+                            "name": "Подгруппа",
+                            "parentItem": {
+                                "id": 6,
+                                "name": departments[0].title,
+                                "parentItem": None,
+                            },
+                        },
+                    }
+                },
             )
 
             close_side_effects = (
@@ -314,6 +341,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             self.assertEqual(first.summary_json["conflicts"], [])
             self.assertEqual(first.summary_json["payment_methods_created"], 2)
             self.assertEqual(first.summary_json["departments_created"], 1)
+            self.assertEqual(first.summary_json["dish_category_paths_refreshed"], 1)
             self.assertEqual(first.summary_json["unmapped_payment_type_ids"], [11])
 
             report = db.execute(
@@ -360,6 +388,22 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             ).scalar_one()
             self.assertEqual(created_payment.code, "quickresto-payment-9-2")
             self.assertEqual(created_department.code, "quickresto-department-8")
+            nested_path = db.execute(
+                select(QuickRestoDishCategoryPath).where(
+                    QuickRestoDishCategoryPath.connection_id == connection.id,
+                    QuickRestoDishCategoryPath.external_id == 608,
+                )
+            ).scalar_one()
+            self.assertEqual(nested_path.parent_external_id, 5)
+            self.assertEqual(nested_path.root_external_id, 6)
+            self.assertIsNone(
+                db.execute(
+                    select(QuickRestoDepartmentMapping).where(
+                        QuickRestoDepartmentMapping.connection_id == connection.id,
+                        QuickRestoDepartmentMapping.external_id == 608,
+                    )
+                ).scalar_one_or_none()
+            )
             self.assertEqual(manual_mapping.payment_method_id, payment_methods["bonus"].id)
             self.assertFalse(
                 db.execute(
