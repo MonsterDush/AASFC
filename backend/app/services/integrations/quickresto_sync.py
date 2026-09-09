@@ -33,6 +33,12 @@ from app.services.integrations.quickresto import (
     QuickRestoConfig,
     QuickRestoError,
 )
+from app.services.integrations.quickresto_category_hierarchy import (
+    QuickRestoCategoryRefreshResult,
+    load_dish_category_root_index,
+    referenced_dish_category_ids,
+    refresh_dish_category_paths,
+)
 from app.services.integrations.quickresto_normalize import (
     QuickRestoDataError,
     aggregate_normalized_shifts,
@@ -348,6 +354,64 @@ def build_quickresto_client(connection: QuickRestoConnection) -> QuickRestoClien
     )
 
 
+def _snapshot_category_ids(snapshots: list[QuickRestoSourceSnapshot]) -> set[int]:
+    return referenced_dish_category_ids(open_source_snapshot(snapshot) for snapshot in snapshots)
+
+
+def _direct_department_mapping_ids(db: Session, *, connection_id: int) -> set[int]:
+    return {
+        int(value)
+        for value in db.execute(
+            select(QuickRestoDepartmentMapping.external_id).where(
+                QuickRestoDepartmentMapping.connection_id == int(connection_id),
+                QuickRestoDepartmentMapping.department_id.is_not(None),
+            )
+        ).scalars()
+    }
+
+
+def _refresh_snapshot_category_paths(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    snapshots: list[QuickRestoSourceSnapshot],
+    client: QuickRestoClient | None,
+) -> QuickRestoCategoryRefreshResult:
+    category_ids = _snapshot_category_ids(snapshots)
+    direct_mapping_ids = _direct_department_mapping_ids(db, connection_id=int(connection.id))
+    candidates = category_ids - direct_mapping_ids
+    cached = load_dish_category_root_index(
+        db,
+        connection_id=int(connection.id),
+        external_ids=candidates,
+    )
+    missing = candidates - set(cached)
+    if not missing:
+        return QuickRestoCategoryRefreshResult(
+            requested_ids=tuple(sorted(category_ids)),
+            refreshed_ids=(),
+            unresolved_ids=(),
+        )
+
+    if client is not None:
+        return refresh_dish_category_paths(
+            db,
+            connection_id=int(connection.id),
+            client=client,
+            external_ids=category_ids,
+            direct_mapping_ids=direct_mapping_ids,
+        )
+
+    with build_quickresto_client(connection) as remote_client:
+        return refresh_dish_category_paths(
+            db,
+            connection_id=int(connection.id),
+            client=remote_client,
+            external_ids=category_ids,
+            direct_mapping_ids=direct_mapping_ids,
+        )
+
+
 def refresh_quickresto_mappings(
     db: Session,
     *,
@@ -583,15 +647,40 @@ def _mapped_aggregate(
             continue
         payments_internal[int(mapping.payment_method_id)] += int(value)
 
-    for external_id, value in (aggregate.get("departments_external") or {}).items():
+    department_values = aggregate.get("departments_external") or {}
+    resolved_department_mapping_ids = {
+        int(mapping.external_id) for mapping in department_mappings.values() if mapping.department_id is not None
+    }
+    indirect_external_ids = {
+        int(external_id)
+        for external_id, value in department_values.items()
+        if int(value or 0) and int(external_id) not in resolved_department_mapping_ids
+    }
+    category_roots = load_dish_category_root_index(
+        db,
+        connection_id=int(connection.id),
+        external_ids=indirect_external_ids,
+    )
+    unresolved_categories: list[int] = []
+    for external_id, value in department_values.items():
         if not int(value or 0):
             continue
         mapping = department_mappings.get(str(external_id))
         if mapping is None or mapping.department_id is None:
-            missing_departments.append(int(external_id))
+            root_external_id = category_roots.get(int(external_id))
+            if root_external_id is None:
+                unresolved_categories.append(int(external_id))
+                continue
+            mapping = department_mappings.get(str(root_external_id))
+        if mapping is None or mapping.department_id is None:
+            missing_departments.append(int(category_roots.get(int(external_id), int(external_id))))
             continue
         departments_internal[int(mapping.department_id)] += int(value)
 
+    if unresolved_categories:
+        raise QuickRestoDataError(
+            f"QuickResto dish category hierarchy is unresolved (categories={sorted(unresolved_categories)})"
+        )
     if missing_payments or missing_departments:
         raise QuickRestoDataError(
             "QuickResto mappings are incomplete"
@@ -1728,6 +1817,12 @@ def _perform_sync(
         client=client,
         force_full=force_full,
     )
+    category_summary = _refresh_snapshot_category_paths(
+        db,
+        connection=connection,
+        snapshots=snapshots,
+        client=client,
+    ).as_summary()
     grouped: dict[tuple[date | None, str | None, str], list[QuickRestoSourceSnapshot]] = defaultdict(list)
     for snapshot in snapshots:
         discriminator = (
@@ -1785,6 +1880,7 @@ def _perform_sync(
     return {
         **catalog_summary,
         **mapping_summary,
+        **category_summary,
         **scope_counts,
         "sync_mode": "FULL_RECONCILIATION" if full_reconciliation else "INCREMENTAL",
         "source_snapshots_staged": len(snapshots) + len(scope_conflicts),
@@ -2302,7 +2398,7 @@ def retry_quickresto_import_issue(
     issue_id: int,
     requested_by_user_id: int,
 ) -> QuickRestoSyncRun:
-    """Retry one durable issue from encrypted snapshots without calling QuickResto."""
+    """Retry from encrypted snapshots, fetching only missing category metadata."""
 
     connection_id = int(connection.id)
     connection = db.execute(
@@ -2390,6 +2486,12 @@ def retry_quickresto_import_issue(
         db.refresh(snapshot)
 
     try:
+        category_summary = _refresh_snapshot_category_paths(
+            db,
+            connection=connection,
+            snapshots=snapshots,
+            client=None,
+        ).as_summary()
         result = _process_snapshot_group(
             db,
             connection=connection,
@@ -2421,6 +2523,7 @@ def retry_quickresto_import_issue(
             "conflicts": [conflict] if conflict is not None else [],
             "issue_count": int(conflict is not None),
             "retried_issue_id": int(issue_id),
+            **category_summary,
         }
         if conflict is None:
             current_issue = db.get(QuickRestoImportIssue, int(issue_id))

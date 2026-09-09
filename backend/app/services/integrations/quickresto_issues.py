@@ -107,7 +107,19 @@ def classify_quickresto_failure(
         user_summary = "Выбор заведения или мест реализации QuickResto требует обновления."
     elif isinstance(exc, QuickRestoDataError):
         lowered = technical.casefold()
-        if "mappings are incomplete" in lowered:
+        if "dish category hierarchy is unresolved" in lowered:
+            code = "DISH_CATEGORY_HIERARCHY_UNRESOLVED"
+            category = "MAPPING"
+            match = re.search(r"categories=\[([^]]*)\]", technical)
+            if match:
+                details["category_ids"] = sorted(
+                    {int(raw) for raw in re.findall(r"\d+", match.group(1)) if int(raw) > 0}
+                )
+            user_summary = (
+                "Не удалось определить верхнюю группу для части блюд QuickResto. "
+                "Обновите справочники и повторите импорт."
+            )
+        elif "mappings are incomplete" in lowered:
             code = "MAPPING_INCOMPLETE"
             category = "MAPPING"
             details.update(_mapping_details(technical))

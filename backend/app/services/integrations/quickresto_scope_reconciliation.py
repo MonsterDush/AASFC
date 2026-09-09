@@ -25,6 +25,7 @@ from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.venue import Venue
 from app.services.integrations.quickresto_issues import open_source_snapshot, transition_issue
+from app.services.integrations.quickresto_category_hierarchy import copy_dish_category_paths
 from app.services.integrations.quickresto_normalize import normalize_closed_shift
 from app.services.integrations.quickresto_scope import (
     activate_pending_quickresto_scope,
@@ -725,6 +726,19 @@ def _apply_mutations(
     target_keys_by_connection: dict[int, set[tuple[date, str]]] = defaultdict(set)
     decision_audit: list[dict[str, Any]] = []
     counts_by_action = {"KEEP_CURRENT": 0, "EXCLUDE_CURRENT": 0, "MOVE_TO_CONNECTED": 0}
+
+    # Dish categories belong to the QuickResto cloud, but their resolved paths
+    # are stored per Axelio connection to keep retries deterministic. A
+    # confirmed cross-venue move must carry the resolver cache with the source
+    # snapshot before rebuilding the target report.
+    for target in {int(item.id): item for item in context["target_by_shift_id"].values()}.values():
+        if str(target.cloud) != str(source.cloud):
+            raise QuickRestoSyncError("Перенос смены между разными облаками QuickResto запрещён")
+        copy_dish_category_paths(
+            db,
+            source_connection_id=int(source.id),
+            target_connection_id=int(target.id),
+        )
 
     for shift_import in context["shift_imports"]:
         shift_id = int(shift_import.id)
