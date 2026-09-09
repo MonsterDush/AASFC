@@ -34,8 +34,10 @@ class MigrationContractTests(unittest.TestCase):
         preview_move = scripts.get_revision("a7d3e5f1c9b2")
         interval_positions = scripts.get_revision("f6b4d2a8c1e0")
         catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
+        category_paths = scripts.get_revision("a4c6e8f0b2d1")
 
-        self.assertEqual(heads, ["d3e5f7a9b1c2"])
+        self.assertEqual(heads, ["a4c6e8f0b2d1"])
+        self.assertEqual(category_paths.down_revision, "d3e5f7a9b1c2")
         self.assertEqual(scripts.get_revision("d3e5f7a9b1c2").down_revision, "c2f4a6b8d0e1")
         self.assertEqual(scripts.get_revision("c2f4a6b8d0e1").down_revision, "b9d2e4f6a8c1")
 

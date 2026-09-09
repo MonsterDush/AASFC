@@ -66,3 +66,12 @@ class QuickRestoRedactionTests(TestCase):
         self.assertEqual(failure.error_code, "MAPPING_INCOMPLETE")
         self.assertEqual(failure.details["missing_payment_type_ids"], [7])
         self.assertEqual(failure.details["missing_department_ids"], [9])
+
+    def test_unresolved_category_hierarchy_keeps_only_category_ids(self):
+        failure = classify_quickresto_failure(
+            QuickRestoDataError("QuickResto dish category hierarchy is unresolved (categories=[608, 1093])")
+        )
+
+        self.assertEqual(failure.error_code, "DISH_CATEGORY_HIERARCHY_UNRESOLVED")
+        self.assertEqual(failure.error_category, "MAPPING")
+        self.assertEqual(failure.details["category_ids"], [608, 1093])

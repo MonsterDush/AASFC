@@ -216,10 +216,31 @@ function uniqueIds(values) {
   return [...new Set((Array.isArray(values) ? values : []).map(String))];
 }
 
+function actionableMappingIds(issue) {
+  const paymentMappings = new Set(
+    (state.mappings.payments || []).map((item) => String(item.external_id)),
+  );
+  const departmentMappings = new Set(
+    (state.mappings.departments || []).map((item) => String(item.external_id)),
+  );
+  return {
+    paymentIds: uniqueIds(issue?.details?.missing_payment_type_ids).filter((id) =>
+      paymentMappings.has(id),
+    ),
+    departmentIds: uniqueIds(issue?.details?.missing_department_ids).filter((id) =>
+      departmentMappings.has(id),
+    ),
+    nestedCategoryIds: uniqueIds(issue?.details?.missing_department_ids).filter(
+      (id) => !departmentMappings.has(id),
+    ),
+  };
+}
+
 function renderMappingResolution(issue) {
-  const paymentIds = uniqueIds(issue?.details?.missing_payment_type_ids);
-  const departmentIds = uniqueIds(issue?.details?.missing_department_ids);
-  if (!paymentIds.length && !departmentIds.length) return "";
+  const { paymentIds, departmentIds, nestedCategoryIds } =
+    actionableMappingIds(issue);
+  if (!paymentIds.length && !departmentIds.length && !nestedCategoryIds.length)
+    return "";
   const disabled = state.canManage && issue.can_retry !== false ? "" : " disabled";
   const paymentFields = paymentIds
     .map((externalId) => {
@@ -243,9 +264,14 @@ function renderMappingResolution(issue) {
       </label>`;
     })
     .join("");
+  const nestedCategoryHint = nestedCategoryIds.length
+    ? `<div class="integration-issue-readonly">Axelio автоматически определит верхнюю группу для ${nestedCategoryIds.length} вложенных ${nestedCategoryIds.length === 1 ? "категории" : "категорий"} QuickResto при повторе импорта.</div>`
+    : "";
+  if (!paymentFields && !departmentFields) return nestedCategoryHint;
   return `<section class="integration-issue-resolution">
     <div><h3>Нужно сопоставить данные</h3><div class="muted small mt-4">Сначала сохраните соответствия, затем Axelio повторит импорт всех смен этой проблемы.</div></div>
     <div class="integration-issue-fields">${paymentFields}${departmentFields}</div>
+    ${nestedCategoryHint}
     ${state.canManage && issue.can_retry !== false ? `<button class="btn primary" type="button" data-save-mappings-retry>Сохранить и повторить импорт</button>` : ""}
   </section>`;
 }
@@ -434,9 +460,9 @@ function renderDrawer(issue) {
   const actionable = ACTIVE_STATUSES.has(status);
   const canRetry = state.canManage && actionable && issue.can_retry !== false;
   const canIgnore = state.canManage && actionable && issue.can_ignore !== false;
+  const mappingFields = actionableMappingIds(issue);
   const hasMappingFields =
-    uniqueIds(issue?.details?.missing_payment_type_ids).length > 0 ||
-    uniqueIds(issue?.details?.missing_department_ids).length > 0;
+    mappingFields.paymentIds.length > 0 || mappingFields.departmentIds.length > 0;
   el.issueDrawerTitle.textContent = `${formatDate(issue.business_date)} · ${slotLabel(issue.shift_slot)}`;
   el.issueDrawerBody.innerHTML = `
     <div class="integration-issue-detail-head">
