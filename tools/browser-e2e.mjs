@@ -1550,10 +1550,13 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
     await confirmOverwrite.waitFor({ state: "visible" });
     await confirmOverwrite.click();
   }
-  await bulkSaved;
+  const bulkResult = await (await bulkSaved).json();
   await page.waitForFunction(
-    () => document.querySelector("#bulkHint")?.textContent.includes("31"),
-    null,
+    (changedCount) =>
+      document
+        .querySelector("#bulkHint")
+        ?.textContent.includes(`Изменено дат: ${changedCount}`),
+    bulkResult.changed_count,
     { timeout: 20_000 },
   );
 
