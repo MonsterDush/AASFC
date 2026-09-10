@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.models.quickresto_connection import QuickRestoConnection
-from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.services.integrations.quickresto import QuickRestoHTTPError
@@ -47,6 +47,7 @@ class QuickRestoCategoryHierarchyTests(unittest.TestCase):
             tables=[
                 QuickRestoConnection.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDepartmentAllocation.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoPaymentMapping.__table__,
             ],

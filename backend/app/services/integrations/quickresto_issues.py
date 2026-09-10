@@ -529,6 +529,7 @@ def serialize_issue(
         for key in (
             "missing_payment_type_ids",
             "missing_department_ids",
+            "category_ids",
             "report_id",
             "http_status",
             "selected_external_venue_id",

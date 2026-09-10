@@ -94,7 +94,12 @@ const state = {
   canManage: true,
   issueOpenCount: 0,
   activePosProvider: null,
-  mappingReadiness: { ready: false, discovered: false, unmapped_payment_type_ids: [], unmapped_department_ids: [] },
+  mappingReadiness: {
+    ready: false,
+    discovered: false,
+    unmapped_payment_type_ids: [],
+    unmapped_department_ids: [],
+  },
   scopeAudit: [],
 };
 
@@ -176,7 +181,9 @@ function renderScopeStores() {
     const sources = Array.isArray(store.source_sale_place_ids)
       ? store.source_sale_place_ids.map(Number)
       : [];
-    return sources.length === 0 || sources.some((id) => selectedSaleIds.has(id));
+    return (
+      sources.length === 0 || sources.some((id) => selectedSaleIds.has(id))
+    );
   });
   if (!selectedSaleIds.size) {
     el.storeOptions.innerHTML = `<div class="quickresto-empty">Выберите хотя бы одно место реализации.</div>`;
@@ -187,20 +194,24 @@ function renderScopeStores() {
     return;
   }
   el.storeOptions.innerHTML = stores
-    .map(
-      (store) => {
-        const saleIds = Array.isArray(store.source_sale_place_ids) ? store.source_sale_place_ids : [];
-        const cookingIds = Array.isArray(store.source_cooking_place_ids) ? store.source_cooking_place_ids : [];
-        const relation = [
-          saleIds.length ? `точки #${saleIds.join(", #")}` : "",
-          cookingIds.length ? `CookingPlace #${cookingIds.join(", #")}` : "",
-        ].filter(Boolean).join(" · ");
-        return `<label class="quickresto-scope-choice">
+    .map((store) => {
+      const saleIds = Array.isArray(store.source_sale_place_ids)
+        ? store.source_sale_place_ids
+        : [];
+      const cookingIds = Array.isArray(store.source_cooking_place_ids)
+        ? store.source_cooking_place_ids
+        : [];
+      const relation = [
+        saleIds.length ? `точки #${saleIds.join(", #")}` : "",
+        cookingIds.length ? `CookingPlace #${cookingIds.join(", #")}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<label class="quickresto-scope-choice">
         <input type="checkbox" data-store-id="${store.external_id}"${(store.is_pending_selected ?? store.is_selected) ? " checked" : ""}${state.canManage ? "" : " disabled"} />
         <span><b>${esc(store.external_name)}</b><small>QuickResto #${store.external_id}${relation ? ` · ${esc(relation)}` : ""}</small></span>
       </label>`;
-      },
-    )
+    })
     .join("");
 }
 
@@ -251,7 +262,8 @@ function renderScope({ preserveVenue = false } = {}) {
   renderScopeStores();
 
   if (!state.configured) {
-    el.scopeHint.textContent = "Сначала сохраните подключение к облаку QuickResto.";
+    el.scopeHint.textContent =
+      "Сначала сохраните подключение к облаку QuickResto.";
   } else if (!venues.length) {
     el.scopeHint.textContent =
       "Получите список заведений, точек и складов из QuickResto.";
@@ -276,12 +288,15 @@ function formatDate(value, { withTime = false } = {}) {
   if (!source) return "—";
   const date = new Date(source);
   if (Number.isNaN(date.getTime())) return source;
-  return new Intl.DateTimeFormat(document.documentElement.lang === "en" ? "en-US" : "ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    document.documentElement.lang === "en" ? "en-US" : "ru-RU",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+    },
+  ).format(date);
 }
 
 function requiredMappingsReady() {
@@ -315,10 +330,18 @@ function renderScopeAudit() {
     .map((item) => {
       const changes = item.changes || {};
       const parts = [
-        (changes.sale_places_added || []).length ? `+ точки: ${(changes.sale_places_added || []).join(", ")}` : "",
-        (changes.sale_places_removed || []).length ? `− точки: ${(changes.sale_places_removed || []).join(", ")}` : "",
-        (changes.stores_added || []).length ? `+ склады: ${(changes.stores_added || []).join(", ")}` : "",
-        (changes.stores_removed || []).length ? `− склады: ${(changes.stores_removed || []).join(", ")}` : "",
+        (changes.sale_places_added || []).length
+          ? `+ точки: ${(changes.sale_places_added || []).join(", ")}`
+          : "",
+        (changes.sale_places_removed || []).length
+          ? `− точки: ${(changes.sale_places_removed || []).join(", ")}`
+          : "",
+        (changes.stores_added || []).length
+          ? `+ склады: ${(changes.stores_added || []).join(", ")}`
+          : "",
+        (changes.stores_removed || []).length
+          ? `− склады: ${(changes.stores_removed || []).join(", ")}`
+          : "",
       ].filter(Boolean);
       return `<div class="itemcard quickresto-scope-audit__row">
         <div><b>Версия области ${Number(item.scope_generation || 1)}</b><div class="muted small">${esc(formatDate(item.changed_at, { withTime: true }))} · пользователь #${esc(item.actor_user_id || "—")}</div></div>
@@ -478,12 +501,18 @@ function renderMappings() {
 
   el.departmentMappings.innerHTML = departments.length
     ? departments
-        .map(
-          (item) => `<div class="itemcard quickresto-mapping-row">
-      <div><b>${esc(item.external_name)}</b><div class="muted small">QuickResto #${item.external_id}</div></div>
+        .map((item) => {
+          const allocations = Array.isArray(item.allocations)
+            ? item.allocations
+            : [];
+          const allocationSummary = allocations.length
+            ? `<div class="muted small">Распределено между ${allocations.length} департаментами · изменить можно в центре проблем импорта</div>`
+            : "";
+          return `<div class="itemcard quickresto-mapping-row">
+      <div><b>${esc(item.external_name)}</b><div class="muted small">QuickResto #${item.external_id}</div>${allocationSummary}</div>
       <select data-department-external-id="${item.external_id}">${options(state.departments, item.department_id)}</select>
-    </div>`,
-        )
+    </div>`;
+        })
         .join("")
     : `<div class="quickresto-empty">Сначала получите справочники QuickResto.</div>`;
   applyPermissions();
@@ -536,6 +565,11 @@ function collectMappingsPayload() {
     return {
       external_id: item.external_id,
       department_id: select?.value ? Number(select.value) : null,
+      allocations: select?.value
+        ? []
+        : Array.isArray(item.allocations)
+          ? item.allocations
+          : [],
     };
   });
   return { payments, departments };
@@ -568,22 +602,23 @@ async function load() {
   state.canManage =
     integration.permissions?.can_manage ?? integration.can_manage ?? true;
   state.issueOpenCount = Number(integration.issues?.open_count || 0);
-  state.activePosProvider = String(
-    integration.active_pos_provider || "",
-  ).toUpperCase() || null;
+  state.activePosProvider =
+    String(integration.active_pos_provider || "").toUpperCase() || null;
   state.venueNightShiftsEnabled = !!(
     integration.venue_night_shifts_enabled ??
     integration.connection?.venue_night_shifts_enabled ??
     venue?.night_shifts_enabled
   );
   state.mappings = integration.mappings || { payments: [], departments: [] };
-  state.mappingReadiness = integration.mapping_readiness || state.mappingReadiness;
+  state.mappingReadiness =
+    integration.mapping_readiness || state.mappingReadiness;
   state.scopeAudit = integration.scope_audit || [];
   const venueName = venue?.name || `Заведение ${venueId}`;
   el.title.textContent = `QuickResto · ${venueName}`;
   el.venueTitle.textContent = venueName;
   el.issueOpenCount.textContent = String(state.issueOpenCount);
-  el.issueSection.dataset.attention = state.issueOpenCount > 0 ? "true" : "false";
+  el.issueSection.dataset.attention =
+    state.issueOpenCount > 0 ? "true" : "false";
   state.runs = state.configured
     ? await api(
         `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/runs?limit=10`,
@@ -628,9 +663,8 @@ el.saveConnection?.addEventListener("click", async () => {
     );
     state.configured = true;
     state.connection = result.connection;
-    state.activePosProvider = String(
-      result.active_pos_provider || "",
-    ).toUpperCase() || null;
+    state.activePosProvider =
+      String(result.active_pos_provider || "").toUpperCase() || null;
     if (previousCloud && previousCloud !== result.connection?.cloud) {
       state.catalog = emptyCatalog();
       state.mappings = { payments: [], departments: [] };
@@ -664,7 +698,8 @@ el.refreshScopeCatalog?.addEventListener("click", async () => {
       { method: "POST" },
     );
     state.catalog = result.catalog || emptyCatalog();
-    if (state.connection) state.connection.scope_status = state.catalog.scope_status;
+    if (state.connection)
+      state.connection.scope_status = state.catalog.scope_status;
     renderScope();
     toast("Заведения, точки и склады получены", "ok");
   } catch (error) {
@@ -728,9 +763,14 @@ el.saveScope?.addEventListener("click", async () => {
         `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
         { method: "POST" },
       );
-      const issueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
+      const issueId = Number(
+        scan.run?.summary?.historical_scope_mismatch_issue_id || 0,
+      );
       if (issueId) {
-        toast("Новая область сохранена. Нужно проверить ранее импортированные смены.", "err");
+        toast(
+          "Новая область сохранена. Нужно проверить ранее импортированные смены.",
+          "err",
+        );
         location.href =
           `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}` +
           `&provider=quickresto&issue_id=${encodeURIComponent(issueId)}`;
@@ -769,7 +809,8 @@ el.discoverMappings?.addEventListener("click", async () => {
     state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
     state.scopeAudit = result.scope_audit || state.scopeAudit;
     renderScopeAudit();
-    if (state.connection) state.connection.scope_status = state.catalog.scope_status;
+    if (state.connection)
+      state.connection.scope_status = state.catalog.scope_status;
     await refreshAxelioCatalogs();
     renderScope();
     renderMappings();

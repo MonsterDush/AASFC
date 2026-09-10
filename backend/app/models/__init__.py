@@ -67,7 +67,7 @@ from .demo_event import DemoEvent
 from .security_rate_limit import SecurityRateLimit
 from .quickresto_connection import QuickRestoConnection
 from .quickresto_payment_mapping import QuickRestoPaymentMapping
-from .quickresto_department_mapping import QuickRestoDepartmentMapping
+from .quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from .quickresto_dish_category_path import QuickRestoDishCategoryPath
 from .quickresto_external_venue import QuickRestoExternalVenue
 from .quickresto_sale_place_scope import QuickRestoSalePlaceScope
@@ -155,6 +155,7 @@ __all__ = [
     "QuickRestoConnection",
     "QuickRestoPaymentMapping",
     "QuickRestoDepartmentMapping",
+    "QuickRestoDepartmentAllocation",
     "QuickRestoDishCategoryPath",
     "QuickRestoExternalVenue",
     "QuickRestoSalePlaceScope",

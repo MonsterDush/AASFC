@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
 from app.models.department import Department
@@ -51,6 +51,11 @@ from app.services.integrations.quickresto_issues import (
     issue_counters,
     serialize_issue,
     transition_issue,
+)
+from app.services.integrations.quickresto_department_distribution import (
+    mapping_department_distribution,
+    mapping_is_resolved,
+    replace_mapping_distribution,
 )
 from app.services.integrations.quickresto_scope import (
     QuickRestoScopeConflictError,
@@ -268,6 +273,29 @@ def _validate_night_shift_split(payload: QuickRestoConnectionUpsertIn, *, venue:
         )
 
 
+def _active_issue_department_candidates(db: Session, *, connection_id: int) -> set[int]:
+    candidates: set[int] = set()
+    details_rows = db.execute(
+        select(QuickRestoImportIssue.details_json).where(
+            QuickRestoImportIssue.connection_id == int(connection_id),
+            QuickRestoImportIssue.status.in_(ACTIVE_ISSUE_STATUSES),
+            QuickRestoImportIssue.error_category == "MAPPING",
+        )
+    ).scalars()
+    for details in details_rows:
+        if not isinstance(details, dict):
+            continue
+        for field in ("missing_department_ids", "category_ids"):
+            for raw_value in details.get(field) or ():
+                try:
+                    value = int(raw_value or 0)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    candidates.add(value)
+    return candidates
+
+
 def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
     payments = (
         db.execute(
@@ -282,11 +310,41 @@ def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
         db.execute(
             select(QuickRestoDepartmentMapping)
             .where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            .options(selectinload(QuickRestoDepartmentMapping.allocations))
             .order_by(QuickRestoDepartmentMapping.external_name, QuickRestoDepartmentMapping.external_id)
         )
         .scalars()
         .all()
     )
+    department_rows = [
+        {
+            "external_id": int(item.external_id),
+            "external_name": item.external_name,
+            "department_id": int(item.department_id) if item.department_id else None,
+            "allocations": [
+                {"department_id": int(department_id), "share_percent": int(share_percent)}
+                for department_id, share_percent in mapping_department_distribution(item).items()
+            ]
+            if item.department_id is None
+            else [],
+            "is_issue_candidate": False,
+        }
+        for item in departments
+    ]
+    known_department_ids = {int(item.external_id) for item in departments}
+    for external_id in sorted(
+        _active_issue_department_candidates(db, connection_id=int(connection.id)) - known_department_ids
+    ):
+        department_rows.append(
+            {
+                "external_id": external_id,
+                "external_name": f"Составная или скрытая группа QuickResto #{external_id}",
+                "department_id": None,
+                "allocations": [],
+                "is_issue_candidate": True,
+            }
+        )
+    department_rows.sort(key=lambda item: (str(item["external_name"]).casefold(), int(item["external_id"])))
     return {
         "payments": [
             {
@@ -302,14 +360,7 @@ def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
             }
             for item in payments
         ],
-        "departments": [
-            {
-                "external_id": int(item.external_id),
-                "external_name": item.external_name,
-                "department_id": int(item.department_id) if item.department_id else None,
-            }
-            for item in departments
-        ],
+        "departments": department_rows,
     }
 
 
@@ -321,7 +372,9 @@ def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
     )
     departments = list(
         db.execute(
-            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            select(QuickRestoDepartmentMapping)
+            .where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            .options(selectinload(QuickRestoDepartmentMapping.allocations))
         ).scalars()
     )
     missing_payments = sorted(
@@ -332,8 +385,19 @@ def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
         and not item.excluded_from_revenue
         and item.payment_method_id is None
     )
-    missing_departments = sorted(int(item.external_id) for item in departments if item.department_id is None)
-    discovered = bool(any(item.is_available and item.is_applicable for item in payments) or departments)
+    known_departments = {int(item.external_id): item for item in departments}
+    issue_candidates = _active_issue_department_candidates(db, connection_id=int(connection.id))
+    missing_departments = sorted(
+        {int(item.external_id) for item in departments if not mapping_is_resolved(item)}
+        | {
+            external_id
+            for external_id in issue_candidates
+            if not mapping_is_resolved(known_departments.get(external_id))
+        }
+    )
+    discovered = bool(
+        any(item.is_available and item.is_applicable for item in payments) or departments or issue_candidates
+    )
     return {
         "ready": bool(
             str(connection.scope_status or "").upper() == "READY"
@@ -673,9 +737,15 @@ def put_quickresto_mappings(
     department_mappings = {
         int(item.external_id): item
         for item in db.execute(
-            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            select(QuickRestoDepartmentMapping)
+            .where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            .options(selectinload(QuickRestoDepartmentMapping.allocations))
         ).scalars()
     }
+    issue_department_candidates = _active_issue_department_candidates(
+        db,
+        connection_id=int(connection.id),
+    )
     for item in payload.payments:
         mapping = payment_mappings.get(item.external_id)
         if mapping is None:
@@ -694,10 +764,29 @@ def put_quickresto_mappings(
     for item in payload.departments:
         mapping = department_mappings.get(item.external_id)
         if mapping is None:
-            raise HTTPException(status_code=400, detail=f"Unknown QuickResto department {item.external_id}")
-        if item.department_id is not None and item.department_id not in valid_department_ids:
+            if int(item.external_id) not in issue_department_candidates:
+                raise HTTPException(status_code=400, detail=f"Unknown QuickResto department {item.external_id}")
+            mapping = QuickRestoDepartmentMapping(
+                connection_id=int(connection.id),
+                external_id=int(item.external_id),
+                external_name=f"Составная или скрытая группа QuickResto #{int(item.external_id)}",
+                department_id=None,
+                updated_at=datetime.utcnow(),
+            )
+            db.add(mapping)
+            db.flush()
+            department_mappings[int(item.external_id)] = mapping
+        target_ids = {
+            int(item.department_id) if item.department_id is not None else 0,
+            *(int(allocation.department_id) for allocation in item.allocations),
+        } - {0}
+        if not target_ids.issubset(valid_department_ids):
             raise HTTPException(status_code=400, detail="Department does not belong to venue")
-        mapping.department_id = item.department_id
+        replace_mapping_distribution(
+            mapping,
+            department_id=item.department_id,
+            allocations=((allocation.department_id, allocation.share_percent) for allocation in item.allocations),
+        )
         mapping.updated_at = datetime.utcnow()
     db.commit()
     return {
