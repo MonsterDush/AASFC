@@ -238,9 +238,7 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
                 db,
                 user,
             )
-            kpi_group = next(
-                item for item in kpi_result["mappings"]["departments"] if item["external_id"] == 1106
-            )
+            kpi_group = next(item for item in kpi_result["mappings"]["departments"] if item["external_id"] == 1106)
             self.assertTrue(kpi_group["resolved_by_kpi"])
             self.assertIsNone(kpi_group["department_id"])
             self.assertEqual(kpi_group["allocations"], [])

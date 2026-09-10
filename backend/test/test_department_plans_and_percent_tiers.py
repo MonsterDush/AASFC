@@ -168,7 +168,9 @@ class DepartmentPlansAndTiersTests(TestCase):
         result = bulk_day_plans(self.db, 1, clear_payload)
         self.assertEqual(result["deleted_count"], 7)
         self.assertIsNone(self.db.scalar(select(DepartmentDayPlan).where(DepartmentDayPlan.venue_id == 1)))
-        self.assertTrue(all(row["revenue_plan_minor"] is None for row in plan_calendar(self.db, 1, 1, "2026-09")["days"]))
+        self.assertTrue(
+            all(row["revenue_plan_minor"] is None for row in plan_calendar(self.db, 1, 1, "2026-09")["days"])
+        )
 
     def test_plan_routes_recalculate_changed_month_and_day(self):
         user = SimpleNamespace(id=1, system_role="NONE")
