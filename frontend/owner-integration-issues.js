@@ -39,7 +39,9 @@ const ids = [
   "issueDrawerTitle",
   "issueDrawerBody",
 ];
-const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
+const el = Object.fromEntries(
+  ids.map((id) => [id, document.getElementById(id)]),
+);
 
 const ACTIVE_STATUSES = new Set(["OPEN", "RETRY_PENDING", "PROCESSING"]);
 const state = {
@@ -223,17 +225,42 @@ function actionableMappingIds(issue) {
   const departmentMappings = new Set(
     (state.mappings.departments || []).map((item) => String(item.external_id)),
   );
+  const issueDepartmentIds = uniqueIds([
+    ...(issue?.details?.missing_department_ids || []),
+    ...(issue?.details?.category_ids || []),
+  ]);
   return {
-    paymentIds: uniqueIds(issue?.details?.missing_payment_type_ids).filter((id) =>
-      paymentMappings.has(id),
+    paymentIds: uniqueIds(issue?.details?.missing_payment_type_ids).filter(
+      (id) => paymentMappings.has(id),
     ),
-    departmentIds: uniqueIds(issue?.details?.missing_department_ids).filter((id) =>
+    departmentIds: issueDepartmentIds.filter((id) =>
       departmentMappings.has(id),
     ),
-    nestedCategoryIds: uniqueIds(issue?.details?.missing_department_ids).filter(
+    nestedCategoryIds: issueDepartmentIds.filter(
       (id) => !departmentMappings.has(id),
     ),
   };
+}
+
+function departmentAllocationRows(mapping) {
+  const allocations = Array.isArray(mapping?.allocations)
+    ? mapping.allocations.filter(
+        (item) => item?.department_id && item?.share_percent,
+      )
+    : [];
+  if (allocations.length) return allocations;
+  if (mapping?.department_id) {
+    return [{ department_id: mapping.department_id, share_percent: 100 }];
+  }
+  return [{ department_id: "", share_percent: 100 }];
+}
+
+function renderDepartmentAllocationRow(row, disabled = "") {
+  return `<div class="integration-issue-allocation-row" data-issue-allocation-row>
+    <select data-issue-allocation-department${disabled}>${mappingOptions(state.departments, row.department_id)}</select>
+    <label class="integration-issue-allocation-share"><input type="number" min="1" max="100" step="1" value="${esc(row.share_percent || "")}" data-issue-allocation-share${disabled} /><span>%</span></label>
+    <button class="btn subtle" type="button" data-remove-issue-allocation aria-label="Удалить долю"${disabled}>×</button>
+  </div>`;
 }
 
 function renderMappingResolution(issue) {
@@ -241,7 +268,8 @@ function renderMappingResolution(issue) {
     actionableMappingIds(issue);
   if (!paymentIds.length && !departmentIds.length && !nestedCategoryIds.length)
     return "";
-  const disabled = state.canManage && issue.can_retry !== false ? "" : " disabled";
+  const disabled =
+    state.canManage && issue.can_retry !== false ? "" : " disabled";
   const paymentFields = paymentIds
     .map((externalId) => {
       const mapping = (state.mappings.payments || []).find(
@@ -258,10 +286,15 @@ function renderMappingResolution(issue) {
       const mapping = (state.mappings.departments || []).find(
         (item) => String(item.external_id) === externalId,
       );
-      return `<label class="integration-issue-field">
-        <span>${esc(mapping?.external_name || `Группа блюд QuickResto #${externalId}`)}</span>
-        <select data-issue-department-id="${esc(externalId)}"${disabled}>${mappingOptions(state.departments, mapping?.department_id)}</select>
-      </label>`;
+      const rows = departmentAllocationRows(mapping)
+        .map((row) => renderDepartmentAllocationRow(row, disabled))
+        .join("");
+      return `<fieldset class="integration-issue-allocation" data-issue-department-allocation="${esc(externalId)}">
+        <legend>${esc(mapping?.external_name || `Группа блюд QuickResto #${externalId}`)}</legend>
+        <div class="muted small">Можно выбрать один департамент (100%) или распределить составную позицию между несколькими.</div>
+        <div class="integration-issue-allocation-rows">${rows}</div>
+        ${state.canManage && issue.can_retry !== false ? `<button class="btn subtle" type="button" data-add-issue-allocation="${esc(externalId)}">Добавить долю</button>` : ""}
+      </fieldset>`;
     })
     .join("");
   const nestedCategoryHint = nestedCategoryIds.length
@@ -276,18 +309,69 @@ function renderMappingResolution(issue) {
   </section>`;
 }
 
+function renderResolutionGuide(
+  issue,
+  { hasMappingFields = false, hasScopeEditor = false } = {},
+) {
+  if (
+    hasMappingFields ||
+    hasScopeEditor ||
+    String(issue.error_code || "").toUpperCase() === "PREVIOUS_SCOPE_MISMATCH"
+  ) {
+    return "";
+  }
+  const category = String(issue.error_category || "").toUpperCase();
+  const code = String(issue.error_code || "").toUpperCase();
+  let text =
+    "Проверьте описание и повторите импорт. Если причина сохранится, передайте код проблемы команде Axelio.";
+  if (category === "AUTH") {
+    text =
+      "Обновите API-логин и API-пароль в настройках QuickResto, затем повторите импорт.";
+  } else if (category === "TRANSPORT") {
+    text =
+      "Повторите импорт после восстановления QuickResto; временные ошибки также повторяются автоматически.";
+  } else if (category === "SOURCE_DATA") {
+    text =
+      "Исправьте состав или обязательные ссылки в закрытой смене QuickResto, затем повторите импорт. Axelio не запишет несверенные суммы в отчёт.";
+  } else if (category === "REPORT") {
+    text =
+      "Проверьте существующий отчёт Axelio и его ручные изменения. После устранения конфликта повторите импорт.";
+  } else if (category === "STORAGE" || category === "INTERNAL") {
+    text =
+      "Повторите импорт. Если ошибка останется, команда Axelio сможет найти техническую причину по коду и времени карточки.";
+  } else if (category === "MAPPING") {
+    text =
+      code === "DISH_CATEGORY_HIERARCHY_UNRESOLVED"
+        ? "Обновите справочники QuickResto в настройках интеграции. После этого карточка покажет найденную группу для сопоставления."
+        : "Обновите справочники QuickResto. Карточка покажет все найденные типы оплат и группы блюд для сопоставления.";
+  }
+  const settingsLink =
+    category === "AUTH" || category === "MAPPING"
+      ? `<a class="integration-issue-guide-link" href="/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}">Открыть настройки QuickResto</a>`
+      : "";
+  return `<section class="integration-issue-resolution integration-issue-guide"><div><h3>Как решить</h3><div class="muted small mt-4">${esc(text)}</div></div>${settingsLink}</section>`;
+}
+
 function renderScopeResolution(issue) {
   if (String(issue.error_category || "").toUpperCase() !== "SCOPE") return "";
-  if (String(issue.error_code || "").toUpperCase() === "PREVIOUS_SCOPE_MISMATCH") return "";
+  if (
+    String(issue.error_code || "").toUpperCase() === "PREVIOUS_SCOPE_MISMATCH"
+  )
+    return "";
   const details = issue.details || {};
   const catalog = state.catalog || {};
-  const venues = (catalog.venues || []).filter((item) => item.is_available !== false);
+  const venues = (catalog.venues || []).filter(
+    (item) => item.is_available !== false,
+  );
   const salePlaces = (catalog.sale_places || []).filter(
     (item) => item.is_available !== false,
   );
-  const stores = (catalog.stores || []).filter((item) => item.is_available !== false);
+  const stores = (catalog.stores || []).filter(
+    (item) => item.is_available !== false,
+  );
   const selectedVenueId = String(catalog.selected_external_venue_id || "");
-  const disabled = state.canManage && issue.can_retry !== false ? "" : " disabled";
+  const disabled =
+    state.canManage && issue.can_retry !== false ? "" : " disabled";
   const facts = [
     ["Выбранное заведение", details.selected_external_venue_id],
     ["Заведение смены", details.shift_external_venue_id],
@@ -349,26 +433,40 @@ function renderScopeResolution(issue) {
 }
 
 function syncIssueScopeFields() {
-  const venueField = el.issueDrawerBody.querySelector("[data-issue-scope-venue]");
+  const venueField = el.issueDrawerBody.querySelector(
+    "[data-issue-scope-venue]",
+  );
   if (!venueField) return;
   const selectedVenueId = String(venueField.value || "");
   const selectedSalePlaceIds = new Set();
-  el.issueDrawerBody.querySelectorAll("[data-scope-sale-place-row]").forEach((row) => {
-    const checkbox = row.querySelector("[data-issue-scope-sale-place]");
-    const visible = !!selectedVenueId && String(row.dataset.venueId || "") === selectedVenueId;
-    row.hidden = !visible;
-    if (!visible && checkbox) checkbox.checked = false;
-    if (visible && checkbox?.checked) selectedSalePlaceIds.add(String(checkbox.value));
-  });
-  el.issueDrawerBody.querySelectorAll("[data-scope-store-row]").forEach((row) => {
-    const checkbox = row.querySelector("[data-issue-scope-store]");
-    const sourceIds = new Set(String(row.dataset.sourceSalePlaceIds || "").split(/\s+/).filter(Boolean));
-    const visible =
-      !!selectedVenueId &&
-      (!sourceIds.size || [...sourceIds].some((value) => selectedSalePlaceIds.has(value)));
-    row.hidden = !visible;
-    if (!visible && checkbox) checkbox.checked = false;
-  });
+  el.issueDrawerBody
+    .querySelectorAll("[data-scope-sale-place-row]")
+    .forEach((row) => {
+      const checkbox = row.querySelector("[data-issue-scope-sale-place]");
+      const visible =
+        !!selectedVenueId &&
+        String(row.dataset.venueId || "") === selectedVenueId;
+      row.hidden = !visible;
+      if (!visible && checkbox) checkbox.checked = false;
+      if (visible && checkbox?.checked)
+        selectedSalePlaceIds.add(String(checkbox.value));
+    });
+  el.issueDrawerBody
+    .querySelectorAll("[data-scope-store-row]")
+    .forEach((row) => {
+      const checkbox = row.querySelector("[data-issue-scope-store]");
+      const sourceIds = new Set(
+        String(row.dataset.sourceSalePlaceIds || "")
+          .split(/\s+/)
+          .filter(Boolean),
+      );
+      const visible =
+        !!selectedVenueId &&
+        (!sourceIds.size ||
+          [...sourceIds].some((value) => selectedSalePlaceIds.has(value)));
+      row.hidden = !visible;
+      if (!visible && checkbox) checkbox.checked = false;
+    });
 }
 
 function renderShifts(issue) {
@@ -378,7 +476,8 @@ function renderShifts(issue) {
   }
   return `<div class="integration-issue-shifts">${shifts
     .map((shift, index) => {
-      const id = shift.external_shift_id || shift.external_shift_pk || index + 1;
+      const id =
+        shift.external_shift_id || shift.external_shift_pk || index + 1;
       const period = `${formatDate(shift.local_opened_at, { withTime: true })} — ${formatDate(shift.local_closed_at, { withTime: true })}`;
       return `<div class="itemcard integration-issue-shift">
         <div class="integration-issue-shift__head"><b>Смена QuickResto #${esc(id)}</b><span class="integration-issue-shift__status">${esc(statusLabel(shift.item_status))}</span></div>
@@ -390,26 +489,36 @@ function renderShifts(issue) {
 }
 
 function renderHistoricalScopeMismatch(issue) {
-  if (String(issue?.error_code || "").toUpperCase() !== "PREVIOUS_SCOPE_MISMATCH") return "";
+  if (
+    String(issue?.error_code || "").toUpperCase() !== "PREVIOUS_SCOPE_MISMATCH"
+  )
+    return "";
   const shifts = Array.isArray(issue?.shifts) ? issue.shifts : [];
   const canReconcile = state.canManage && issue.can_reconcile_scope === true;
   const targetGeneration = Number(issue?.details?.scope_generation || 0);
   const fields = shifts
     .map((shift, index) => {
       const shiftImportId = Number(shift.shift_import_id || 0);
-      const externalId = shift.external_shift_id || shift.external_shift_pk || index + 1;
+      const externalId =
+        shift.external_shift_id || shift.external_shift_pk || index + 1;
       const resolvedGeneration = Number(shift.scope_resolution_generation || 0);
-      const previousAction = String(shift.scope_resolution_action || "").toUpperCase();
-      const action = resolvedGeneration === targetGeneration ? previousAction : "";
+      const previousAction = String(
+        shift.scope_resolution_action || "",
+      ).toUpperCase();
+      const action =
+        resolvedGeneration === targetGeneration ? previousAction : "";
       const previousActionLabel =
         previousAction === "EXCLUDE_CURRENT"
           ? "исключить"
           : previousAction === "MOVE_TO_CONNECTED"
             ? "перенести"
             : "оставить";
-      const previousDecision = previousAction && resolvedGeneration && resolvedGeneration !== targetGeneration
-        ? `<div class="muted small">Предыдущее решение: ${previousActionLabel} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
-        : "";
+      const previousDecision =
+        previousAction &&
+        resolvedGeneration &&
+        resolvedGeneration !== targetGeneration
+          ? `<div class="muted small">Предыдущее решение: ${previousActionLabel} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
+          : "";
       const disabled = canReconcile ? "" : " disabled";
       const period = `${formatDate(shift.local_opened_at, { withTime: true })} — ${formatDate(shift.local_closed_at, { withTime: true })}`;
       const reportLabel = shift.daily_report_id
@@ -462,7 +571,10 @@ function renderDrawer(issue) {
   const canIgnore = state.canManage && actionable && issue.can_ignore !== false;
   const mappingFields = actionableMappingIds(issue);
   const hasMappingFields =
-    mappingFields.paymentIds.length > 0 || mappingFields.departmentIds.length > 0;
+    mappingFields.paymentIds.length > 0 ||
+    mappingFields.departmentIds.length > 0;
+  const hasScopeEditor =
+    String(issue.error_category || "").toUpperCase() === "SCOPE";
   el.issueDrawerTitle.textContent = `${formatDate(issue.business_date)} · ${slotLabel(issue.shift_slot)}`;
   el.issueDrawerBody.innerHTML = `
     <div class="integration-issue-detail-head">
@@ -480,6 +592,7 @@ function renderDrawer(issue) {
     ${String(issue.error_code || "").toUpperCase() === "PREVIOUS_SCOPE_MISMATCH" ? renderHistoricalScopeMismatch(issue) : `<section class="integration-issue-detail-section"><h3>Смены QuickResto</h3>${renderShifts(issue)}</section>`}
     ${renderScopeResolution(issue)}
     ${renderMappingResolution(issue)}
+    ${renderResolutionGuide(issue, { hasMappingFields, hasScopeEditor })}
     ${!state.canManage ? `<div class="integration-issue-readonly">Доступ только для просмотра. Решить проблему может владелец или администратор заведения.</div>` : ""}
     ${status === "PROCESSING" ? `<div class="integration-issue-processing">Повторный импорт уже выполняется.</div>` : ""}
     ${
@@ -507,7 +620,10 @@ function actionHint(message, error = false) {
 }
 
 function showDrawer(issueId) {
-  state.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  state.returnFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
   state.selectedIssueId = String(issueId);
   state.selectedIssue = null;
   el.issueDrawerTitle.textContent = "Проблема импорта QuickResto";
@@ -595,12 +711,15 @@ function collectMappingPayload(overrides = {}) {
   const paymentOverrides = overrides.paymentOverrides || new Map();
   const departmentOverrides = overrides.departmentOverrides || new Map();
   const payments = (state.mappings.payments || [])
-    .filter((item) => item.is_available !== false && item.is_applicable !== false)
+    .filter(
+      (item) => item.is_available !== false && item.is_applicable !== false,
+    )
     .map((item) => {
       const value = paymentOverrides.has(String(item.external_id))
         ? paymentOverrides.get(String(item.external_id))
         : item.payment_method_id;
-      const writeoff = String(item.operation_type || "").toLowerCase() === "writeoff";
+      const writeoff =
+        String(item.operation_type || "").toLowerCase() === "writeoff";
       return {
         external_id: item.external_id,
         payment_method_id: writeoff || !value ? null : Number(value),
@@ -609,9 +728,12 @@ function collectMappingPayload(overrides = {}) {
     });
   const departments = (state.mappings.departments || []).map((item) => ({
     external_id: item.external_id,
-    department_id: departmentOverrides.has(String(item.external_id))
-      ? Number(departmentOverrides.get(String(item.external_id)))
-      : item.department_id,
+    ...(departmentOverrides.has(String(item.external_id))
+      ? departmentOverrides.get(String(item.external_id))
+      : {
+          department_id: item.department_id || null,
+          allocations: Array.isArray(item.allocations) ? item.allocations : [],
+        }),
   }));
   return { payments, departments };
 }
@@ -632,7 +754,10 @@ async function retryIssue(button) {
       toast("Смены успешно импортированы", "ok");
     } else {
       renderDrawer(result.issue);
-      actionHint(result.issue?.user_summary || "Проблема всё ещё требует внимания.", true);
+      actionHint(
+        result.issue?.user_summary || "Проблема всё ещё требует внимания.",
+        true,
+      );
       toast("Повторный импорт требует внимания", "err");
     }
   } catch (error) {
@@ -649,24 +774,57 @@ async function saveMappingsAndRetry(button) {
   const paymentOverrides = new Map();
   const departmentOverrides = new Map();
   let invalid = false;
-  el.issueDrawerBody.querySelectorAll("[data-issue-payment-id]").forEach((field) => {
-    field.removeAttribute("aria-invalid");
-    if (!field.value) {
-      field.setAttribute("aria-invalid", "true");
-      invalid = true;
-    }
-    paymentOverrides.set(String(field.dataset.issuePaymentId), field.value);
-  });
-  el.issueDrawerBody.querySelectorAll("[data-issue-department-id]").forEach((field) => {
-    field.removeAttribute("aria-invalid");
-    if (!field.value) {
-      field.setAttribute("aria-invalid", "true");
-      invalid = true;
-    }
-    departmentOverrides.set(String(field.dataset.issueDepartmentId), field.value);
-  });
+  el.issueDrawerBody
+    .querySelectorAll("[data-issue-payment-id]")
+    .forEach((field) => {
+      field.removeAttribute("aria-invalid");
+      if (!field.value) {
+        field.setAttribute("aria-invalid", "true");
+        invalid = true;
+      }
+      paymentOverrides.set(String(field.dataset.issuePaymentId), field.value);
+    });
+  el.issueDrawerBody
+    .querySelectorAll("[data-issue-department-allocation]")
+    .forEach((group) => {
+      group.removeAttribute("data-invalid");
+      const rows = [...group.querySelectorAll("[data-issue-allocation-row]")];
+      const allocations = rows.map((row) => ({
+        department_id: Number(
+          row.querySelector("[data-issue-allocation-department]")?.value || 0,
+        ),
+        share_percent: Number(
+          row.querySelector("[data-issue-allocation-share]")?.value || 0,
+        ),
+      }));
+      const departmentIds = allocations.map((item) => item.department_id);
+      const valid =
+        allocations.length > 0 &&
+        allocations.every(
+          (item) =>
+            item.department_id > 0 &&
+            item.share_percent >= 1 &&
+            item.share_percent <= 100,
+        ) &&
+        new Set(departmentIds).size === departmentIds.length &&
+        allocations.reduce((total, item) => total + item.share_percent, 0) ===
+          100;
+      if (!valid) {
+        group.dataset.invalid = "true";
+        invalid = true;
+      }
+      departmentOverrides.set(
+        String(group.dataset.issueDepartmentAllocation),
+        allocations.length === 1 && allocations[0].share_percent === 100
+          ? { department_id: allocations[0].department_id, allocations: [] }
+          : { department_id: null, allocations },
+      );
+    });
   if (invalid) {
-    actionHint("Выберите соответствие для каждого значения QuickResto.", true);
+    actionHint(
+      "Для каждой группы выберите разные департаменты; сумма долей должна быть ровно 100%.",
+      true,
+    );
     return;
   }
   setBusy(button, true, "Сохраняем и повторяем…");
@@ -719,7 +877,9 @@ async function refreshScopeCatalog(button) {
     );
     state.catalog = result.catalog || state.catalog;
     renderDrawer(issue);
-    actionHint("Справочник обновлён. Проверьте заведение и точки перед сохранением.");
+    actionHint(
+      "Справочник обновлён. Проверьте заведение и точки перед сохранением.",
+    );
   } catch (error) {
     actionHint(errorMessage(error), true);
     toast(errorMessage(error), "err");
@@ -731,7 +891,9 @@ async function refreshScopeCatalog(button) {
 async function saveScopeAndRetry(button) {
   const issue = state.selectedIssue;
   if (!issue || !state.canManage) return;
-  const venueField = el.issueDrawerBody.querySelector("[data-issue-scope-venue]");
+  const venueField = el.issueDrawerBody.querySelector(
+    "[data-issue-scope-venue]",
+  );
   const externalVenueId = Number(venueField?.value || 0);
   const salePlaceIds = [
     ...el.issueDrawerBody.querySelectorAll(
@@ -770,11 +932,16 @@ async function saveScopeAndRetry(button) {
         `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
         { method: "POST" },
       );
-      const historicalIssueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
+      const historicalIssueId = Number(
+        scan.run?.summary?.historical_scope_mismatch_issue_id || 0,
+      );
       await loadIssues();
       if (historicalIssueId) {
         await openIssue(historicalIssueId);
-        toast("Новая область требует пересмотра ранее импортированных смен", "err");
+        toast(
+          "Новая область требует пересмотра ранее импортированных смен",
+          "err",
+        );
         return;
       }
     }
@@ -836,8 +1003,11 @@ async function ignoreIssue(button) {
 
 function collectHistoricalScopePayload() {
   const issue = state.selectedIssue;
-  if (!issue || !state.canManage || issue.can_reconcile_scope !== true) return null;
-  const groups = [...el.issueDrawerBody.querySelectorAll("[data-historical-shift]")];
+  if (!issue || !state.canManage || issue.can_reconcile_scope !== true)
+    return null;
+  const groups = [
+    ...el.issueDrawerBody.querySelectorAll("[data-historical-shift]"),
+  ];
   const decisions = [];
   let firstMissing = null;
   for (const group of groups) {
@@ -906,12 +1076,14 @@ function renderHistoricalScopePreview(preview) {
     .join("");
   const payrollRows = payroll
     .map(
-      (row) => `<div class="muted small">ФОТ · заведение #${Number(row.venue_id)} · ${esc(row.month)}: ${esc(formatMinorRubles(row.before_total_amount_minor))} → ${esc(formatMinorRubles(row.after_total_amount_minor))}; payroll ledger: ${esc(formatMinorRubles(row.before_ledger_payroll_minor))} → ${esc(formatMinorRubles(row.after_ledger_payroll_minor))}</div>`,
+      (row) =>
+        `<div class="muted small">ФОТ · заведение #${Number(row.venue_id)} · ${esc(row.month)}: ${esc(formatMinorRubles(row.before_total_amount_minor))} → ${esc(formatMinorRubles(row.after_total_amount_minor))}; payroll ledger: ${esc(formatMinorRubles(row.before_ledger_payroll_minor))} → ${esc(formatMinorRubles(row.after_ledger_payroll_minor))}</div>`,
     )
     .join("");
   const movedRows = moved
     .map(
-      (shift) => `<div class="muted small">Смена QuickResto #${esc(shift.external_shift_id)} → ${esc(shift.target_venue_name || `заведение #${Number(shift.target_venue_id)}`)} · ${esc(formatDate(shift.target_business_date))} · ${esc(slotLabel(shift.target_shift_slot))}</div>`,
+      (shift) =>
+        `<div class="muted small">Смена QuickResto #${esc(shift.external_shift_id)} → ${esc(shift.target_venue_name || `заведение #${Number(shift.target_venue_id)}`)} · ${esc(formatDate(shift.target_business_date))} · ${esc(slotLabel(shift.target_shift_slot))}</div>`,
     )
     .join("");
   container.innerHTML = `<section class="integration-issue-detail-section">
@@ -939,11 +1111,16 @@ async function previewHistoricalScope(button) {
   try {
     const preview = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${payload.issue.id}/reconcile-scope/preview`,
-      { method: "POST", body: { decisions: payload.decisions, note: payload.note } },
+      {
+        method: "POST",
+        body: { decisions: payload.decisions, note: payload.note },
+      },
     );
     state.scopePreview = { issueId: String(payload.issue.id), ...preview };
     renderHistoricalScopePreview(preview);
-    actionHint("Расчёт готов. Проверьте изменения и подтвердите именно этот план.");
+    actionHint(
+      "Расчёт готов. Проверьте изменения и подтвердите именно этот план.",
+    );
   } catch (error) {
     clearHistoricalScopePreview();
     actionHint(errorMessage(error), true);
@@ -981,7 +1158,10 @@ async function confirmHistoricalScope(button) {
     const excluded = Number(result.run?.summary?.shifts_excluded || 0);
     const kept = Number(result.run?.summary?.shifts_kept || 0);
     const moved = Number(result.run?.summary?.shifts_moved || 0);
-    toast(`Решения сохранены: оставлено ${kept}, исключено ${excluded}, перенесено ${moved}`, "ok");
+    toast(
+      `Решения сохранены: оставлено ${kept}, исключено ${excluded}, перенесено ${moved}`,
+      "ok",
+    );
   } catch (error) {
     actionHint(errorMessage(error), true);
     toast(errorMessage(error), "err");
@@ -992,7 +1172,8 @@ async function confirmHistoricalScope(button) {
 
 async function loadPage() {
   if (!venueId) throw new Error("Сначала выберите заведение");
-  if (provider !== "quickresto") throw new Error("Этот источник интеграции пока не поддерживается");
+  if (provider !== "quickresto")
+    throw new Error("Этот источник интеграции пока не поддерживается");
   if (el.providerFilter) el.providerFilter.value = provider;
   el.backToQuickResto.dataset.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
   const [venue, integration, paymentMethods, departments] = await Promise.all([
@@ -1025,7 +1206,9 @@ el.allIssues?.addEventListener("click", async () => {
   await loadIssues();
 });
 el.providerFilter?.addEventListener("change", async () => {
-  const nextProvider = String(el.providerFilter.value || "quickresto").toLowerCase();
+  const nextProvider = String(
+    el.providerFilter.value || "quickresto",
+  ).toLowerCase();
   if (nextProvider !== "quickresto") return;
   await loadIssues();
 });
@@ -1049,7 +1232,38 @@ el.issueList?.addEventListener("click", (event) => {
 el.issueDrawer?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-issue-close]")) closeDrawer();
-  else if (target?.closest("[data-refresh-scope-catalog]"))
+  else if (target?.closest("[data-add-issue-allocation]")) {
+    const button = target.closest("[data-add-issue-allocation]");
+    const group = button.closest("[data-issue-department-allocation]");
+    const rows = group?.querySelector(".integration-issue-allocation-rows");
+    const existing = [
+      ...(rows?.querySelectorAll("[data-issue-allocation-row]") || []),
+    ];
+    if (existing.length === 1) {
+      const share = existing[0].querySelector("[data-issue-allocation-share]");
+      if (share && Number(share.value) === 100) share.value = "50";
+    }
+    rows?.insertAdjacentHTML(
+      "beforeend",
+      renderDepartmentAllocationRow({
+        department_id: "",
+        share_percent: existing.length === 1 ? 50 : 1,
+      }),
+    );
+    actionHint("");
+  } else if (target?.closest("[data-remove-issue-allocation]")) {
+    const row = target.closest("[data-issue-allocation-row]");
+    const rows = row?.parentElement;
+    if ((rows?.querySelectorAll("[data-issue-allocation-row]").length || 0) > 1)
+      row.remove();
+    const remaining =
+      rows?.querySelectorAll("[data-issue-allocation-row]") || [];
+    if (remaining.length === 1) {
+      const share = remaining[0].querySelector("[data-issue-allocation-share]");
+      if (share) share.value = "100";
+    }
+    actionHint("");
+  } else if (target?.closest("[data-refresh-scope-catalog]"))
     void refreshScopeCatalog(target.closest("[data-refresh-scope-catalog]"));
   else if (target?.closest("[data-save-scope-retry]"))
     void saveScopeAndRetry(target.closest("[data-save-scope-retry]"));
@@ -1060,19 +1274,26 @@ el.issueDrawer?.addEventListener("click", (event) => {
   else if (target?.closest("[data-ignore]"))
     void ignoreIssue(target.closest("[data-ignore]"));
   else if (target?.closest("[data-preview-historical-scope]"))
-    void previewHistoricalScope(target.closest("[data-preview-historical-scope]"));
+    void previewHistoricalScope(
+      target.closest("[data-preview-historical-scope]"),
+    );
   else if (target?.closest("[data-confirm-historical-scope]"))
-    void confirmHistoricalScope(target.closest("[data-confirm-historical-scope]"));
+    void confirmHistoricalScope(
+      target.closest("[data-confirm-historical-scope]"),
+    );
 });
 el.issueDrawer?.addEventListener("input", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   target?.removeAttribute("aria-invalid");
-  if (target?.matches("#historicalScopeNote, [data-historical-shift] input")) clearHistoricalScopePreview();
+  if (target?.matches("#historicalScopeNote, [data-historical-shift] input"))
+    clearHistoricalScopePreview();
   actionHint("");
 });
 el.issueDrawer?.addEventListener("change", (event) => {
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.matches("[data-issue-scope-venue], [data-issue-scope-sale-place]")) {
+  if (
+    target?.matches("[data-issue-scope-venue], [data-issue-scope-sale-place]")
+  ) {
     syncIssueScopeFields();
     actionHint("");
   }

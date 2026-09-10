@@ -22,7 +22,7 @@ from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.notification_job import NotificationJob
 from app.models.quickresto_connection import QuickRestoConnection
-from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_import_issue import QuickRestoImportIssue
@@ -142,6 +142,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDepartmentAllocation.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
@@ -708,6 +709,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDepartmentAllocation.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
