@@ -1527,6 +1527,13 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
   for (const [weekday, value] of weeklyRub.entries()) {
     await page.locator(`#weekday${weekday}`).fill(String(value));
   }
+  const bulkPreviewed = page.waitForResponse(
+    (response) =>
+      response.url() === `${apiBase}${prefix}/department-plans/days/bulk` &&
+      response.request().method() === "PUT" &&
+      response.status() === 200 &&
+      response.request().postDataJSON()?.dry_run,
+  );
   const bulkSaved = page.waitForResponse(
     (response) =>
       response.url() === `${apiBase}${prefix}/department-plans/days/bulk` &&
@@ -1535,10 +1542,21 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
       !response.request().postDataJSON()?.dry_run,
   );
   await page.locator("#applyMonth").click();
-  await bulkSaved;
+  const preview = await (await bulkPreviewed).json();
+  if (preview.overwritten_count) {
+    const confirmOverwrite = page.locator(
+      "#modal.open .modal__body .btn.primary",
+    );
+    await confirmOverwrite.waitFor({ state: "visible" });
+    await confirmOverwrite.click();
+  }
+  const bulkResult = await (await bulkSaved).json();
   await page.waitForFunction(
-    () => document.querySelector("#bulkHint")?.textContent.includes("31"),
-    null,
+    (changedCount) =>
+      document
+        .querySelector("#bulkHint")
+        ?.textContent.includes(`Изменено дат: ${changedCount}`),
+    bulkResult.changed_count,
     { timeout: 20_000 },
   );
 

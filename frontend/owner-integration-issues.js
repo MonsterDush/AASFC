@@ -3,6 +3,7 @@ import {
   applyTelegramTheme,
   ensureLogin,
   getDepartments,
+  getKpiMetrics,
   getPaymentMethods,
   getVenueById,
   mountCommonUI,
@@ -64,6 +65,8 @@ const state = {
   },
   paymentMethods: [],
   departments: [],
+  kpiMetrics: [],
+  kpiProducts: [],
 };
 
 const esc = (value) =>
@@ -214,6 +217,22 @@ function mappingOptions(items, selectedId) {
   ].join("");
 }
 
+function issueProductsForGroup(externalId) {
+  return (state.kpiProducts || []).filter(
+    (item) => String(item.external_group_id || "") === String(externalId),
+  );
+}
+
+function kpiOptions(selectedId) {
+  return [
+    `<option value="">— выберите KPI Axelio —</option>`,
+    ...state.kpiMetrics.map(
+      (item) =>
+        `<option value="${item.id}"${String(item.id) === String(selectedId || "") ? " selected" : ""}>${esc(item.title)}</option>`,
+    ),
+  ].join("");
+}
+
 function uniqueIds(values) {
   return [...new Set((Array.isArray(values) ? values : []).map(String))];
 }
@@ -289,11 +308,36 @@ function renderMappingResolution(issue) {
       const rows = departmentAllocationRows(mapping)
         .map((row) => renderDepartmentAllocationRow(row, disabled))
         .join("");
-      return `<fieldset class="integration-issue-allocation" data-issue-department-allocation="${esc(externalId)}">
-        <legend>${esc(mapping?.external_name || `Группа блюд QuickResto #${externalId}`)}</legend>
-        <div class="muted small">Можно выбрать один департамент (100%) или распределить составную позицию между несколькими.</div>
-        <div class="integration-issue-allocation-rows">${rows}</div>
-        ${state.canManage && issue.can_retry !== false ? `<button class="btn subtle" type="button" data-add-issue-allocation="${esc(externalId)}">Добавить долю</button>` : ""}
+      const positionNames = Array.isArray(mapping?.source_position_names)
+        ? mapping.source_position_names.filter(Boolean)
+        : [];
+      const sourceDetails = positionNames.length
+        ? `<div class="integration-issue-source-positions"><b>Позиции в сменах:</b> ${positionNames.map(esc).join(", ")}</div>`
+        : "";
+      const products = issueProductsForGroup(externalId);
+      const kpiAvailable = products.length > 0 && state.kpiMetrics.length > 0;
+      const routeMode = mapping?.resolved_by_kpi ? "KPI" : "DEPARTMENT";
+      const kpiFields = products
+        .map(
+          (product) => `<label class="integration-issue-field"><span>${esc(product.external_name)} · QuickResto #${product.external_product_id}</span><select data-issue-kpi-product-id="${product.external_product_id}"${disabled}>${kpiOptions(product.kpi_metric_id)}</select></label>`,
+        )
+        .join("");
+      return `<fieldset class="integration-issue-allocation" data-issue-department-allocation="${esc(externalId)}" data-issue-routing>
+        <legend><span>${esc(mapping?.external_name || "Группа блюд QuickResto")}</span><small>Группа QuickResto #${esc(externalId)}</small></legend>
+        ${sourceDetails}
+        <div class="integration-issue-route-options" role="radiogroup" aria-label="Способ обработки позиции QuickResto">
+          <label><input type="radio" name="issue-route-${esc(externalId)}" value="DEPARTMENT" data-issue-route-mode${routeMode === "DEPARTMENT" ? " checked" : ""}${disabled} /><span><b>Распределить по департаментам</b><small>Выручка позиции будет распределена по процентным долям.</small></span></label>
+          <label><input type="radio" name="issue-route-${esc(externalId)}" value="KPI" data-issue-route-mode${routeMode === "KPI" ? " checked" : ""}${disabled}${kpiAvailable ? "" : " disabled"} /><span><b>Учитывать как KPI</b><small>Количество увеличит KPI; выручка останется в общем итоге вне департаментов и процентов.</small></span></label>
+        </div>
+        <div data-issue-department-route>
+          <div class="muted small">Можно выбрать один департамент (100%) или распределить составную позицию между несколькими.</div>
+          <div class="integration-issue-allocation-rows mt-8">${rows}</div>
+          ${state.canManage && issue.can_retry !== false ? `<button class="btn subtle mt-8" type="button" data-add-issue-allocation="${esc(externalId)}">Добавить долю</button>` : ""}
+        </div>
+        <div class="integration-issue-kpi-route" data-issue-kpi-route${routeMode === "KPI" ? "" : " hidden"}>
+          ${kpiFields || '<div class="integration-issue-readonly">Сначала обновите позиции QuickResto и создайте KPI с единицей «Количество».</div>'}
+          <a class="integration-issue-guide-link" href="/owner-quickresto-kpi.html?venue_id=${encodeURIComponent(venueId)}">Открыть полный редактор KPI-позиций</a>
+        </div>
       </fieldset>`;
     })
     .join("");
@@ -469,6 +513,18 @@ function syncIssueScopeFields() {
     });
 }
 
+function syncIssueRoutingFields() {
+  el.issueDrawerBody.querySelectorAll("[data-issue-routing]").forEach((group) => {
+    const mode =
+      group.querySelector("[data-issue-route-mode]:checked")?.value ||
+      "DEPARTMENT";
+    const departmentRoute = group.querySelector("[data-issue-department-route]");
+    const kpiRoute = group.querySelector("[data-issue-kpi-route]");
+    if (departmentRoute) departmentRoute.hidden = mode !== "DEPARTMENT";
+    if (kpiRoute) kpiRoute.hidden = mode !== "KPI";
+  });
+}
+
 function renderShifts(issue) {
   const shifts = Array.isArray(issue?.shifts) ? issue.shifts : [];
   if (!shifts.length) {
@@ -610,6 +666,7 @@ function renderDrawer(issue) {
     }
     <div class="muted small integration-issue-action-hint" id="actionHint" aria-live="polite"></div>`;
   syncIssueScopeFields();
+  syncIssueRoutingFields();
 }
 
 function actionHint(message, error = false) {
@@ -710,6 +767,7 @@ async function loadIssues({ append = false } = {}) {
 function collectMappingPayload(overrides = {}) {
   const paymentOverrides = overrides.paymentOverrides || new Map();
   const departmentOverrides = overrides.departmentOverrides || new Map();
+  const kpiOverrides = overrides.kpiOverrides || new Map();
   const payments = (state.mappings.payments || [])
     .filter(
       (item) => item.is_available !== false && item.is_applicable !== false,
@@ -735,7 +793,14 @@ function collectMappingPayload(overrides = {}) {
           allocations: Array.isArray(item.allocations) ? item.allocations : [],
         }),
   }));
-  return { payments, departments };
+  const kpi_products = [...kpiOverrides.entries()].map(
+    ([externalProductId, kpiMetricId]) => ({
+      external_product_id: Number(externalProductId),
+      kpi_metric_id: kpiMetricId ? Number(kpiMetricId) : null,
+      exclude_from_percentage_base: !!kpiMetricId,
+    }),
+  );
+  return { payments, departments, kpi_products };
 }
 
 async function retryIssue(button) {
@@ -773,6 +838,7 @@ async function saveMappingsAndRetry(button) {
   if (!issue || !state.canManage) return;
   const paymentOverrides = new Map();
   const departmentOverrides = new Map();
+  const kpiOverrides = new Map();
   let invalid = false;
   el.issueDrawerBody
     .querySelectorAll("[data-issue-payment-id]")
@@ -788,6 +854,40 @@ async function saveMappingsAndRetry(button) {
     .querySelectorAll("[data-issue-department-allocation]")
     .forEach((group) => {
       group.removeAttribute("data-invalid");
+      group
+        .querySelectorAll("[data-issue-kpi-product-id]")
+        .forEach((field) => field.removeAttribute("aria-invalid"));
+      const routeMode =
+        group.querySelector("[data-issue-route-mode]:checked")?.value ||
+        "DEPARTMENT";
+      const products = [
+        ...group.querySelectorAll("[data-issue-kpi-product-id]"),
+      ];
+      if (routeMode === "KPI") {
+        let groupValid = products.length > 0;
+        products.forEach((field) => {
+          if (!field.value) {
+            field.setAttribute("aria-invalid", "true");
+            groupValid = false;
+          }
+          kpiOverrides.set(
+            String(field.dataset.issueKpiProductId),
+            field.value || null,
+          );
+        });
+        if (!groupValid) {
+          group.dataset.invalid = "true";
+          invalid = true;
+        }
+        departmentOverrides.set(
+          String(group.dataset.issueDepartmentAllocation),
+          { department_id: null, allocations: [] },
+        );
+        return;
+      }
+      products.forEach((field) => {
+        kpiOverrides.set(String(field.dataset.issueKpiProductId), null);
+      });
       const rows = [...group.querySelectorAll("[data-issue-allocation-row]")];
       const allocations = rows.map((row) => ({
         department_id: Number(
@@ -822,7 +922,7 @@ async function saveMappingsAndRetry(button) {
     });
   if (invalid) {
     actionHint(
-      "Для каждой группы выберите разные департаменты; сумма долей должна быть ровно 100%.",
+      "Для каждого блока заполните выбранный вариант: KPI для всех его позиций либо разные департаменты с суммой долей ровно 100%.",
       true,
     );
     return;
@@ -833,10 +933,15 @@ async function saveMappingsAndRetry(button) {
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/mappings`,
       {
         method: "PUT",
-        body: collectMappingPayload({ paymentOverrides, departmentOverrides }),
+        body: collectMappingPayload({
+          paymentOverrides,
+          departmentOverrides,
+          kpiOverrides,
+        }),
       },
     );
     state.mappings = mappingResult.mappings || state.mappings;
+    state.kpiProducts = mappingResult.kpi_products || state.kpiProducts;
     const retryResult = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${issue.id}/retry`,
       { method: "POST" },
@@ -1191,6 +1296,49 @@ async function loadPage() {
   state.catalog = integration.catalog || state.catalog;
   state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
   state.departments = Array.isArray(departments) ? departments : [];
+  if (state.configured) {
+    const [kpiMappingResult, kpiMetrics] = await Promise.all([
+      api(
+        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/kpi-mappings`,
+      ),
+      getKpiMetrics(venueId, { includeArchived: false }),
+    ]);
+    state.kpiProducts = Array.isArray(kpiMappingResult.products)
+      ? kpiMappingResult.products
+      : [];
+    state.kpiMetrics = (Array.isArray(kpiMetrics) ? kpiMetrics : []).filter(
+      (item) => String(item.unit || "").toUpperCase() === "QTY",
+    );
+  }
+  const needsSourceNames = (state.mappings.departments || []).some(
+    (item) =>
+      item.is_issue_candidate &&
+      !item.has_source_name &&
+      !(item.source_position_names || []).length,
+  );
+  const knownProductGroupIds = new Set(
+    state.kpiProducts
+      .map((item) => Number(item.external_group_id || 0))
+      .filter((item) => item > 0),
+  );
+  const needsIssueProducts = (state.mappings.departments || []).some(
+    (item) =>
+      item.is_issue_candidate &&
+      !knownProductGroupIds.has(Number(item.external_id)),
+  );
+  if (state.canManage && (needsSourceNames || needsIssueProducts)) {
+    try {
+      const refreshed = await api(
+        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/kpi-mappings/refresh?issues_only=true`,
+        { method: "POST" },
+      );
+      state.mappings = refreshed.mappings || state.mappings;
+      state.kpiProducts = refreshed.products || state.kpiProducts;
+    } catch {
+      // The issue remains actionable by its stable QuickResto id even when an
+      // old encrypted snapshot or the remote category is no longer readable.
+    }
+  }
   renderCounters(integration.issues || {});
   await loadIssues();
   const requestedIssueId = params.get("issue_id");
@@ -1295,6 +1443,10 @@ el.issueDrawer?.addEventListener("change", (event) => {
     target?.matches("[data-issue-scope-venue], [data-issue-scope-sale-place]")
   ) {
     syncIssueScopeFields();
+    actionHint("");
+  }
+  if (target?.matches("[data-issue-route-mode]")) {
+    syncIssueRoutingFields();
     actionHint("");
   }
   if (target?.matches("[data-historical-shift] input")) {

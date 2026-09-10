@@ -28,6 +28,21 @@ def _money_minor(value: Any, *, field: str) -> int:
     return int(rounded * 100)
 
 
+def _quantity(value: Any, *, field: str) -> Decimal:
+    try:
+        number = Decimal(str(value or 0))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise QuickRestoDataError(f"QuickResto field {field} is not numeric") from exc
+    if not number.is_finite() or number < 0:
+        raise QuickRestoDataError(f"QuickResto field {field} must be a non-negative finite number")
+    return number
+
+
+def _decimal_string(value: Decimal) -> str:
+    normalized = value.normalize()
+    return "0" if not normalized else format(normalized, "f")
+
+
 def _round_minor_to_rubles(value_minor: int) -> int:
     return int((Decimal(int(value_minor)) / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
@@ -138,6 +153,7 @@ def normalize_closed_shift(
     payment_totals_minor: dict[str, int] = {}
     department_totals_minor: dict[str, int] = {}
     writeoff_department_totals_minor: dict[str, int] = {}
+    product_sales: dict[str, dict[str, Any]] = {}
     revenue_total_minor = 0
     writeoff_total_minor = 0
     discount_total_minor = 0
@@ -179,12 +195,26 @@ def normalize_closed_shift(
             )
             line_total_minor += line_net_minor
             product = item.get("product") if isinstance(item.get("product"), dict) else {}
+            product_id = int(product.get("id") or 0)
             department_id = int(product.get("parentId") or 0)
             if department_id <= 0 and line_net_minor:
                 raise QuickRestoDataError("QuickResto order item has no dish category id")
             target = writeoff_department_totals_minor if is_writeoff else department_totals_minor
             key = str(department_id)
             target[key] = target.get(key, 0) + line_net_minor
+            if not is_writeoff and product_id > 0:
+                sale_key = f"{product_id}:{department_id}"
+                sale = product_sales.setdefault(
+                    sale_key,
+                    {
+                        "product_id": product_id,
+                        "department_id": department_id,
+                        "quantity": Decimal("0"),
+                        "revenue_minor": 0,
+                    },
+                )
+                sale["quantity"] += _quantity(item.get("amount"), field="orderItem.amount")
+                sale["revenue_minor"] += line_net_minor
         if line_total_minor != order_total_minor:
             raise QuickRestoDataError(f"QuickResto order {int(order.get('id') or 0)} items do not match its total")
 
@@ -266,6 +296,15 @@ def normalize_closed_shift(
         "payments_external_minor": dict(sorted(payment_totals_minor.items())),
         "departments_external_minor": dict(sorted(department_totals_minor.items())),
         "writeoff_departments_external_minor": dict(sorted(writeoff_department_totals_minor.items())),
+        "product_sales_external": {
+            key: {
+                "product_id": int(value["product_id"]),
+                "department_id": int(value["department_id"]),
+                "quantity": _decimal_string(value["quantity"]),
+                "revenue_minor": int(value["revenue_minor"]),
+            }
+            for key, value in sorted(product_sales.items())
+        },
         "revenue_total_minor": revenue_total_minor,
         "writeoff_total_minor": writeoff_total_minor,
         "discount_total_minor": discount_total_minor,
@@ -292,7 +331,7 @@ def normalize_closed_shift(
     hash_payload = {
         key: value
         for key, value in payload.items()
-        if key != "shift_slot"
+        if key not in {"shift_slot", "product_sales_external"}
         and (has_fractional_amounts or not (key.endswith("_minor") or key == "source_money_scale"))
     }
     payload["payload_hash"] = stable_payload_hash(hash_payload)
@@ -313,6 +352,7 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
     payments_minor: dict[str, int] = {}
     departments_minor: dict[str, int] = {}
     writeoff_departments_minor: dict[str, int] = {}
+    product_sales: dict[str, dict[str, Any]] = {}
 
     def minor_map(row: dict[str, Any], *, exact_key: str, legacy_key: str) -> dict[str, int]:
         exact = row.get(exact_key)
@@ -346,6 +386,25 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
         ):
             for key, value in source.items():
                 target[str(key)] = target.get(str(key), 0) + int(value or 0)
+        for key, raw_sale in (row.get("product_sales_external") or {}).items():
+            if not isinstance(raw_sale, dict):
+                continue
+            product_id = int(raw_sale.get("product_id") or 0)
+            department_id = int(raw_sale.get("department_id") or 0)
+            if product_id <= 0 or department_id <= 0:
+                continue
+            sale_key = f"{product_id}:{department_id}"
+            sale = product_sales.setdefault(
+                sale_key,
+                {
+                    "product_id": product_id,
+                    "department_id": department_id,
+                    "quantity": Decimal("0"),
+                    "revenue_minor": 0,
+                },
+            )
+            sale["quantity"] += _quantity(raw_sale.get("quantity"), field="productSale.quantity")
+            sale["revenue_minor"] += int(raw_sale.get("revenue_minor") or 0)
 
     revenue_total_minor = sum(
         minor_total(row, exact_key="revenue_total_minor", legacy_key="revenue_total") for row in rows
@@ -385,6 +444,15 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
         "payments_external_minor": dict(sorted(payments_minor.items())),
         "departments_external_minor": dict(sorted(departments_minor.items())),
         "writeoff_departments_external_minor": dict(sorted(writeoff_departments_minor.items())),
+        "product_sales_external": {
+            key: {
+                "product_id": int(value["product_id"]),
+                "department_id": int(value["department_id"]),
+                "quantity": _decimal_string(value["quantity"]),
+                "revenue_minor": int(value["revenue_minor"]),
+            }
+            for key, value in sorted(product_sales.items())
+        },
         "revenue_total_minor": revenue_total_minor,
         "writeoff_total_minor": writeoff_total_minor,
         "discount_total_minor": discount_total_minor,
@@ -401,7 +469,7 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
     hash_aggregate = {
         key: value
         for key, value in aggregate.items()
-        if key != "shift_slot"
+        if key not in {"shift_slot", "product_sales_external"}
         and (has_fractional_amounts or not (key.endswith("_minor") or key == "source_money_scale"))
     }
     aggregate["aggregate_hash"] = stable_payload_hash(hash_aggregate)

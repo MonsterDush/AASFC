@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import re
 from typing import Any
 
@@ -20,6 +21,7 @@ from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
@@ -46,11 +48,14 @@ from app.services.integrations.quickresto_department_distribution import (
 )
 from app.services.integrations.quickresto_normalize import (
     QuickRestoDataError,
+    _allocate_minor_to_rubles,
     aggregate_normalized_shifts,
     business_date_for_shift,
     normalize_closed_shift,
     shift_slot_for_shift,
+    stable_payload_hash,
 )
+from app.services.integrations.quickresto_kpi import refresh_quickresto_product_catalog
 from app.services.integrations.quickresto_issues import (
     ACTIVE_ISSUE_STATUSES,
     classify_quickresto_failure,
@@ -629,9 +634,19 @@ def _mapped_aggregate(
             .options(selectinload(QuickRestoDepartmentMapping.allocations))
         ).scalars()
     }
+    kpi_product_mappings = {
+        int(item.external_product_id): item
+        for item in db.execute(
+            select(QuickRestoKpiProductMapping).where(
+                QuickRestoKpiProductMapping.connection_id == connection.id,
+                QuickRestoKpiProductMapping.kpi_metric_id.is_not(None),
+            )
+        ).scalars()
+    }
 
     payments_internal: dict[int, int] = defaultdict(int)
     departments_internal: dict[int, int] = defaultdict(int)
+    kpis_internal: dict[int, int] = defaultdict(int)
     missing_payments: list[int] = []
     missing_departments: list[int] = []
     scope_filter_enabled = bool(
@@ -653,7 +668,60 @@ def _mapped_aggregate(
             continue
         payments_internal[int(mapping.payment_method_id)] += int(value)
 
-    department_values = aggregate.get("departments_external") or {}
+    excluded_department_minor: dict[str, int] = defaultdict(int)
+    for raw_sale in (aggregate.get("product_sales_external") or {}).values():
+        if not isinstance(raw_sale, dict):
+            continue
+        product_id = int(raw_sale.get("product_id") or 0)
+        mapping = kpi_product_mappings.get(product_id)
+        if mapping is None or mapping.kpi_metric_id is None:
+            continue
+        try:
+            quantity = Decimal(str(raw_sale.get("quantity") or 0))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise QuickRestoDataError(f"QuickResto KPI product {product_id} has an invalid quantity") from exc
+        if not quantity.is_finite() or quantity < 0 or quantity != quantity.to_integral_value():
+            raise QuickRestoDataError(f"QuickResto KPI product {product_id} has a fractional quantity")
+        kpis_internal[int(mapping.kpi_metric_id)] += int(quantity)
+        external_department_id = int(raw_sale.get("department_id") or 0)
+        if external_department_id > 0:
+            excluded_department_minor[str(external_department_id)] += int(raw_sale.get("revenue_minor") or 0)
+
+    raw_department_minor = aggregate.get("departments_external_minor")
+    if isinstance(raw_department_minor, dict):
+        department_minor = {str(key): int(value or 0) for key, value in raw_department_minor.items()}
+    else:
+        department_minor = {
+            str(key): int(value or 0) * 100 for key, value in (aggregate.get("departments_external") or {}).items()
+        }
+    residual_department_minor: dict[str, int] = {}
+    for external_id in set(department_minor) | set(excluded_department_minor):
+        residual = int(department_minor.get(external_id) or 0) - int(excluded_department_minor.get(external_id) or 0)
+        if residual < 0:
+            raise QuickRestoDataError(
+                f"QuickResto KPI product revenue exceeds its dish category total (category={external_id})"
+            )
+        if residual:
+            residual_department_minor[external_id] = residual
+
+    # Round attributed and KPI-only revenue together so their ruble totals
+    # always add back to the exact report revenue, including half-kopeck edge
+    # cases. Prefixes keep the two routes distinct for the same source group.
+    combined_department_minor = {
+        **{f"D:{key}": value for key, value in residual_department_minor.items()},
+        **{f"K:{key}": value for key, value in excluded_department_minor.items() if int(value)},
+    }
+    combined_department_rubles = _allocate_minor_to_rubles(combined_department_minor)
+    department_values = {
+        key.removeprefix("D:"): value
+        for key, value in combined_department_rubles.items()
+        if key.startswith("D:") and int(value)
+    }
+    excluded_external_rubles = {
+        key.removeprefix("K:"): value
+        for key, value in combined_department_rubles.items()
+        if key.startswith("K:") and int(value)
+    }
     resolved_department_mapping_ids = {
         int(mapping.external_id) for mapping in department_mappings.values() if mapping_is_resolved(mapping)
     }
@@ -701,16 +769,32 @@ def _mapped_aggregate(
         distribution = resolved_department_distributions[mapping_external_id]
         for department_id, amount in allocate_integer_total(value, distribution).items():
             departments_internal[department_id] += amount
+
     payment_total = sum(payments_internal.values())
     department_total = sum(departments_internal.values())
+    unallocated_total = sum(int(value) for value in excluded_external_rubles.values())
     expected = int(aggregate.get("revenue_total") or 0)
-    if payment_total != expected or department_total != expected:
+    if payment_total != expected or department_total + unallocated_total != expected:
         raise QuickRestoDataError("Mapped QuickResto totals do not reconcile")
-    return {
+    mapped = {
         **aggregate,
         "payments_internal": dict(sorted(payments_internal.items())),
         "departments_internal": dict(sorted(departments_internal.items())),
+        "kpis_internal": dict(sorted((metric_id, value) for metric_id, value in kpis_internal.items() if int(value))),
+        "department_unallocated_total": unallocated_total,
+        "percentage_excluded_total": unallocated_total,
+        "percentage_excluded_departments_internal": {},
     }
+    if mapped["kpis_internal"] or any(int(value) for value in excluded_external_rubles.values()):
+        mapped["aggregate_hash"] = stable_payload_hash(
+            {
+                "source_aggregate_hash": aggregate.get("aggregate_hash"),
+                "kpis_internal": mapped["kpis_internal"],
+                "percentage_excluded_total": mapped["percentage_excluded_total"],
+                "percentage_excluded_departments_internal": mapped["percentage_excluded_departments_internal"],
+            }
+        )
+    return mapped
 
 
 def _report_values(db: Session, report_id: int, kind: str) -> dict[int, int]:
@@ -730,11 +814,23 @@ def _aggregate_values(aggregate: dict[str, Any], key: str) -> dict[int, int]:
 
 
 def _report_values_match(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> bool:
-    return (
-        int(report.revenue_total or 0) == int(aggregate["revenue_total"])
-        and _report_values(db, report.id, "PAYMENT") == _aggregate_values(aggregate, "payments_internal")
-        and _report_values(db, report.id, "DEPT") == _aggregate_values(aggregate, "departments_internal")
-    )
+    if int(report.revenue_total or 0) != int(aggregate["revenue_total"]):
+        return False
+    if int(getattr(report, "unallocated_revenue_total", 0) or 0) != int(
+        aggregate.get("department_unallocated_total") or 0
+    ):
+        return False
+    if _report_values(db, report.id, "PAYMENT") != _aggregate_values(aggregate, "payments_internal"):
+        return False
+    if _report_values(db, report.id, "DEPT") != _aggregate_values(aggregate, "departments_internal"):
+        return False
+    expected_kpis = _aggregate_values(aggregate, "kpis_internal")
+    actual_kpis = _report_values(db, report.id, "KPI")
+    # A report may already contain a manually entered value for the same KPI.
+    # The integration owns only the amount recorded in its source summary, so
+    # a non-negative manual delta must not turn an otherwise safe retry into a
+    # destructive overwrite.
+    return all(int(actual_kpis.get(ref_id) or 0) >= value for ref_id, value in expected_kpis.items())
 
 
 def _report_matches(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> bool:
@@ -745,10 +841,12 @@ def _report_is_empty_draft(db: Session, report: DailyReport) -> bool:
     return (
         str(report.status or "").upper() == "DRAFT"
         and int(report.revenue_total or 0) == 0
+        and int(getattr(report, "unallocated_revenue_total", 0) or 0) == 0
         and int(report.cash or 0) == 0
         and int(report.cashless or 0) == 0
         and not _report_values(db, report.id, "PAYMENT")
         and not _report_values(db, report.id, "DEPT")
+        and not _report_values(db, report.id, "KPI")
     )
 
 
@@ -819,11 +917,11 @@ def _remove_empty_imported_report(
         or int(report.tips_total or 0) != 0
     ):
         raise QuickRestoDataError(f"Axelio report {report.id} has manual totals and cannot be regrouped")
-    has_manual_values = db.execute(
-        select(DailyReportValue.id)
-        .where(DailyReportValue.report_id == report.id, DailyReportValue.kind == "KPI")
-        .limit(1)
-    ).scalar_one_or_none()
+    actual_kpis = _report_values(db, report.id, "KPI")
+    imported_kpis = _aggregate_values(source.summary_json, "kpis_internal")
+    has_manual_values = any(
+        int(value or 0) != int(imported_kpis.get(ref_id) or 0) for ref_id, value in actual_kpis.items()
+    ) or any(ref_id not in actual_kpis for ref_id in imported_kpis)
     has_audit = db.execute(
         select(DailyReportAudit.id).where(DailyReportAudit.report_id == report.id).limit(1)
     ).scalar_one_or_none()
@@ -837,7 +935,7 @@ def _remove_empty_imported_report(
         )
         .limit(1)
     ).scalar_one_or_none()
-    if has_manual_values is not None or has_audit is not None or has_attachment is not None:
+    if has_manual_values or has_audit is not None or has_attachment is not None:
         raise QuickRestoDataError(f"Axelio report {report.id} contains manual data and cannot be regrouped")
 
     was_closed = str(report.status or "").upper() == "CLOSED"
@@ -882,7 +980,13 @@ def _remove_empty_imported_report(
     return True
 
 
-def _replace_report_values(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> None:
+def _replace_report_values(
+    db: Session,
+    report: DailyReport,
+    aggregate: dict[str, Any],
+    *,
+    previous_aggregate: dict[str, Any] | None = None,
+) -> None:
     db.execute(
         delete(DailyReportValue).where(
             DailyReportValue.report_id == report.id,
@@ -900,6 +1004,36 @@ def _replace_report_values(db: Session, report: DailyReport, aggregate: dict[str
                         value_numeric=int(value),
                     )
                 )
+    previous_kpis = _aggregate_values(previous_aggregate or {}, "kpis_internal")
+    next_kpis = _aggregate_values(aggregate, "kpis_internal")
+    managed_kpi_ids = {
+        *(next_kpis.keys()),
+        *(previous_kpis.keys()),
+    }
+    current_kpis = _report_values(db, report.id, "KPI")
+    if managed_kpi_ids:
+        db.execute(
+            delete(DailyReportValue).where(
+                DailyReportValue.report_id == report.id,
+                DailyReportValue.kind == "KPI",
+                DailyReportValue.ref_id.in_(sorted(managed_kpi_ids)),
+            )
+        )
+    for ref_id in sorted(managed_kpi_ids):
+        manual_value = max(
+            0,
+            int(current_kpis.get(ref_id) or 0) - int(previous_kpis.get(ref_id) or 0),
+        )
+        value = manual_value + int(next_kpis.get(ref_id) or 0)
+        if value:
+            db.add(
+                DailyReportValue(
+                    report_id=report.id,
+                    kind="KPI",
+                    ref_id=int(ref_id),
+                    value_numeric=int(value),
+                )
+            )
 
 
 def _close_imported_report(
@@ -976,6 +1110,7 @@ def _upsert_draft_report(
             cash=0,
             cashless=0,
             revenue_total=0,
+            unallocated_revenue_total=0,
             tips_total=0,
             status="DRAFT",
             comment=(
@@ -1033,8 +1168,14 @@ def _upsert_draft_report(
             f"Axelio report {report.id} was edited and cannot be overwritten by a changed QuickResto import"
         )
 
-    _replace_report_values(db, report, aggregate)
+    _replace_report_values(
+        db,
+        report,
+        aggregate,
+        previous_aggregate=source.summary_json if source is not None else None,
+    )
     report.revenue_total = int(aggregate["revenue_total"])
+    report.unallocated_revenue_total = int(aggregate.get("department_unallocated_total") or 0)
     report.cash, report.cashless = _legacy_payment_totals(
         db,
         venue_id=int(connection.venue_id),
@@ -1043,8 +1184,14 @@ def _upsert_draft_report(
     report.updated_by_user_id = actor_user_id
     report.updated_at = _utcnow()
     if not report.comment or str(report.comment).startswith(_INTEGRATION_COMMENT_PREFIX):
+        unallocated_note = (
+            f" KPI вне департаментов {int(aggregate.get('department_unallocated_total') or 0)} ₽;"
+            if int(aggregate.get("department_unallocated_total") or 0)
+            else ""
+        )
         report.comment = (
             f"{_INTEGRATION_COMMENT_PREFIX} {int(aggregate['shift_count'])} закрытых смен; "
+            f"{unallocated_note} "
             f"списания {int(aggregate['writeoff_total'])} ₽ исключены из выручки."
         )
 
@@ -1571,6 +1718,9 @@ def _upsert_normalized_shift(
         str(getattr(existing, "shift_slot", None) or "DAY").upper(),
     )
     payload_changed = existing.payload_hash != normalized["payload_hash"]
+    normalized_shape_changed = (existing.normalized_json or {}).get("product_sales_external") != normalized.get(
+        "product_sales_external"
+    )
     key_changed = previous_key != next_key
     stale_scope_resolution = bool(
         existing.scope_resolution_action is not None
@@ -1579,7 +1729,7 @@ def _upsert_normalized_shift(
     scope_resolution_cleared = bool(
         existing.scope_resolution_action is not None and (payload_changed or key_changed or stale_scope_resolution)
     )
-    changed = payload_changed or key_changed or stale_scope_resolution
+    changed = payload_changed or key_changed or stale_scope_resolution or normalized_shape_changed
     if changed:
         if key_changed:
             existing.daily_report_id = None
@@ -1666,11 +1816,13 @@ def _process_snapshot_group(
     night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
     scope_index = load_quickresto_scope_index(db, connection=connection)
     normalized_rows: list[dict[str, Any]] = []
+    catalog_sources: list[dict[str, Any]] = []
     failed_fingerprints: set[str] = set()
     first_error: BaseException | None = None
     for snapshot in snapshots:
         try:
             source = open_source_snapshot(snapshot)
+            catalog_sources.append(source)
             scope_decision = evaluate_quickresto_shift_scope(source["shift"], scope=scope_index)
             if scope_decision.action != "IMPORT":
                 if scope_decision.error is not None:
@@ -1697,6 +1849,12 @@ def _process_snapshot_group(
         except Exception as exc:
             first_error = first_error or exc
             failed_fingerprints.add(snapshot.source_fingerprint)
+
+    refresh_quickresto_product_catalog(
+        db,
+        connection_id=int(connection.id),
+        sources=catalog_sources,
+    )
 
     business_date = snapshots[0].business_date if snapshots else None
     shift_slot = snapshots[0].shift_slot if snapshots else None

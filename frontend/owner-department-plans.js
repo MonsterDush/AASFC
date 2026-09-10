@@ -103,6 +103,39 @@ async function applyRange(from, to) {
   });
 }
 
+async function clearRangePlans(from, to) {
+  return run(async () => {
+    if (!from || !to || from > to) throw new Error(t("Проверьте диапазон дат"));
+    const payload = {
+      department_id: Number($("departmentPick").value),
+      date_from: from,
+      date_to: to,
+      overwrite_existing: true,
+      clear_existing: true,
+      weekdays: weekdays.map((_, weekday) => ({ weekday, revenue_plan_minor: null })),
+    };
+    const preview = await api(`${prefix()}/days/bulk`, { method: "PUT", body: { ...payload, dry_run: true } });
+    if (!preview.deleted_count) {
+      toast(t("В выбранном диапазоне нет установленных планов"), "ok");
+      return;
+    }
+    const confirmed = await confirmModal({
+      title: t("Удалить планы по дням?"),
+      text: `${t("Будут удалены планы для дат:")} ${preview.deleted_count}. ${t("Зарплата за затронутые закрытые дни будет пересчитана автоматически.")}`,
+      confirmText: t("Удалить планы"),
+      danger: true,
+    });
+    if (!confirmed) return;
+    const result = await api(`${prefix()}/days/bulk`, {
+      method: "PUT",
+      body: { ...payload, preview_token: preview.preview_token },
+    });
+    await load();
+    $("bulkHint").textContent = `${t("Удалено планов:")} ${result.deleted_count}`;
+    toast(t("Планы удалены"), "ok");
+  });
+}
+
 async function boot() {
   applyTelegramTheme(); mountCommonUI("summary"); await ensureLogin();
   const params = new URLSearchParams(location.search);
@@ -136,6 +169,7 @@ async function boot() {
   };
   $("toggleRange").onclick = () => { const expanded = $("rangePanel").classList.toggle("hidden") === false; $("toggleRange").setAttribute("aria-expanded", String(expanded)); };
   $("applyRange").onclick = () => applyRange($("rangeFrom").value, $("rangeTo").value);
+  $("clearRange").onclick = () => clearRangePlans($("rangeFrom").value, $("rangeTo").value);
   $("calendarRows").oninput = (event) => event.target.closest("[data-date]")?.classList.add("is-dirty");
   $("calendarRows").onclick = (event) => {
     if (!event.target.closest("button")) return;

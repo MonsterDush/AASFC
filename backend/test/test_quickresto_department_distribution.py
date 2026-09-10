@@ -12,13 +12,16 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import (
     QuickRestoDepartmentAllocation,
     QuickRestoDepartmentMapping,
 )
+from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.user import User
@@ -90,6 +93,9 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
+                QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoImportIssue.__table__,
             ],
@@ -100,7 +106,8 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
             bar = Department(id=21, venue_id=21, code="bar", title="Бар", sort_order=1)
             hookah = Department(id=22, venue_id=21, code="hookah", title="Кальян", sort_order=2)
             card = PaymentMethod(id=31, venue_id=21, code="card", title="Карта", sort_order=1)
-            db.add_all([user, venue, bar, hookah, card])
+            kpi = KpiMetric(id=41, venue_id=21, code="business_lunch", title="Бизнес-ланчи", unit="QTY")
+            db.add_all([user, venue, bar, hookah, card, kpi])
             connection = QuickRestoConnection(
                 venue_id=21,
                 cloud="ua357",
@@ -117,18 +124,34 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
             )
             db.add(connection)
             db.flush()
-            db.add(
-                QuickRestoPaymentMapping(
-                    connection_id=connection.id,
-                    external_id=901,
-                    external_name="Карта",
-                    operation_type="payment",
-                    payment_method_id=31,
-                    excluded_from_revenue=False,
-                    is_applicable=True,
-                    is_available=True,
-                    allowed_sale_place_ids_json=[],
-                )
+            db.add_all(
+                [
+                    QuickRestoPaymentMapping(
+                        connection_id=connection.id,
+                        external_id=901,
+                        external_name="Карта",
+                        operation_type="payment",
+                        payment_method_id=31,
+                        excluded_from_revenue=False,
+                        is_applicable=True,
+                        is_available=True,
+                        allowed_sale_place_ids_json=[],
+                    ),
+                    QuickRestoKpiProductMapping(
+                        connection_id=connection.id,
+                        external_product_id=501,
+                        external_name="Бизнес-ланч кальян",
+                        external_group_id=1106,
+                        external_group_name="Бизнес-ланчи",
+                    ),
+                    QuickRestoKpiProductMapping(
+                        connection_id=connection.id,
+                        external_product_id=502,
+                        external_name="Бизнес-ланч бар",
+                        external_group_id=1106,
+                        external_group_name="Бизнес-ланчи",
+                    ),
+                ]
             )
             db.add(
                 QuickRestoImportIssue(
@@ -200,6 +223,72 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
                 ),
                 2,
             )
+
+            kpi_result = put_quickresto_mappings(
+                21,
+                QuickRestoMappingsUpdateIn.model_validate(
+                    {
+                        "departments": [{"external_id": 1106, "department_id": None, "allocations": []}],
+                        "kpi_products": [
+                            {"external_product_id": 501, "kpi_metric_id": 41},
+                            {"external_product_id": 502, "kpi_metric_id": 41},
+                        ],
+                    }
+                ),
+                db,
+                user,
+            )
+            kpi_group = next(item for item in kpi_result["mappings"]["departments"] if item["external_id"] == 1106)
+            self.assertTrue(kpi_group["resolved_by_kpi"])
+            self.assertIsNone(kpi_group["department_id"])
+            self.assertEqual(kpi_group["allocations"], [])
+            self.assertTrue(kpi_result["mapping_readiness"]["ready"])
+
+            with self.assertRaises(HTTPException) as conflicting_route:
+                put_quickresto_mappings(
+                    21,
+                    QuickRestoMappingsUpdateIn.model_validate(
+                        {"departments": [{"external_id": 1106, "department_id": 21}]}
+                    ),
+                    db,
+                    user,
+                )
+            self.assertEqual(conflicting_route.exception.status_code, 400)
+
+            department_result = put_quickresto_mappings(
+                21,
+                QuickRestoMappingsUpdateIn.model_validate(
+                    {
+                        "departments": [
+                            {
+                                "external_id": 1106,
+                                "allocations": [
+                                    {"department_id": 21, "share_percent": 60},
+                                    {"department_id": 22, "share_percent": 40},
+                                ],
+                            }
+                        ],
+                        "kpi_products": [
+                            {"external_product_id": 501, "kpi_metric_id": None},
+                            {"external_product_id": 502, "kpi_metric_id": None},
+                        ],
+                    }
+                ),
+                db,
+                user,
+            )
+            department_group = next(
+                item for item in department_result["mappings"]["departments"] if item["external_id"] == 1106
+            )
+            self.assertFalse(department_group["resolved_by_kpi"])
+            self.assertEqual(
+                department_group["allocations"],
+                [
+                    {"department_id": 21, "share_percent": 60},
+                    {"department_id": 22, "share_percent": 40},
+                ],
+            )
+            self.assertTrue(all(item["kpi_metric_id"] is None for item in department_result["kpi_products"]))
 
             with self.assertRaises(HTTPException) as context:
                 put_quickresto_mappings(

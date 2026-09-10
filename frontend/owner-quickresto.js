@@ -67,6 +67,7 @@ const elementIds = [
   "issueSection",
   "issueOpenCount",
   "openIssues",
+  "openKpiMappings",
 ];
 const el = Object.fromEntries(
   elementIds.map((id) => [id, document.getElementById(id)]),
@@ -102,6 +103,8 @@ const state = {
   },
   scopeAudit: [],
 };
+
+el.openKpiMappings.href = `/owner-quickresto-kpi.html?venue_id=${encodeURIComponent(venueId)}`;
 
 const esc = (value) =>
   String(value ?? "")
@@ -423,9 +426,11 @@ function applyPermissions() {
   el.paymentMappings.querySelectorAll("select").forEach((field) => {
     field.disabled = !state.canManage;
   });
-  el.departmentMappings.querySelectorAll("select").forEach((field) => {
+  el.departmentMappings
+    .querySelectorAll("select, input, button")
+    .forEach((field) => {
     field.disabled = !state.canManage;
-  });
+    });
   el.scopeContent.querySelectorAll("input, select").forEach((field) => {
     field.disabled = !state.canManage;
   });
@@ -477,6 +482,27 @@ function renderConnection() {
   renderScope();
 }
 
+function departmentAllocationRows(mapping) {
+  const allocations = Array.isArray(mapping?.allocations)
+    ? mapping.allocations.filter(
+        (item) => item?.department_id && item?.share_percent,
+      )
+    : [];
+  if (allocations.length) return allocations;
+  if (mapping?.department_id) {
+    return [{ department_id: mapping.department_id, share_percent: 100 }];
+  }
+  return [{ department_id: "", share_percent: 100 }];
+}
+
+function renderDepartmentAllocationRow(row) {
+  return `<div class="quickresto-allocation-row" data-department-allocation-row>
+    <select data-department-allocation-target>${options(state.departments, row.department_id)}</select>
+    <label class="quickresto-allocation-share"><input type="number" min="1" max="100" step="1" value="${esc(row.share_percent || "")}" data-department-allocation-share /><span>%</span></label>
+    <button class="btn subtle" type="button" data-remove-department-allocation aria-label="Удалить долю">×</button>
+  </div>`;
+}
+
 function renderMappings() {
   const payments = (state.mappings.payments || []).filter(
     (item) => item.is_available !== false && item.is_applicable !== false,
@@ -502,16 +528,28 @@ function renderMappings() {
   el.departmentMappings.innerHTML = departments.length
     ? departments
         .map((item) => {
-          const allocations = Array.isArray(item.allocations)
-            ? item.allocations
+          const sourcePositions = Array.isArray(item.source_position_names)
+            ? item.source_position_names.filter(Boolean)
             : [];
-          const allocationSummary = allocations.length
-            ? `<div class="muted small">Распределено между ${allocations.length} департаментами · изменить можно в центре проблем импорта</div>`
+          const sourceDetails = sourcePositions.length
+            ? `<div class="muted small">Позиции: ${sourcePositions.map(esc).join(", ")}</div>`
             : "";
-          return `<div class="itemcard quickresto-mapping-row">
-      <div><b>${esc(item.external_name)}</b><div class="muted small">QuickResto #${item.external_id}</div>${allocationSummary}</div>
-      <select data-department-external-id="${item.external_id}">${options(state.departments, item.department_id)}</select>
-    </div>`;
+          if (item.resolved_by_kpi) {
+            return `<div class="itemcard quickresto-mapping-row quickresto-mapping-row--kpi" data-department-external-id="${item.external_id}">
+              <div><b>${esc(item.external_name)}</b><div class="muted small">QuickResto #${item.external_id}</div>${sourceDetails}</div>
+              <div class="quickresto-kpi-route-status"><b>Учитывается как KPI</b><span>Выручка остаётся в общем итоге вне департаментов и процентных начислений.</span><a href="/owner-quickresto-kpi.html?venue_id=${encodeURIComponent(venueId)}">Изменить KPI-сопоставление</a></div>
+            </div>`;
+          }
+          const rows = departmentAllocationRows(item)
+            .map(renderDepartmentAllocationRow)
+            .join("");
+          return `<fieldset class="itemcard quickresto-department-allocation" data-department-external-id="${item.external_id}">
+            <legend><b>${esc(item.external_name)}</b><small>QuickResto #${item.external_id}</small></legend>
+            ${sourceDetails}
+            <div class="muted small">Выберите один департамент (100%) или распределите выручку процентными долями.</div>
+            <div class="quickresto-allocation-rows">${rows}</div>
+            <button class="btn subtle" type="button" data-add-department-allocation>Добавить долю</button>
+          </fieldset>`;
         })
         .join("")
     : `<div class="quickresto-empty">Сначала получите справочники QuickResto.</div>`;
@@ -558,20 +596,68 @@ function collectMappingsPayload() {
         excluded_from_revenue: writeoff,
       };
     });
+  let invalid = false;
   const departments = (state.mappings.departments || []).map((item) => {
-    const select = el.departmentMappings.querySelector(
+    const group = el.departmentMappings.querySelector(
       `[data-department-external-id="${item.external_id}"]`,
     );
-    return {
-      external_id: item.external_id,
-      department_id: select?.value ? Number(select.value) : null,
-      allocations: select?.value
-        ? []
-        : Array.isArray(item.allocations)
-          ? item.allocations
-          : [],
-    };
+    if (item.resolved_by_kpi) {
+      return {
+        external_id: item.external_id,
+        department_id: null,
+        allocations: [],
+      };
+    }
+    group?.removeAttribute("data-invalid");
+    const rows = [
+      ...(group?.querySelectorAll("[data-department-allocation-row]") || []),
+    ];
+    const allocations = rows.map((row) => ({
+      department_id: Number(
+        row.querySelector("[data-department-allocation-target]")?.value || 0,
+      ),
+      share_percent: Number(
+        row.querySelector("[data-department-allocation-share]")?.value || 0,
+      ),
+    }));
+    if (
+      allocations.length === 1 &&
+      allocations[0].department_id === 0
+    ) {
+      return {
+        external_id: item.external_id,
+        department_id: null,
+        allocations: [],
+      };
+    }
+    const departmentIds = allocations.map((row) => row.department_id);
+    const valid =
+      allocations.length > 0 &&
+      allocations.every(
+        (row) =>
+          row.department_id > 0 &&
+          row.share_percent >= 1 &&
+          row.share_percent <= 100,
+      ) &&
+      new Set(departmentIds).size === departmentIds.length &&
+      allocations.reduce((total, row) => total + row.share_percent, 0) === 100;
+    if (!valid) {
+      if (group) group.dataset.invalid = "true";
+      invalid = true;
+    }
+    return allocations.length === 1 && allocations[0].share_percent === 100
+      ? {
+          external_id: item.external_id,
+          department_id: allocations[0].department_id,
+          allocations: [],
+        }
+      : { external_id: item.external_id, department_id: null, allocations };
   });
+  if (invalid) {
+    throw new Error(
+      "Для каждой распределяемой группы выберите разные департаменты; сумма долей должна быть ровно 100%.",
+    );
+  }
   return { payments, departments };
 }
 
@@ -718,6 +804,57 @@ el.externalVenue?.addEventListener("change", () => {
 el.salePlaceOptions?.addEventListener("change", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.matches("[data-sale-place-id]")) renderScopeStores();
+});
+
+el.departmentMappings?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const addButton = target?.closest("[data-add-department-allocation]");
+  if (addButton) {
+    const group = addButton.closest("[data-department-external-id]");
+    const rows = group?.querySelector(".quickresto-allocation-rows");
+    const existing = [
+      ...(rows?.querySelectorAll("[data-department-allocation-row]") || []),
+    ];
+    if (existing.length === 1) {
+      const share = existing[0].querySelector(
+        "[data-department-allocation-share]",
+      );
+      if (share && Number(share.value) === 100) share.value = "50";
+    }
+    rows?.insertAdjacentHTML(
+      "beforeend",
+      renderDepartmentAllocationRow({
+        department_id: "",
+        share_percent: existing.length === 1 ? 50 : 1,
+      }),
+    );
+    applyPermissions();
+    el.mappingHint.textContent = "Есть несохранённые изменения.";
+    return;
+  }
+  const removeButton = target?.closest("[data-remove-department-allocation]");
+  if (!removeButton) return;
+  const row = removeButton.closest("[data-department-allocation-row]");
+  const rows = row?.parentElement;
+  if ((rows?.querySelectorAll("[data-department-allocation-row]").length || 0) > 1) {
+    row.remove();
+  }
+  const remaining = rows?.querySelectorAll(
+    "[data-department-allocation-row]",
+  );
+  if (remaining?.length === 1) {
+    const share = remaining[0].querySelector(
+      "[data-department-allocation-share]",
+    );
+    if (share) share.value = "100";
+  }
+  el.mappingHint.textContent = "Есть несохранённые изменения.";
+});
+
+el.departmentMappings?.addEventListener("input", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  target?.closest("[data-department-external-id]")?.removeAttribute("data-invalid");
+  el.mappingHint.textContent = "Есть несохранённые изменения.";
 });
 
 el.saveScope?.addEventListener("click", async () => {

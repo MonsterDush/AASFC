@@ -47,9 +47,45 @@ class QuickRestoDepartmentMappingIn(BaseModel):
         return self
 
 
+class QuickRestoKpiProductMappingIn(BaseModel):
+    external_product_id: int = Field(..., gt=0)
+    kpi_metric_id: int | None = Field(default=None, gt=0)
+    exclude_from_percentage_base: bool = True
+
+
+class QuickRestoKpiMappingsUpdateIn(BaseModel):
+    products: list[QuickRestoKpiProductMappingIn] = Field(default_factory=list, max_length=10000)
+
+    @field_validator("products")
+    @classmethod
+    def validate_unique_products(
+        cls,
+        value: list[QuickRestoKpiProductMappingIn],
+    ) -> list[QuickRestoKpiProductMappingIn]:
+        external_ids = [int(item.external_product_id) for item in value]
+        if len(external_ids) != len(set(external_ids)):
+            raise ValueError("QuickResto KPI product mappings must be unique")
+        return value
+
+
 class QuickRestoMappingsUpdateIn(BaseModel):
     payments: list[QuickRestoPaymentMappingIn] = Field(default_factory=list)
     departments: list[QuickRestoDepartmentMappingIn] = Field(default_factory=list)
+    kpi_products: list[QuickRestoKpiProductMappingIn] = Field(
+        default_factory=list,
+        max_length=10000,
+    )
+
+    @field_validator("kpi_products")
+    @classmethod
+    def validate_unique_kpi_products(
+        cls,
+        value: list[QuickRestoKpiProductMappingIn],
+    ) -> list[QuickRestoKpiProductMappingIn]:
+        external_ids = [int(item.external_product_id) for item in value]
+        if len(external_ids) != len(set(external_ids)):
+            raise ValueError("QuickResto KPI product mappings must be unique")
+        return value
 
 
 class QuickRestoScopeUpdateIn(BaseModel):

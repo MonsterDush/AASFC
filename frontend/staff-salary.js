@@ -420,6 +420,9 @@ function recalcReasonLabel(reason) {
     shift_deleted: "Автоперерасчёт после удаления смены",
     member_removed_from_venue: "Автоперерасчёт после удаления из заведения",
     member_left_venue: "Автоперерасчёт после выхода из заведения",
+    department_month_plan_updated: "Автоперерасчёт после изменения месячного плана департамента",
+    department_day_plan_updated: "Автоперерасчёт после изменения дневного плана департамента",
+    department_day_plans_updated: "Автоперерасчёт после массового изменения дневных планов департамента",
   };
   return map[String(reason || "")] || "Автоперерасчёт начисления";
 }

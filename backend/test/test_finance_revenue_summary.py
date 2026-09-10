@@ -61,6 +61,22 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertIsNone(plan[0]["department_id"])
         self.assertEqual(plan[0]["meta_json"]["shift_slot"], "NIGHT")
 
+    def test_build_report_revenue_plan_keeps_kpi_revenue_in_department_fallback(self):
+        report = SimpleNamespace(
+            id=2,
+            venue_id=5,
+            date=date(2026, 3, 11),
+            shift_slot="DAY",
+            revenue_total=1500,
+            unallocated_revenue_total=500,
+        )
+        values = [SimpleNamespace(kind="DEPT", ref_id=21, value_numeric=1000)]
+
+        plan = build_report_revenue_plan(report=report, values=values)
+
+        self.assertEqual(sum(item["amount_minor"] for item in plan), 150000)
+        self.assertEqual(plan[-1]["meta_json"]["dimension"], "kpi_unallocated_fallback")
+
     def test_get_finance_summary_calculates_profit_and_margin(self):
         amounts = {
             ("INCOME", "REVENUE"): 500000,

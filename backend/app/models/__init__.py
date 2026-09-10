@@ -69,6 +69,7 @@ from .quickresto_connection import QuickRestoConnection
 from .quickresto_payment_mapping import QuickRestoPaymentMapping
 from .quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from .quickresto_dish_category_path import QuickRestoDishCategoryPath
+from .quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from .quickresto_external_venue import QuickRestoExternalVenue
 from .quickresto_sale_place_scope import QuickRestoSalePlaceScope
 from .quickresto_store_scope import QuickRestoStoreScope
@@ -157,6 +158,7 @@ __all__ = [
     "QuickRestoDepartmentMapping",
     "QuickRestoDepartmentAllocation",
     "QuickRestoDishCategoryPath",
+    "QuickRestoKpiProductMapping",
     "QuickRestoExternalVenue",
     "QuickRestoSalePlaceScope",
     "QuickRestoStoreScope",

@@ -19,7 +19,7 @@
   <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
   <script src="/page-loader.js?v=20260823-navfix1"></script>
   <title>Axelio · Планы департаментов</title>
-  <link rel="stylesheet" href="/styles/pages/department-plans.css?v=20260908-mobilefilters1" />
+  <link rel="stylesheet" href="/styles/pages/department-plans.css?v=20260911-planrecalc1" />
 </head>
 <body class="department-plans-page">
   <main class="container">
@@ -51,9 +51,9 @@
           <h2>Недельная схема</h2><p class="muted">Задайте план для каждого дня недели и примените к нужным датам. Пустые поля пропускаются.</p>
           <form id="weekForm">
             <div id="weekInputs" class="dp-week"></div>
-            <label class="dp-checkbox"><input id="overwriteExisting" type="checkbox" /> Перезаписать уже настроенные даты</label>
+            <label class="dp-checkbox"><input id="overwriteExisting" type="checkbox" checked /> Обновлять уже настроенные даты (с подтверждением)</label>
             <div class="dp-actions"><button class="btn primary" type="button" id="applyMonth">Применить ко всему месяцу</button><button class="btn" type="button" id="applyWeek">Применить к этой неделе</button><button class="btn ghost" type="button" id="toggleRange" aria-expanded="false">Применить к выбранному диапазону</button></div>
-            <div class="dp-range hidden" id="rangePanel"><label>С даты<input id="rangeFrom" type="date" /></label><label>По дату<input id="rangeTo" type="date" /></label><button class="btn" id="applyRange" type="button">Применить диапазон</button></div>
+            <div class="dp-range hidden" id="rangePanel"><label>С даты<input id="rangeFrom" type="date" /></label><label>По дату<input id="rangeTo" type="date" /></label><button class="btn" id="applyRange" type="button">Применить диапазон</button><button class="btn ghost" id="clearRange" type="button">Удалить планы диапазона</button></div>
             <p class="muted" id="bulkHint" role="status"></p>
           </form>
         </div>
@@ -67,6 +67,16 @@
   </main>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-department-plans.js?v=20260906-plans1"></script>
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">Подтверждение</div>
+        <button class="btn" type="button" data-close>Закрыть</button>
+      </div>
+      <div class="modal__body"></div>
+    </div>
+  </div>
+  <script type="module" src="/owner-department-plans.js?v=20260911-planrecalc1"></script>
 </body>
 </html>

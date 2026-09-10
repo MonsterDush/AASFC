@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260901-qrscope2" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260910-kpirouting1" />
   <script>
     (() => {
       try {
@@ -170,6 +170,16 @@
         </div>
       </section>
 
+      <section class="card section-card quickresto-kpi-link">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <b>KPI из позиций QuickResto</b>
+            <div class="muted small mt-4">Свяжите одну позицию или их пул со счётчиком KPI Axelio и исключите выручку этих позиций из процентных начислений.</div>
+          </div>
+          <a class="btn" id="openKpiMappings" href="#">Настроить KPI</a>
+        </div>
+      </section>
+
       <section class="card section-card">
         <div class="section-card__head quickresto-section-head">
           <div>
@@ -184,7 +194,7 @@
         <div class="section-card__head quickresto-section-head">
           <div>
             <b>Сопоставление групп блюд</b>
-            <div class="muted small mt-4">Axelio сопоставляет одинаковые названия автоматически, а при отсутствии совпадения создаёт департамент с названием QuickResto.</div>
+            <div class="muted small mt-4">Обычные группы Axelio сопоставляет автоматически. Для составной или скрытой группы можно отредактировать процентное распределение по департаментам либо учитывать её позиции как KPI.</div>
           </div>
           <button class="btn primary" id="saveMappings">Сохранить сопоставления</button>
         </div>
@@ -206,6 +216,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260910-composite1"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260910-kpirouting1"></script>
 </body>
 </html>

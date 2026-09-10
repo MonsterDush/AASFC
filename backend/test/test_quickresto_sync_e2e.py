@@ -19,6 +19,7 @@ from app.models.daily_report_audit import DailyReportAudit
 from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.payment_method import PaymentMethod
 from app.models.notification_job import NotificationJob
 from app.models.quickresto_connection import QuickRestoConnection
@@ -26,6 +27,7 @@ from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocat
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
 from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
@@ -143,6 +145,8 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
@@ -710,6 +714,8 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,

@@ -36,8 +36,10 @@ class MigrationContractTests(unittest.TestCase):
         catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
         category_paths = scripts.get_revision("a4c6e8f0b2d1")
         department_allocations = scripts.get_revision("b6d8f0a2c4e7")
+        kpi_product_mappings = scripts.get_revision("c7e9a1b3d5f8")
 
-        self.assertEqual(heads, ["b6d8f0a2c4e7"])
+        self.assertEqual(heads, ["c7e9a1b3d5f8"])
+        self.assertEqual(kpi_product_mappings.down_revision, "b6d8f0a2c4e7")
         self.assertEqual(department_allocations.down_revision, "a4c6e8f0b2d1")
         self.assertEqual(category_paths.down_revision, "d3e5f7a9b1c2")
         self.assertEqual(scripts.get_revision("d3e5f7a9b1c2").down_revision, "c2f4a6b8d0e1")
@@ -98,6 +100,55 @@ class MigrationContractTests(unittest.TestCase):
             columns = {column["name"] for column in sa.inspect(engine).get_columns("quickresto_connections")}
             self.assertNotIn("pending_external_venue_id", columns)
             self.assertNotIn("pending_scope_generation", columns)
+
+    def test_quickresto_kpi_product_mapping_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE daily_reports (id INTEGER PRIMARY KEY, revenue_total INTEGER NOT NULL DEFAULT 0)"
+                )
+                connection.exec_driver_sql("CREATE TABLE quickresto_dish_category_paths (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE kpi_metrics (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("INSERT INTO daily_reports (id, revenue_total) VALUES (1, 125)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "b6d8f0a2c4e7")
+                command.upgrade(config, "c7e9a1b3d5f8")
+
+                inspector = sa.inspect(engine)
+                report_columns = {column["name"] for column in inspector.get_columns("daily_reports")}
+                category_columns = {
+                    column["name"] for column in inspector.get_columns("quickresto_dish_category_paths")
+                }
+                self.assertIn("unallocated_revenue_total", report_columns)
+                self.assertIn("external_name", category_columns)
+                self.assertIn("quickresto_kpi_product_mappings", inspector.get_table_names())
+                self.assertIn(
+                    "ck_daily_reports_unallocated_revenue_non_negative",
+                    {constraint["name"] for constraint in inspector.get_check_constraints("daily_reports")},
+                )
+                with engine.connect() as connection:
+                    row = connection.exec_driver_sql(
+                        "SELECT revenue_total, unallocated_revenue_total FROM daily_reports WHERE id = 1"
+                    ).one()
+                    self.assertEqual(tuple(row), (125, 0))
+
+                command.downgrade(config, "b6d8f0a2c4e7")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("quickresto_kpi_product_mappings", inspector.get_table_names())
+            self.assertNotIn(
+                "unallocated_revenue_total",
+                {column["name"] for column in inspector.get_columns("daily_reports")},
+            )
+            self.assertNotIn(
+                "external_name",
+                {column["name"] for column in inspector.get_columns("quickresto_dish_category_paths")},
+            )
 
     def test_quickresto_scope_move_constraint_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

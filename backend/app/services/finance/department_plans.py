@@ -136,12 +136,19 @@ def save_plan(db: Session, venue_id: int, department_id: int, day: date, value: 
     )
     if row is None:
         if value is None:
-            return
+            return False
         row = model(venue_id=venue_id, department_id=department_id, **{date_field: target_date})
         db.add(row)
+    elif value is None:
+        db.delete(row)
+        db.flush()
+        return True
+    elif int(row.revenue_plan_minor or 0) == int(value):
+        return False
     row.revenue_plan_minor = value
     row.updated_at = datetime.utcnow()
     db.flush()
+    return True
 
 
 def bulk_day_plans(db: Session, venue_id: int, payload: DepartmentDaysBulkIn):
@@ -157,11 +164,21 @@ def bulk_day_plans(db: Session, venue_id: int, payload: DepartmentDaysBulkIn):
         )
     }
     weekdays = {row.weekday: row.revenue_plan_minor for row in payload.weekdays}
-    changes, skipped, overwritten = [], 0, 0
+    changes, skipped, overwritten, deleted = [], 0, 0, 0
     for offset in range((payload.date_to - payload.date_from).days + 1):
         day = payload.date_from + timedelta(days=offset)
+        if day.weekday() not in weekdays:
+            continue
         value = weekdays.get(day.weekday())
         if value is None:
+            if not payload.clear_existing:
+                continue
+            row = existing.get(day)
+            previous = positive_target(row.revenue_plan_minor) if row else None
+            if previous is None:
+                continue
+            deleted += 1
+            changes.append((day, previous, None))
             continue
         row = existing.get(day)
         previous = positive_target(row.revenue_plan_minor) if row else None
@@ -176,11 +193,12 @@ def bulk_day_plans(db: Session, venue_id: int, payload: DepartmentDaysBulkIn):
         venue_id,
         payload.department_id,
         payload.overwrite_existing,
+        payload.clear_existing,
         [(day.isoformat(), old, new) for day, old, new in changes],
     ]
     token = hashlib.sha256(json.dumps(token_data).encode()).hexdigest()
     if not payload.dry_run:
-        if overwritten and payload.preview_token != token:
+        if (overwritten or deleted) and payload.preview_token != token:
             raise HTTPException(
                 409,
                 detail={
@@ -190,6 +208,10 @@ def bulk_day_plans(db: Session, venue_id: int, payload: DepartmentDaysBulkIn):
             )
         for day, _old, value in changes:
             row = existing.get(day)
+            if value is None:
+                if row is not None:
+                    db.delete(row)
+                continue
             if row is None:
                 row = DepartmentDayPlan(venue_id=venue_id, department_id=payload.department_id, target_date=day)
                 db.add(row)
@@ -199,6 +221,7 @@ def bulk_day_plans(db: Session, venue_id: int, payload: DepartmentDaysBulkIn):
     return {
         "changed_count": len(changes),
         "overwritten_count": overwritten,
+        "deleted_count": deleted,
         "skipped_count": skipped,
         "preview_token": token,
         "dry_run": payload.dry_run,

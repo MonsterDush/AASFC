@@ -960,6 +960,9 @@ function recalculationText(latestRecalc, runCalculatedAt) {
     shift_deleted: "после удаления смены",
     member_removed_from_venue: "после удаления участника",
     member_left_venue: "после выхода участника",
+    department_month_plan_updated: "после изменения месячного плана департамента",
+    department_day_plan_updated: "после изменения дневного плана департамента",
+    department_day_plans_updated: "после массового изменения дневных планов департамента",
   };
   const dt = runCalculatedAt ? new Date(runCalculatedAt) : null;
   const baseText = dt && !Number.isNaN(dt.getTime())

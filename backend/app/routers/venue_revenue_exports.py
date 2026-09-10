@@ -263,8 +263,10 @@ def _build_revenue_export_details(
         report_values = values_by_report.get(int(report.id), [])
         payments_total_minor = sum(int(v.value_numeric or 0) for v in report_values if v.kind == "PAYMENT") * 100
         departments_total_minor = sum(int(v.value_numeric or 0) for v in report_values if v.kind == "DEPT") * 100
+        unallocated_total_minor = int(getattr(report, "unallocated_revenue_total", None) or 0) * 100
+        accounted_total_minor = departments_total_minor + unallocated_total_minor
         discrepancy_minor = (
-            payments_total_minor - departments_total_minor if payments_total_minor and departments_total_minor else 0
+            payments_total_minor - accounted_total_minor if payments_total_minor and accounted_total_minor else 0
         )
         closed_by_label = None
         if closed_by is not None:
@@ -283,6 +285,7 @@ def _build_revenue_export_details(
                 "revenue_total_minor": int(report.revenue_total or 0) * 100,
                 "payments_total_minor": int(payments_total_minor),
                 "departments_total_minor": int(departments_total_minor),
+                "unallocated_total_minor": int(unallocated_total_minor),
                 "discrepancy_minor": int(discrepancy_minor),
                 "tips_total_minor": int(report.tips_total or 0) * 100,
                 "comment": report.comment,

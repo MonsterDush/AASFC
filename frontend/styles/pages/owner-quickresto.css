@@ -69,9 +69,25 @@
 .quickresto-issues-link::before{position:absolute;inset:0 auto 0 0;width:4px;background:var(--border);content:""}
 .quickresto-issues-link[data-attention="true"]{border-color:var(--statusWarningBorder);background:linear-gradient(145deg,var(--statusWarningBgSoft),var(--card) 72%)}
 .quickresto-issues-link[data-attention="true"]::before{background:var(--statusWarningText)}
+.quickresto-kpi-link{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 78%)}
 .quickresto-mapping-list,.quickresto-history{display:grid;gap:9px}
 .quickresto-mapping-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:12px;align-items:center;background:var(--card)}
 .quickresto-mapping-row b{overflow-wrap:anywhere}
+.quickresto-department-allocation{display:grid;gap:9px;min-width:0;margin:0;padding:13px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.quickresto-department-allocation[data-invalid="true"]{border-color:var(--statusErrorBorder);box-shadow:0 0 0 1px var(--statusErrorBorder)}
+.quickresto-department-allocation legend{display:grid;max-width:100%;gap:2px;padding:0 5px;overflow-wrap:anywhere}
+.quickresto-department-allocation legend small{color:var(--muted);font-size:10px;font-weight:800}
+.quickresto-allocation-rows{display:grid;gap:7px}
+.quickresto-allocation-row{display:grid;grid-template-columns:minmax(0,1fr) 92px 38px;gap:7px;align-items:center}
+.quickresto-allocation-row select,.quickresto-allocation-share input{width:100%;min-width:0}
+.quickresto-allocation-share{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px}
+.quickresto-allocation-share span{font-size:12px;font-weight:900}
+.quickresto-allocation-row [data-remove-department-allocation]{min-width:38px;padding-inline:0;font-size:20px}
+.quickresto-department-allocation>[data-add-department-allocation]{justify-self:start}
+.quickresto-mapping-row--kpi{align-items:start}
+.quickresto-kpi-route-status{display:grid;gap:4px;padding:10px 11px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accentSoftBg)}
+.quickresto-kpi-route-status span{color:var(--muted);font-size:11px;line-height:1.4}
+.quickresto-kpi-route-status a{color:var(--accent);font-size:11px;font-weight:900;text-decoration:underline;text-underline-offset:3px}
 .quickresto-excluded{padding:9px 11px;border:1px solid var(--statusWarningBorder);border-radius:12px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:12px;font-weight:800;text-align:center}
 .quickresto-empty{padding:16px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted)}
 .quickresto-run-row{display:grid;grid-template-columns:minmax(160px,.7fr) minmax(0,1fr);gap:10px;align-items:center;background:var(--card)}
@@ -156,5 +172,7 @@
   .quickresto-issue-drawer__head .btn{min-width:auto;padding-inline:10px}
   .quickresto-issue-drawer__body{padding:14px 14px calc(22px + env(safe-area-inset-bottom))}
   .quickresto-issue-facts{grid-template-columns:minmax(0,1fr)}
+  .quickresto-allocation-row{grid-template-columns:minmax(0,1fr) 82px 38px}
+  .quickresto-department-allocation>[data-add-department-allocation]{width:100%;justify-self:stretch}
   .quickresto-issue-ignore .btn,.quickresto-issue-resolution-card .btn,.quickresto-issue-actions>.btn{width:100%;justify-self:stretch}
 }
