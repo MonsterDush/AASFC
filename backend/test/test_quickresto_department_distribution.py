@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import (
@@ -19,6 +20,7 @@ from app.models.quickresto_department_mapping import (
     QuickRestoDepartmentMapping,
 )
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.user import User
@@ -90,6 +92,8 @@ class QuickRestoDepartmentDistributionTests(unittest.TestCase):
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoImportIssue.__table__,
             ],

@@ -8,9 +8,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
+from app.models.kpi_metric import KpiMetric
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.services.integrations.quickresto import QuickRestoHTTPError
 from app.services.integrations.quickresto_category_hierarchy import (
@@ -48,6 +50,8 @@ class QuickRestoCategoryHierarchyTests(unittest.TestCase):
                 QuickRestoConnection.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoPaymentMapping.__table__,
             ],

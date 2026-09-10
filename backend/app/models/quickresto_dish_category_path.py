@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -29,6 +29,7 @@ class QuickRestoDishCategoryPath(Base):
         ForeignKey("quickresto_connections.id", ondelete="CASCADE"), nullable=False, index=True
     )
     external_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    external_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     parent_external_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     root_external_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

@@ -93,12 +93,14 @@ def _load_report_values(db: Session, *, report_id: int) -> list[DailyReportValue
 def _compute_report_totals(*, report: DailyReport, values: list[DailyReportValue], has_departments: bool) -> dict:
     payments_total = sum(int(v.value_numeric or 0) for v in values if v.kind == "PAYMENT")
     departments_total = sum(int(v.value_numeric or 0) for v in values if v.kind == "DEPT")
+    unallocated_total = int(getattr(report, "unallocated_revenue_total", 0) or 0)
     # If there are no departments configured, compare payments to legacy revenue_total (manual input).
-    base_total = departments_total if has_departments else int(report.revenue_total or 0)
+    base_total = departments_total + unallocated_total if has_departments else int(report.revenue_total or 0)
     discrepancy = payments_total - base_total
     return {
         "payments_total": payments_total,
         "departments_total": departments_total,
+        "unallocated_total": unallocated_total,
         "discrepancy": discrepancy,
         "base_total": base_total,
     }
@@ -125,6 +127,7 @@ def _snapshot_report(db: Session, *, report: DailyReport) -> dict:
         "cash": int(report.cash or 0),
         "cashless": int(report.cashless or 0),
         "revenue_total": int(report.revenue_total or 0),
+        "unallocated_revenue_total": int(getattr(report, "unallocated_revenue_total", 0) or 0),
         "tips_total": int(report.tips_total or 0),
         "comment": report.comment,
         "closed_by_user_id": int(report.closed_by_user_id) if report.closed_by_user_id else None,
@@ -132,7 +135,7 @@ def _snapshot_report(db: Session, *, report: DailyReport) -> dict:
         "totals": {
             k: int(v)
             for k, v in totals.items()
-            if k in ("payments_total", "departments_total", "discrepancy", "base_total")
+            if k in ("payments_total", "departments_total", "unallocated_total", "discrepancy", "base_total")
         },
         "payments": _vals("PAYMENT"),
         "departments": _vals("DEPT"),
@@ -306,8 +309,10 @@ def upsert_daily_report(
                 continue
             db.add(DailyReportValue(report_id=obj.id, kind="DEPT", ref_id=int(it.ref_id), value_numeric=v))
 
-        # if departments provided, treat revenue_total as computed from departments (transition rule)
-        obj.revenue_total = int(dep_total)
+        # If departments are provided, derive the total from their values plus
+        # the read-only QuickResto KPI revenue intentionally kept outside all
+        # departments.
+        obj.revenue_total = int(dep_total) + int(getattr(obj, "unallocated_revenue_total", 0) or 0)
 
     # kpis
     if payload.kpis is not None:
@@ -464,6 +469,7 @@ def get_daily_report(
         "cash": r.cash if show_numbers else None,
         "cashless": r.cashless if show_numbers else None,
         "revenue_total": r.revenue_total if show_numbers else None,
+        "unallocated_revenue_total": (int(getattr(r, "unallocated_revenue_total", 0) or 0) if show_numbers else None),
         "tips_total": r.tips_total if show_numbers else None,
         # dynamic values (A2)
         "payments": payments_items,
@@ -472,6 +478,7 @@ def get_daily_report(
         # computed totals
         "payments_total": totals["payments_total"] if show_numbers else None,
         "departments_total": totals["departments_total"] if show_numbers else None,
+        "unallocated_total": totals["unallocated_total"] if show_numbers else None,
         "discrepancy": totals["discrepancy"] if show_numbers else None,
         "tips_allocations": (
             [

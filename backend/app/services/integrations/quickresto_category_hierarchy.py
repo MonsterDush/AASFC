@@ -74,11 +74,37 @@ def load_dish_category_root_index(
     return {int(row.external_id): int(row.root_external_id) for row in db.execute(query).scalars()}
 
 
+def load_dish_category_name_index(
+    db: Session,
+    *,
+    connection_id: int,
+    external_ids: Iterable[int] | None = None,
+) -> dict[int, str]:
+    query = select(QuickRestoDishCategoryPath).where(QuickRestoDishCategoryPath.connection_id == int(connection_id))
+    normalized_ids = sorted({int(value) for value in (external_ids or ()) if int(value) > 0})
+    if external_ids is not None:
+        if not normalized_ids:
+            return {}
+        query = query.where(QuickRestoDishCategoryPath.external_id.in_(normalized_ids))
+    return {
+        int(row.external_id): str(row.external_name).strip()
+        for row in db.execute(query).scalars()
+        if str(row.external_name or "").strip()
+    }
+
+
+def _category_name(value: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    title = str(value.get("name") or value.get("itemTitle") or "").strip()
+    return title[:160] or None
+
+
 def _upsert_path_rows(
     db: Session,
     *,
     connection_id: int,
-    rows_by_id: dict[int, tuple[int | None, int]],
+    rows_by_id: dict[int, tuple[int | None, int, str | None]],
 ) -> None:
     if not rows_by_id:
         return
@@ -92,7 +118,7 @@ def _upsert_path_rows(
         ).scalars()
     }
     now = _utcnow()
-    for external_id, (parent_external_id, root_external_id) in rows_by_id.items():
+    for external_id, (parent_external_id, root_external_id, external_name) in rows_by_id.items():
         row = existing.get(int(external_id))
         if row is None:
             row = QuickRestoDishCategoryPath(
@@ -102,6 +128,8 @@ def _upsert_path_rows(
             db.add(row)
         row.parent_external_id = int(parent_external_id) if parent_external_id is not None else None
         row.root_external_id = int(root_external_id)
+        if external_name:
+            row.external_name = str(external_name)[:160]
         row.updated_at = now
     db.flush()
 
@@ -111,12 +139,12 @@ def _resolve_remote_path(
     *,
     external_id: int,
     cached_roots: dict[int, int],
-) -> tuple[int, dict[int, int | None]]:
+) -> tuple[int, dict[int, tuple[int | None, str | None]]]:
     module_name, class_name = QUICKRESTO_OBJECT_TYPES["dish_categories"]
     current_id = int(external_id)
     embedded: Mapping[str, Any] | None = None
     seen: set[int] = set()
-    parents: dict[int, int | None] = {}
+    parents: dict[int, tuple[int | None, str | None]] = {}
 
     for _depth in range(_MAX_CATEGORY_DEPTH):
         if current_id in seen:
@@ -141,14 +169,14 @@ def _resolve_remote_path(
 
         parent = node.get("parentItem")
         if parent is None:
-            parents[current_id] = None
+            parents[current_id] = (None, _category_name(node))
             return current_id, parents
         if not isinstance(parent, Mapping):
             raise QuickRestoDataError(f"QuickResto dish category parent has an invalid shape (category={current_id})")
         parent_id = int(parent.get("id") or 0)
         if parent_id <= 0:
             raise QuickRestoDataError(f"QuickResto dish category parent has no id (category={current_id})")
-        parents[current_id] = parent_id
+        parents[current_id] = (parent_id, _category_name(node))
         current_id = parent_id
         embedded = parent
 
@@ -169,12 +197,37 @@ def refresh_dish_category_paths(
     direct = {int(value) for value in direct_mapping_ids if int(value) > 0}
     pending = [external_id for external_id in requested if external_id not in direct]
     cached_roots = load_dish_category_root_index(db, connection_id=int(connection_id)) if pending else {}
+    cached_names = load_dish_category_name_index(db, connection_id=int(connection_id)) if pending else {}
     cached_roots.update({external_id: external_id for external_id in direct})
     refreshed: set[int] = set()
     unresolved: set[int] = set()
 
     for external_id in pending:
         if external_id in cached_roots:
+            root_external_id = int(cached_roots[external_id])
+            if root_external_id not in direct and root_external_id not in cached_names:
+                try:
+                    module_name, class_name = QUICKRESTO_OBJECT_TYPES["dish_categories"]
+                    root = client.read_object(
+                        module_name=module_name,
+                        class_name=class_name,
+                        object_id=root_external_id,
+                    )
+                except QuickRestoHTTPError as exc:
+                    if exc.status_code not in {400, 404}:
+                        raise
+                except QuickRestoDataError:
+                    pass
+                else:
+                    root_name = _category_name(root)
+                    if root_name:
+                        _upsert_path_rows(
+                            db,
+                            connection_id=int(connection_id),
+                            rows_by_id={root_external_id: (None, root_external_id, root_name)},
+                        )
+                        cached_names[root_external_id] = root_name
+                        refreshed.add(external_id)
             continue
         try:
             root_external_id, parents = _resolve_remote_path(
@@ -190,8 +243,11 @@ def refresh_dish_category_paths(
         except QuickRestoDataError:
             unresolved.add(external_id)
             continue
-        path_rows = {node_id: (parent_id, root_external_id) for node_id, parent_id in parents.items()}
-        path_rows.setdefault(root_external_id, (None, root_external_id))
+        path_rows = {
+            node_id: (parent_id, root_external_id, external_name)
+            for node_id, (parent_id, external_name) in parents.items()
+        }
+        path_rows.setdefault(root_external_id, (None, root_external_id, None))
         _upsert_path_rows(
             db,
             connection_id=int(connection_id),
@@ -230,6 +286,7 @@ def copy_dish_category_paths(
             int(row.external_id): (
                 int(row.parent_external_id) if row.parent_external_id is not None else None,
                 int(row.root_external_id),
+                str(row.external_name) if row.external_name else None,
             )
             for row in source_rows
         },

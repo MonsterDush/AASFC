@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto-kpi.css?v=20260910-qrkpi1" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · KPI из QuickResto</title>
+</head>
+<body class="quickresto-kpi-page">
+  <div class="container quickresto-kpi-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">KPI из QuickResto</b>
+          <div class="muted">счётчики по проданным позициям</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <main class="quickresto-kpi-content">
+      <section class="card section-card quickresto-kpi-hero">
+        <div class="quickresto-kpi-hero__layout">
+          <div>
+            <div class="quickresto-kpi-eyebrow">Интеграции · QuickResto</div>
+            <b id="venueTitle">Заведение</b>
+            <div class="muted small mt-4">Объедините одну или несколько позиций QuickResto во внутренний счётчик KPI Axelio. При импорте закрытой смены счётчик увеличится на проданное количество.</div>
+          </div>
+          <button class="btn subtle inline" id="backToQuickResto" type="button" data-nav-button>К настройкам QuickResto</button>
+        </div>
+      </section>
+
+      <section class="card section-card quickresto-kpi-explainer">
+        <div>
+          <b>Как начисляется фиксированная надбавка</b>
+          <div class="muted small mt-4">Здесь задаётся только источник значения KPI. Сумму за единицу и сотрудников задайте в профиле оплаты через компонент «KPI-бонус» с расчётом «За единицу». Один и тот же KPI можно добавить в профили официанта и кальянного мастера.</div>
+        </div>
+        <a class="btn" id="openKpiCatalog" href="#">Открыть справочник KPI</a>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-kpi-section-head">
+          <div>
+            <b>Позиции QuickResto</b>
+            <div class="muted small mt-4" id="mappingSummary">Загружаем позиции…</div>
+          </div>
+          <div class="quickresto-kpi-actions">
+            <button class="btn" id="refreshProducts" type="button">Обновить позиции</button>
+            <button class="btn primary" id="saveMappings" type="button">Сохранить сопоставления</button>
+          </div>
+        </div>
+
+        <div class="quickresto-kpi-toolbar mt-12">
+          <label><span>Поиск позиции</span><input id="productSearch" type="search" placeholder="Название или ID QuickResto" autocomplete="off" /></label>
+          <label><span>Показывать</span><select id="mappingFilter"><option value="all">Все позиции</option><option value="mapped">Сопоставленные</option><option value="unmapped">Без KPI</option></select></label>
+          <label><span>Группа</span><select id="groupFilter"><option value="all">Все группы</option></select></label>
+        </div>
+
+        <div class="quickresto-kpi-list mt-12" id="productList" aria-live="polite">
+          <div class="quickresto-kpi-empty">Загружаем позиции QuickResto…</div>
+        </div>
+        <div class="muted small mt-8" id="mappingHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card quickresto-kpi-history-note">
+        <b>Как применить к уже импортированным отчётам</b>
+        <div class="muted small mt-4">После сохранения запустите «Полную сверку» на странице QuickResto. Axelio пересчитает только значения, которыми управляет интеграция, и сохранит вручную введённые KPI.</div>
+        <button class="btn subtle inline" id="openFullSync" type="button" data-nav-button>Перейти к полной сверке</button>
+      </section>
+
+      <div class="quickresto-kpi-readonly" id="readOnlyHint" hidden>Доступ только для просмотра. Сопоставлять позиции может владелец или администратор заведения.</div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/owner-quickresto-kpi.js?v=20260910-qrkpi1"></script>
+</body>
+</html>

@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 from app.core.db import Base
 from app.models.daily_report import DailyReport
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
 from app.models.quickresto_scope_audit import QuickRestoScopeAudit
@@ -134,6 +136,8 @@ class QuickRestoScopeTests(unittest.TestCase):
                 QuickRestoConnection.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoExternalVenue.__table__,
                 QuickRestoSalePlaceScope.__table__,
                 QuickRestoScopeAudit.__table__,

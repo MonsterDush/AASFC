@@ -116,6 +116,9 @@ class QuickRestoConnection(Base):
     dish_category_paths = relationship(
         "QuickRestoDishCategoryPath", back_populates="connection", cascade="all, delete-orphan"
     )
+    kpi_product_mappings = relationship(
+        "QuickRestoKpiProductMapping", back_populates="connection", cascade="all, delete-orphan"
+    )
     external_venues = relationship("QuickRestoExternalVenue", back_populates="connection", cascade="all, delete-orphan")
     sale_place_scopes = relationship(
         "QuickRestoSalePlaceScope", back_populates="connection", cascade="all, delete-orphan"

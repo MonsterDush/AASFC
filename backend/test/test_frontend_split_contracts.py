@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 54)
+        self.assertEqual(len(html_pages), 55)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -148,6 +148,9 @@ class QuickRestoIntegrationContractTests(TestCase):
         issues_html = (FRONTEND / "owner-integration-issues.html").read_text(encoding="utf-8")
         issues_script = (FRONTEND / "owner-integration-issues.js").read_text(encoding="utf-8")
         issues_styles = (FRONTEND / "styles" / "pages" / "owner-integration-issues.css").read_text(encoding="utf-8")
+        kpi_html = (FRONTEND / "owner-quickresto-kpi.html").read_text(encoding="utf-8")
+        kpi_script = (FRONTEND / "owner-quickresto-kpi.js").read_text(encoding="utf-8")
+        kpi_styles = (FRONTEND / "styles" / "pages" / "owner-quickresto-kpi.css").read_text(encoding="utf-8")
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
@@ -175,7 +178,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260901-qrscope2", html)
+        self.assertIn("20260910-kpirouting1", html)
         self.assertIn('id="scopeSection"', html)
         self.assertIn('id="externalVenue"', html)
         self.assertIn('id="salePlaceOptions"', html)
@@ -221,7 +224,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('el.apiPassword.value = ""', script)
         self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
         self.assertIn("/owner-integration-issues.js", issues_html)
-        self.assertIn("20260910-composite1", issues_html)
+        self.assertIn("20260910-kpirouting1", issues_html)
         self.assertIn('id="providerFilter"', issues_html)
         self.assertIn('id="issueDate"', issues_html)
         self.assertIn('query.set("business_date"', issues_script)
@@ -236,6 +239,10 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn("actionableMappingIds", issues_script)
         self.assertIn("data-issue-department-allocation", issues_script)
         self.assertIn("data-add-issue-allocation", issues_script)
+        self.assertIn("data-issue-route-mode", issues_script)
+        self.assertIn("data-issue-kpi-product-id", issues_script)
+        self.assertIn("kpi_products", issues_script)
+        self.assertIn("вне департаментов", issues_script)
         self.assertIn("сумма долей должна быть ровно 100%", issues_script)
         self.assertIn("renderResolutionGuide", issues_script)
         self.assertIn("nestedCategoryIds", issues_script)
@@ -247,6 +254,16 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn(".integration-issue-drawer__panel", issues_styles)
         self.assertIn(".integration-issues-filter-field", issues_styles)
         self.assertIn(".integration-history-shift__choices", issues_styles)
+        self.assertIn(".integration-issue-route-options", issues_styles)
+        self.assertIn("data-department-allocation-row", script)
+        self.assertIn("data-add-department-allocation", script)
+        self.assertIn("resolved_by_kpi", script)
+        self.assertIn(".quickresto-allocation-row", styles)
+        self.assertIn("/styles/pages/owner-quickresto-kpi.css", kpi_html)
+        self.assertIn("/owner-quickresto-kpi.js", kpi_html)
+        self.assertIn("/integrations/quickresto/kpi-mappings", kpi_script)
+        self.assertIn("getKpiMetrics", kpi_script)
+        self.assertIn(".quickresto-kpi-row", kpi_styles)
         english_catalog = (FRONTEND / "locales" / "en.json").read_text(encoding="utf-8")
         for source in (
             "Дата проблемы",
@@ -525,7 +542,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
             if html_name == "staff-report.html":
-                asset_version = "20260728-responsive1"
+                asset_version = "20260910-unallocated1"
             elif html_name == "staff-salary.html":
                 asset_version = "20260820-assurance1"
             else:
@@ -537,7 +554,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         entrypoints = {
             "staff-salary.html": "/staff-salary.js?v=20260823-kpiperunit1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
-            "staff-report.html": "/staff-report.js?v=20260802-ledgerdrill1",
+            "staff-report.html": "/staff-report.js?v=20260910-unallocated1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -810,7 +827,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 55)
+        self.assertEqual(consumer_count, 56)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

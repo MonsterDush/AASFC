@@ -17,6 +17,7 @@ from app.models import (
     PayComponent,
     PayProfile,
     PayProfileAssignment,
+    QuickRestoReportImport,
     Shift,
     ShiftAssignment,
     ShiftInterval,
@@ -348,6 +349,38 @@ def _load_revenue_metrics(
         dep_id = int(row.ref_id)
         by_date = department_revenue_by_date_minor.setdefault(dep_id, {})
         by_date[row.report_date] = int(row.amount or 0) * 100
+
+    imported_reports = db.execute(
+        select(QuickRestoReportImport, DailyReport.date)
+        .join(DailyReport, DailyReport.id == QuickRestoReportImport.daily_report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+        )
+    ).all()
+    for source, report_date in imported_reports:
+        summary = source.summary_json if isinstance(source.summary_json, dict) else {}
+        excluded_total_minor = max(0, int(summary.get("percentage_excluded_total") or 0)) * 100
+        if excluded_total_minor:
+            total_revenue_minor = max(0, total_revenue_minor - excluded_total_minor)
+            total_revenue_by_date_minor[report_date] = max(
+                0,
+                int(total_revenue_by_date_minor.get(report_date) or 0) - excluded_total_minor,
+            )
+        excluded_departments = summary.get("percentage_excluded_departments_internal") or {}
+        if not isinstance(excluded_departments, dict):
+            continue
+        for raw_department_id, raw_value in excluded_departments.items():
+            department_id = int(raw_department_id)
+            excluded_minor = max(0, int(raw_value or 0)) * 100
+            department_revenue_minor[department_id] = max(
+                0,
+                int(department_revenue_minor.get(department_id) or 0) - excluded_minor,
+            )
+            by_date = department_revenue_by_date_minor.setdefault(department_id, {})
+            by_date[report_date] = max(0, int(by_date.get(report_date) or 0) - excluded_minor)
 
     return PayrollRevenueMetrics(
         total_revenue_minor=total_revenue_minor,

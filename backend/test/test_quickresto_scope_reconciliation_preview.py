@@ -13,6 +13,7 @@ from app.core.db import Base
 from app.models.daily_report import DailyReport
 from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.finance_entry import FinanceEntry
 from app.models.payment_method import PaymentMethod
 from app.models.payroll_run import PayrollRun
@@ -22,6 +23,7 @@ from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
 from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
@@ -66,6 +68,8 @@ class QuickRestoScopePreviewTests(unittest.TestCase):
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoDepartmentAllocation.__table__,
+                KpiMetric.__table__,
+                QuickRestoKpiProductMapping.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
