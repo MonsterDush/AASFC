@@ -11,20 +11,19 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "daily_reports",
-        sa.Column(
-            "unallocated_revenue_total",
-            sa.Integer(),
-            nullable=False,
-            server_default="0",
-        ),
-    )
-    op.create_check_constraint(
-        "ck_daily_reports_unallocated_revenue_non_negative",
-        "daily_reports",
-        "unallocated_revenue_total >= 0",
-    )
+    with op.batch_alter_table("daily_reports") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "unallocated_revenue_total",
+                sa.Integer(),
+                nullable=False,
+                server_default="0",
+            )
+        )
+        batch_op.create_check_constraint(
+            "ck_daily_reports_unallocated_revenue_non_negative",
+            "unallocated_revenue_total >= 0",
+        )
     op.add_column(
         "quickresto_dish_category_paths",
         sa.Column("external_name", sa.String(length=160), nullable=True),
@@ -102,9 +101,9 @@ def downgrade():
     )
     op.drop_table("quickresto_kpi_product_mappings")
     op.drop_column("quickresto_dish_category_paths", "external_name")
-    op.drop_constraint(
-        "ck_daily_reports_unallocated_revenue_non_negative",
-        "daily_reports",
-        type_="check",
-    )
-    op.drop_column("daily_reports", "unallocated_revenue_total")
+    with op.batch_alter_table("daily_reports") as batch_op:
+        batch_op.drop_constraint(
+            "ck_daily_reports_unallocated_revenue_non_negative",
+            type_="check",
+        )
+        batch_op.drop_column("unallocated_revenue_total")

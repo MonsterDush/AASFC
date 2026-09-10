@@ -921,34 +921,47 @@ def refresh_quickresto_kpi_mappings(
             connection_id=int(connection.id),
             sources=sources,
         )
-        issue_candidates = _active_issue_department_candidates(
-            db,
-            connection_id=int(connection.id),
-        )
-        if issue_candidates:
-            with build_quickresto_client(connection) as client:
-                category_summary = refresh_dish_category_paths(
-                    db,
-                    connection_id=int(connection.id),
-                    client=client,
-                    external_ids=issue_candidates,
-                ).as_summary()
-        else:
-            category_summary = {
-                "dish_category_ids_seen": 0,
-                "dish_category_paths_refreshed": 0,
-                "unresolved_dish_category_ids": [],
-            }
-        db.commit()
     except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    issue_candidates = _active_issue_department_candidates(
+        db,
+        connection_id=int(connection.id),
+    )
+    category_summary = {
+        "dish_category_ids_seen": len(issue_candidates),
+        "dish_category_paths_refreshed": 0,
+        "unresolved_dish_category_ids": sorted(issue_candidates),
+    }
+    category_refresh_error = None
+    if issue_candidates:
+        try:
+            # Category titles are helpful but not required for the product
+            # catalog. A remote QuickResto failure must not discard names read
+            # successfully from the encrypted source snapshots.
+            with db.begin_nested():
+                with build_quickresto_client(connection) as client:
+                    category_summary = refresh_dish_category_paths(
+                        db,
+                        connection_id=int(connection.id),
+                        client=client,
+                        external_ids=issue_candidates,
+                    ).as_summary()
+        except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+            category_refresh_error = str(exc)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {
         "ok": True,
         "summary": {
             **summary,
             **category_summary,
             "source_snapshots_scanned": len(latest_by_shift),
+            **({"dish_category_refresh_error": category_refresh_error} if category_refresh_error else {}),
         },
         "products": serialize_quickresto_kpi_product_mappings(
             db,
@@ -1012,6 +1025,10 @@ def put_quickresto_mappings(
             connection=connection,
             products=payload.kpi_products,
         )
+    kpi_resolved_group_ids = _kpi_resolved_group_ids(
+        db,
+        connection_id=int(connection.id),
+    )
     payment_mappings = {
         int(item.external_id): item
         for item in db.execute(
@@ -1072,6 +1089,12 @@ def put_quickresto_mappings(
             int(item.department_id) if item.department_id is not None else 0,
             *(int(allocation.department_id) for allocation in item.allocations),
         } - {0}
+        if target_ids and int(item.external_id) in kpi_resolved_group_ids:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Choose either department allocation or KPI routing for the QuickResto group",
+            )
         if not target_ids.issubset(valid_department_ids):
             raise HTTPException(status_code=400, detail="Department does not belong to venue")
         replace_mapping_distribution(

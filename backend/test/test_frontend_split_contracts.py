@@ -243,7 +243,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn("data-issue-kpi-product-id", issues_script)
         self.assertIn("kpi_products", issues_script)
         self.assertIn("вне департаментов", issues_script)
-        self.assertIn("сумма долей должна быть ровно 100%", issues_script)
+        self.assertIn("суммой долей ровно 100%", issues_script)
         self.assertIn("renderResolutionGuide", issues_script)
         self.assertIn("nestedCategoryIds", issues_script)
         self.assertIn("Axelio автоматически определит верхнюю группу", issues_script)

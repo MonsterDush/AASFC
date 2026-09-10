@@ -19,6 +19,7 @@ from app.models.quickresto_department_mapping import (
     QuickRestoDepartmentAllocation,
     QuickRestoDepartmentMapping,
 )
+from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
@@ -162,6 +163,7 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             QuickRestoDepartmentAllocation.__table__,
             QuickRestoKpiProductMapping.__table__,
             QuickRestoSyncRun.__table__,
+            QuickRestoImportIssue.__table__,
             DailyReport.__table__,
             DailyReportValue.__table__,
             QuickRestoReportImport.__table__,
@@ -262,7 +264,7 @@ class QuickRestoKpiImportTests(unittest.TestCase):
         self.assertNotIn("503:1106", normalized["product_sales_external"])
         self.assertNotIn("504:1106", normalized["product_sales_external"])
 
-    def test_mapped_product_increments_kpi_and_excludes_only_payroll_percent_base(self):
+    def test_mapped_product_increments_kpi_and_routes_revenue_outside_departments(self):
         normalized = normalize_closed_shift(_closed_shift(), _orders(), cutoff_hour=6)
         aggregate = aggregate_normalized_shifts([normalized])
         with Session(self.engine) as db:
@@ -310,7 +312,12 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             )
             db.flush()
 
-            base = {"payments_internal": {}, "departments_internal": {}}
+            base = {
+                "revenue_total": 0,
+                "department_unallocated_total": 0,
+                "payments_internal": {},
+                "departments_internal": {},
+            }
             first = {**base, "kpis_internal": {41: 2}}
             _replace_report_values(db, report, first)
             db.flush()

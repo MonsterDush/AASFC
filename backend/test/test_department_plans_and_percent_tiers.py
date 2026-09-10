@@ -26,6 +26,7 @@ from app.models import (
 )
 from app.models.pay_component import PayComponentPercentTier
 from app.routers.venue_pay_profiles import create_pay_component, update_pay_component
+from app.routers import venue_department_plans
 from app.schemas.department_plans import DepartmentDaysBulkIn, DepartmentPlanValueIn
 from app.schemas.venue_payroll import PayComponentCreateIn, PayComponentUpdateIn
 from app.services.finance.department_plans import bulk_day_plans, plan_calendar, save_plan
@@ -142,6 +143,79 @@ class DepartmentPlansAndTiersTests(TestCase):
         save_plan(self.db, 1, 1, date(2026, 9, 4), 777000)
         self.assertEqual(plan_calendar(self.db, 1, 1, "2026-09")["days"][3]["revenue_plan_minor"], 777000)
 
+    def test_bulk_clear_range_requires_preview_and_deletes_plans(self):
+        bulk_day_plans(self.db, 1, self.bulk("2026-09-01", "2026-09-07"))
+        clear_payload = DepartmentDaysBulkIn(
+            department_id=1,
+            date_from="2026-09-01",
+            date_to="2026-09-07",
+            weekdays=[{"weekday": weekday, "revenue_plan_minor": None} for weekday in range(7)],
+            overwrite_existing=True,
+            clear_existing=True,
+            dry_run=True,
+        )
+        preview = bulk_day_plans(self.db, 1, clear_payload)
+        self.assertEqual(preview["changed_count"], 7)
+        self.assertEqual(preview["deleted_count"], 7)
+        self.assertEqual(self.db.scalar(select(DepartmentDayPlan).where(DepartmentDayPlan.venue_id == 1)).venue_id, 1)
+
+        clear_payload.dry_run = False
+        with self.assertRaises(HTTPException) as error:
+            bulk_day_plans(self.db, 1, clear_payload)
+        self.assertEqual(error.exception.status_code, 409)
+
+        clear_payload.preview_token = preview["preview_token"]
+        result = bulk_day_plans(self.db, 1, clear_payload)
+        self.assertEqual(result["deleted_count"], 7)
+        self.assertIsNone(self.db.scalar(select(DepartmentDayPlan).where(DepartmentDayPlan.venue_id == 1)))
+        self.assertTrue(all(row["revenue_plan_minor"] is None for row in plan_calendar(self.db, 1, 1, "2026-09")["days"]))
+
+    def test_plan_routes_recalculate_changed_month_and_day(self):
+        user = SimpleNamespace(id=1, system_role="NONE")
+        with (
+            patch.object(venue_department_plans, "require_active_member_or_admin"),
+            patch.object(venue_department_plans, "_require_pay_profiles_manage"),
+            patch.object(
+                venue_department_plans,
+                "sanitize_financial_payload_for_user",
+                side_effect=lambda _user, payload: payload,
+            ),
+            patch.object(venue_department_plans, "_recalculate_payroll_for_dates") as recalculate,
+        ):
+            venue_department_plans.put_department_month_plan(
+                1,
+                1,
+                "2026-09",
+                DepartmentPlanValueIn(revenue_plan_minor=1_000_000),
+                self.db,
+                user,
+            )
+            month_call = recalculate.call_args
+            self.assertEqual(month_call.kwargs["trigger_reason"], "department_month_plan_updated")
+            self.assertEqual(len(month_call.kwargs["target_dates"]), 30)
+
+            recalculate.reset_mock()
+            venue_department_plans.put_department_month_plan(
+                1,
+                1,
+                "2026-09",
+                DepartmentPlanValueIn(revenue_plan_minor=1_000_000),
+                self.db,
+                user,
+            )
+            recalculate.assert_not_called()
+
+            venue_department_plans.put_department_day_plan(
+                1,
+                1,
+                date(2026, 9, 4),
+                DepartmentPlanValueIn(revenue_plan_minor=50_000),
+                self.db,
+                user,
+            )
+            self.assertEqual(recalculate.call_args.kwargs["target_dates"], [date(2026, 9, 4)])
+            self.assertEqual(recalculate.call_args.kwargs["trigger_reason"], "department_day_plan_updated")
+
     def test_calendar_only_closed_reports_and_independent_targets(self):
         for day, slot, status, amount in [
             (1, "DAY", "CLOSED", 47500),
@@ -182,6 +256,14 @@ class DepartmentPlansAndTiersTests(TestCase):
             payload.update(overrides)
             with self.assertRaises(ValidationError):
                 DepartmentDaysBulkIn(**payload)
+        clear_payload = self.bulk().model_dump()
+        clear_payload.update(
+            {
+                "weekdays": [{"weekday": weekday, "revenue_plan_minor": None} for weekday in range(7)],
+                "clear_existing": True,
+            }
+        )
+        self.assertTrue(DepartmentDaysBulkIn(**clear_payload).clear_existing)
 
     def create_component(self, **overrides):
         values = dict(

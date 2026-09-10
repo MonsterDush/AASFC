@@ -45,6 +45,8 @@
   .dp-week{grid-template-columns:1fr}
   .dp-week label{display:grid;grid-template-columns:1fr 1.2fr;gap:12px;align-items:center;font-size:14px}
   .dp-actions .btn{width:100%}
+  .dp-range{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;width:100%}
+  .dp-range label,.dp-range input,.dp-range .btn{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
   .dp-date-head{display:none}
   .dp-date-row{grid-template-columns:1fr 1fr;gap:10px;padding:16px 0}
   .dp-date-row .btn{grid-column:2;grid-row:3}

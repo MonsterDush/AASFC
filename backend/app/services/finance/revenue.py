@@ -37,7 +37,7 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
 
     dept_values = [v for v in values if v.kind == "DEPT" and int(v.value_numeric or 0) > 0]
     if dept_values:
-        return [
+        plan = [
             {
                 "amount_minor": int(v.value_numeric or 0) * 100,
                 "department_id": None,
@@ -51,6 +51,21 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
             }
             for v in dept_values
         ]
+        unallocated_total_minor = int(getattr(report, "unallocated_revenue_total", 0) or 0) * 100
+        if unallocated_total_minor > 0:
+            plan.append(
+                {
+                    "amount_minor": unallocated_total_minor,
+                    "department_id": None,
+                    "payment_method_id": None,
+                    "meta_json": {
+                        "report_date": report.date.isoformat(),
+                        "shift_slot": shift_slot,
+                        "dimension": "kpi_unallocated_fallback",
+                    },
+                }
+            )
+        return plan
 
     total_minor = int(report.revenue_total or 0) * 100
     if total_minor <= 0:
@@ -200,6 +215,19 @@ def compute_revenue_summary(
     catalog_rows = db.execute(
         select(Catalog.id, getattr(Catalog, "code", None), Catalog.title).where(Catalog.venue_id == int(venue_id))
     ).all()
+    unallocated_total = 0
+    if mode_norm == "departments":
+        unallocated_total = int(
+            db.execute(
+                select(func.coalesce(func.sum(DailyReport.unallocated_revenue_total), 0)).where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.status == "CLOSED",
+                    DailyReport.date >= period_start,
+                    DailyReport.date <= period_end,
+                )
+            ).scalar()
+            or 0
+        )
 
     def _row_value(row, idx: int, attr: str):
         if hasattr(row, attr):
@@ -223,25 +251,52 @@ def compute_revenue_summary(
         total += amount_int
         out_rows.append({"ref_id": int(ref_id), "code": code, "title": title, "amount": amount_int})
 
+    if unallocated_total:
+        total += unallocated_total
+        out_rows.append(
+            {
+                "ref_id": 0,
+                "code": "KPI_UNALLOCATED",
+                "title": "Вне департаментов (KPI)",
+                "amount": unallocated_total,
+            }
+        )
+
     out_rows.sort(key=lambda x: (-x["amount"], x["title"]))
     daily_series: list[dict] = []
     if include_series:
-        daily_rows = db.execute(
-            select(
-                DailyReport.date,
-                func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-            )
-            .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-            .where(
-                DailyReport.venue_id == int(venue_id),
-                DailyReport.status == "CLOSED",
-                DailyReport.date >= period_start,
-                DailyReport.date <= period_end,
-                DailyReportValue.kind == kind,
-            )
-            .group_by(DailyReport.date)
-            .order_by(DailyReport.date.asc())
-        ).all()
+        if mode_norm == "departments":
+            daily_rows = db.execute(
+                select(
+                    DailyReport.date,
+                    func.coalesce(func.sum(DailyReport.revenue_total), 0).label("amount"),
+                )
+                .where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.status == "CLOSED",
+                    DailyReport.date >= period_start,
+                    DailyReport.date <= period_end,
+                )
+                .group_by(DailyReport.date)
+                .order_by(DailyReport.date.asc())
+            ).all()
+        else:
+            daily_rows = db.execute(
+                select(
+                    DailyReport.date,
+                    func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+                )
+                .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+                .where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.status == "CLOSED",
+                    DailyReport.date >= period_start,
+                    DailyReport.date <= period_end,
+                    DailyReportValue.kind == kind,
+                )
+                .group_by(DailyReport.date)
+                .order_by(DailyReport.date.asc())
+            ).all()
         daily_series = build_revenue_daily_series(
             period_start=period_start,
             period_end=period_end,

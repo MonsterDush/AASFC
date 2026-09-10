@@ -61,6 +61,7 @@ class RevenueTests(TestCase):
                 _ScalarResult(1),
                 _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
                 _ScalarsResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
+                _ScalarResult(0),
             ]
         )
         user = SimpleNamespace(id=101, system_role="NONE")
@@ -98,6 +99,7 @@ class RevenueTests(TestCase):
                 _ScalarResult(2),
                 _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
                 _AllResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
+                _ScalarResult(0),
                 _AllResult(
                     [
                         SimpleNamespace(date=date(2026, 3, 1), amount=400),
@@ -130,9 +132,42 @@ class RevenueTests(TestCase):
         self.assertEqual(result["daily_series"][2], {"date": date(2026, 3, 3), "amount": 300})
         self.assertEqual(sum(point["amount"] for point in result["daily_series"]), result["total"])
 
-        daily_params = db.statements[-1].compile().params
-        self.assertIn("DEPT", daily_params.values())
-        self.assertIn("CLOSED", daily_params.values())
+        compiled_params = [stmt.compile().params for stmt in db.statements]
+        self.assertTrue(any("DEPT" in params.values() for params in compiled_params))
+        self.assertIn("CLOSED", compiled_params[-1].values())
+
+    def test_department_summary_includes_kpi_revenue_outside_departments(self):
+        db = _FakeSession(
+            responses=[
+                _ScalarResult(1),
+                _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
+                _AllResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
+                _ScalarResult(300),
+            ]
+        )
+
+        result = venue_revenue_exports._compute_revenue_summary(
+            venue_id=1,
+            month="2026-03",
+            date_from=None,
+            date_to=None,
+            mode="DEPARTMENTS",
+            db=db,
+        )
+
+        self.assertEqual(result["total"], 1000)
+        self.assertEqual(
+            result["rows"],
+            [
+                {"ref_id": 10, "code": "HOOKAH", "title": "Кальяны", "amount": 700},
+                {
+                    "ref_id": 0,
+                    "code": "KPI_UNALLOCATED",
+                    "title": "Вне департаментов (KPI)",
+                    "amount": 300,
+                },
+            ],
+        )
 
     def test_export_revenue_returns_attachment_headers(self):
         db = _FakeSession(
@@ -188,20 +223,19 @@ class RevenueTests(TestCase):
             shift_slot="NIGHT",
             status="CLOSED",
             revenue_total=1000,
+            unallocated_revenue_total=250,
             tips_total=100,
             comment=None,
             closed_at=None,
         )
-        value = SimpleNamespace(
-            report_id=7,
-            kind="PAYMENT",
-            ref_id=3,
-            value_numeric=1000,
-        )
+        values = [
+            SimpleNamespace(report_id=7, kind="PAYMENT", ref_id=3, value_numeric=1000),
+            SimpleNamespace(report_id=7, kind="DEPT", ref_id=10, value_numeric=750),
+        ]
         db = _FakeSession(
             responses=[
                 _AllResult([(report, None)]),
-                _ScalarsResult([value]),
+                _ScalarsResult(values),
                 _AllResult([]),
                 _AllResult([]),
                 _AllResult([]),
@@ -227,8 +261,13 @@ class RevenueTests(TestCase):
         workbook = load_workbook(BytesIO(workbook_bytes), read_only=True)
 
         self.assertEqual(report_rows[0]["shift_slot"], "NIGHT")
+        self.assertEqual(report_rows[0]["unallocated_total_minor"], 25_000)
+        self.assertEqual(report_rows[0]["discrepancy_minor"], 0)
         self.assertEqual(value_rows[0]["shift_slot"], "NIGHT")
         self.assertEqual(workbook["Отчёты"]["B3"].value, "Слот")
         self.assertEqual(workbook["Отчёты"]["B4"].value, "NIGHT")
+        self.assertEqual(workbook["Отчёты"]["H3"].value, "Вне департаментов (KPI), ₽")
+        self.assertEqual(workbook["Отчёты"]["H4"].value, 250)
+        self.assertEqual(workbook["Отчёты"]["I4"].value, 0)
         self.assertEqual(workbook["Значения"]["B3"].value, "Слот")
         self.assertEqual(workbook["Значения"]["B4"].value, "NIGHT")

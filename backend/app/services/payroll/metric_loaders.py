@@ -370,9 +370,9 @@ def _load_revenue_metrics(
                 int(total_revenue_by_date_minor.get(report_date) or 0) - excluded_total_minor,
             )
         excluded_departments = summary.get("percentage_excluded_departments_internal") or {}
-        if not isinstance(excluded_departments, dict):
-            continue
-        for raw_department_id, raw_value in excluded_departments.items():
+        for raw_department_id, raw_value in (
+            excluded_departments.items() if isinstance(excluded_departments, dict) else ()
+        ):
             department_id = int(raw_department_id)
             excluded_minor = max(0, int(raw_value or 0)) * 100
             department_revenue_minor[department_id] = max(

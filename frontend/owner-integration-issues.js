@@ -1316,7 +1316,17 @@ async function loadPage() {
       !item.has_source_name &&
       !(item.source_position_names || []).length,
   );
-  if (state.canManage && needsSourceNames) {
+  const knownProductGroupIds = new Set(
+    state.kpiProducts
+      .map((item) => Number(item.external_group_id || 0))
+      .filter((item) => item > 0),
+  );
+  const needsIssueProducts = (state.mappings.departments || []).some(
+    (item) =>
+      item.is_issue_candidate &&
+      !knownProductGroupIds.has(Number(item.external_id)),
+  );
+  if (state.canManage && (needsSourceNames || needsIssueProducts)) {
     try {
       const refreshed = await api(
         `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/kpi-mappings/refresh?issues_only=true`,
