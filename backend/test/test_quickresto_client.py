@@ -452,6 +452,7 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         normalized_hash_basis = dict(normalized[0])
         normalized_hash = normalized_hash_basis.pop("payload_hash")
         normalized_hash_basis.pop("shift_slot")
+        normalized_hash_basis.pop("product_sales_external")
         for key in list(normalized_hash_basis):
             if key.endswith("_minor") or key == "source_money_scale":
                 normalized_hash_basis.pop(key)
@@ -459,6 +460,7 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         aggregate_hash_basis = dict(aggregate)
         aggregate_hash = aggregate_hash_basis.pop("aggregate_hash")
         aggregate_hash_basis.pop("shift_slot")
+        aggregate_hash_basis.pop("product_sales_external")
         for key in list(aggregate_hash_basis):
             if key.endswith("_minor") or key == "source_money_scale":
                 aggregate_hash_basis.pop(key)

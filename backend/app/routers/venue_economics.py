@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -65,9 +65,39 @@ from app.services.payroll.calculator import (
     BOOST_SOURCE_VENUE_DAY_PLAN,
     BOOST_SOURCE_VENUE_MONTH_PLAN,
 )
+from app.routers.venue_payroll_support import _recalculate_payroll_for_dates
 
 
 router = APIRouter()
+
+
+def _recalculate_department_month_plan_payroll(
+    db: Session, *, venue_id: int, month: str, user_id: int, source: str
+) -> None:
+    start = date.fromisoformat(f"{month}-01")
+    next_start = date(start.year + 1, 1, 1) if start.month == 12 else date(start.year, start.month + 1, 1)
+    end = next_start - timedelta(days=1)
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[start + timedelta(days=offset) for offset in range((end - start).days + 1)],
+        calculated_by_user_id=user_id,
+        trigger_reason="department_month_plan_updated",
+        details={"source": source},
+    )
+
+
+def _recalculate_department_day_plan_payroll(
+    db: Session, *, venue_id: int, target_date: date, user_id: int, source: str
+) -> None:
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[target_date],
+        calculated_by_user_id=user_id,
+        trigger_reason="department_day_plan_updated",
+        details={"source": source},
+    )
 
 
 def _empty_usage_counts() -> dict:
@@ -400,6 +430,9 @@ def put_venue_department_month_plans(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_month_plan_payroll(
+        db, venue_id=venue_id, month=month, user_id=int(user.id), source="economics_bulk"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     return _attach_usage_to_department_plan_payload(
@@ -429,6 +462,9 @@ def post_venue_department_month_plans_autofill(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_month_plan_payroll(
+        db, venue_id=venue_id, month=month, user_id=int(user.id), source="economics_autofill"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     result["plan"] = _attach_usage_to_department_plan_payload(
@@ -459,6 +495,9 @@ def post_venue_department_month_plans_distribute(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_month_plan_payroll(
+        db, venue_id=venue_id, month=month, user_id=int(user.id), source="economics_distribute"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     result["plan"] = _attach_usage_to_department_plan_payload(
@@ -506,6 +545,9 @@ def put_venue_department_day_plans(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_day_plan_payroll(
+        db, venue_id=venue_id, target_date=date, user_id=int(user.id), source="economics_bulk"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     return _attach_usage_to_department_plan_payload(
@@ -534,6 +576,9 @@ def post_venue_department_day_plans_copy_from_date(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_day_plan_payroll(
+        db, venue_id=venue_id, target_date=target_date, user_id=int(user.id), source="economics_copy"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     result["plan"] = _attach_usage_to_department_plan_payload(
@@ -568,6 +613,9 @@ def post_venue_department_day_plans_autofill_from_history(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _recalculate_department_day_plan_payroll(
+        db, venue_id=venue_id, target_date=target_date, user_id=int(user.id), source="economics_autofill"
+    )
     db.commit()
     usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
     result["plan"] = _attach_usage_to_department_plan_payload(

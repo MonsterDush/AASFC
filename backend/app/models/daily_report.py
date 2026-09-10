@@ -12,6 +12,10 @@ class DailyReport(Base):
     __tablename__ = "daily_reports"
     __table_args__ = (
         CheckConstraint("shift_slot IN ('DAY', 'NIGHT')", name="ck_daily_reports_shift_slot_valid"),
+        CheckConstraint(
+            "unallocated_revenue_total >= 0",
+            name="ck_daily_reports_unallocated_revenue_non_negative",
+        ),
         UniqueConstraint("venue_id", "date", "shift_slot", name="uq_daily_reports_venue_date_slot"),
     )
 
@@ -27,6 +31,12 @@ class DailyReport(Base):
     cash: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cashless: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     revenue_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unallocated_revenue_total: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     tips_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # shift report lifecycle

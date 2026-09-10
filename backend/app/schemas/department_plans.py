@@ -17,6 +17,7 @@ class DepartmentDaysBulkIn(BaseModel):
     date_to: date
     weekdays: list[DepartmentWeekdayPlanIn] = Field(min_length=1, max_length=7)
     overwrite_existing: bool = False
+    clear_existing: bool = False
     dry_run: bool = False
     preview_token: str | None = Field(default=None, max_length=64)
 
@@ -26,6 +27,9 @@ class DepartmentDaysBulkIn(BaseModel):
             raise ValueError("Диапазон должен содержать от 1 до 366 дней")
         if len({row.weekday for row in self.weekdays}) != len(self.weekdays):
             raise ValueError("Дни недели не должны повторяться")
-        if not any(row.revenue_plan_minor is not None for row in self.weekdays):
+        has_values = any(row.revenue_plan_minor is not None for row in self.weekdays)
+        if not has_values and not self.clear_existing:
             raise ValueError("Укажите план хотя бы для одного дня недели")
+        if has_values and self.clear_existing:
+            raise ValueError("Для удаления планов оставьте все выбранные дни недели пустыми")
         return self

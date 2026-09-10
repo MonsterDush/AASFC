@@ -8,12 +8,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
 from app.models.department import Department
+from app.models.kpi_metric import KpiMetric
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_scope_audit import QuickRestoScopeAudit
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
+from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
+from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.user import User
 from app.models.venue import Venue
@@ -24,6 +28,7 @@ from app.schemas.quickresto import (
     QuickRestoHistoricalScopeConfirmIn,
     QuickRestoHistoricalScopePreviewIn,
     QuickRestoIssueResolveIn,
+    QuickRestoKpiMappingsUpdateIn,
     QuickRestoMappingsUpdateIn,
     QuickRestoScopeUpdateIn,
 )
@@ -49,14 +54,26 @@ from app.services.integrations.quickresto_scope_reconciliation import (
 from app.services.integrations.quickresto_issues import (
     ACTIVE_ISSUE_STATUSES,
     issue_counters,
+    open_source_snapshot,
     serialize_issue,
     transition_issue,
+)
+from app.services.integrations.quickresto_category_hierarchy import (
+    load_dish_category_name_index,
+    refresh_dish_category_paths,
 )
 from app.services.integrations.quickresto_department_distribution import (
     mapping_department_distribution,
     mapping_is_resolved,
     replace_mapping_distribution,
 )
+from app.services.integrations.quickresto_kpi import (
+    product_group_names,
+    product_names_by_group,
+    refresh_quickresto_product_catalog,
+    serialize_quickresto_kpi_product_mappings,
+)
+from app.services.integrations.quickresto_snapshot import QuickRestoSnapshotError
 from app.services.integrations.quickresto_scope import (
     QuickRestoScopeConflictError,
     QuickRestoScopeError,
@@ -296,7 +313,69 @@ def _active_issue_department_candidates(db: Session, *, connection_id: int) -> s
     return candidates
 
 
+def _kpi_resolved_group_ids(db: Session, *, connection_id: int) -> set[int]:
+    rows = list(
+        db.execute(
+            select(QuickRestoKpiProductMapping).where(
+                QuickRestoKpiProductMapping.connection_id == int(connection_id),
+                QuickRestoKpiProductMapping.external_group_id.is_not(None),
+            )
+        ).scalars()
+    )
+    grouped: dict[int, list[QuickRestoKpiProductMapping]] = {}
+    for row in rows:
+        grouped.setdefault(int(row.external_group_id), []).append(row)
+    return {
+        external_group_id
+        for external_group_id, products in grouped.items()
+        if products and all(product.kpi_metric_id is not None for product in products)
+    }
+
+
+def _department_candidate_labels(
+    db: Session,
+    *,
+    connection_id: int,
+    external_ids: set[int],
+) -> dict[int, dict]:
+    category_names = load_dish_category_name_index(
+        db,
+        connection_id=int(connection_id),
+        external_ids=external_ids,
+    )
+    position_names = product_names_by_group(
+        db,
+        connection_id=int(connection_id),
+        external_group_ids=external_ids,
+    )
+    embedded_group_names = product_group_names(
+        db,
+        connection_id=int(connection_id),
+        external_group_ids=external_ids,
+    )
+    output: dict[int, dict] = {}
+    for external_id in external_ids:
+        names = position_names.get(int(external_id), [])
+        category_name = category_names.get(int(external_id)) or embedded_group_names.get(int(external_id))
+        output[int(external_id)] = {
+            "external_name": category_name or "Группа позиций QuickResto",
+            "source_position_names": names,
+            "has_source_name": bool(category_name),
+        }
+    return output
+
+
 def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
+    issue_candidate_ids = _active_issue_department_candidates(db, connection_id=int(connection.id))
+    candidate_labels = _department_candidate_labels(
+        db,
+        connection_id=int(connection.id),
+        external_ids=issue_candidate_ids,
+    )
+    kpi_resolved_group_ids = _kpi_resolved_group_ids(
+        db,
+        connection_id=int(connection.id),
+    )
     payments = (
         db.execute(
             select(QuickRestoPaymentMapping)
@@ -316,32 +395,42 @@ def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
         .scalars()
         .all()
     )
-    department_rows = [
-        {
-            "external_id": int(item.external_id),
-            "external_name": item.external_name,
-            "department_id": int(item.department_id) if item.department_id else None,
-            "allocations": [
-                {"department_id": int(department_id), "share_percent": int(share_percent)}
-                for department_id, share_percent in mapping_department_distribution(item).items()
-            ]
-            if item.department_id is None
-            else [],
-            "is_issue_candidate": False,
-        }
-        for item in departments
-    ]
+    department_rows = []
+    for item in departments:
+        candidate_label = candidate_labels.get(int(item.external_id), {})
+        stored_name = str(item.external_name or "")
+        use_candidate_name = stored_name.startswith("Составная или скрытая группа QuickResto #")
+        department_rows.append(
+            {
+                "external_id": int(item.external_id),
+                "external_name": candidate_label.get("external_name") if use_candidate_name else item.external_name,
+                "department_id": int(item.department_id) if item.department_id else None,
+                "allocations": [
+                    {"department_id": int(department_id), "share_percent": int(share_percent)}
+                    for department_id, share_percent in mapping_department_distribution(item).items()
+                ]
+                if item.department_id is None
+                else [],
+                "is_issue_candidate": int(item.external_id) in issue_candidate_ids,
+                "source_position_names": candidate_label.get("source_position_names", []),
+                "has_source_name": bool(candidate_label.get("has_source_name")),
+                "resolved_by_kpi": int(item.external_id) in kpi_resolved_group_ids,
+            }
+        )
     known_department_ids = {int(item.external_id) for item in departments}
-    for external_id in sorted(
-        _active_issue_department_candidates(db, connection_id=int(connection.id)) - known_department_ids
-    ):
+    for external_id in sorted(issue_candidate_ids - known_department_ids):
+        candidate_label = candidate_labels.get(external_id, {})
         department_rows.append(
             {
                 "external_id": external_id,
-                "external_name": f"Составная или скрытая группа QuickResto #{external_id}",
+                "external_name": candidate_label.get("external_name")
+                or f"Составная или скрытая группа QuickResto #{external_id}",
                 "department_id": None,
                 "allocations": [],
                 "is_issue_candidate": True,
+                "source_position_names": candidate_label.get("source_position_names", []),
+                "has_source_name": bool(candidate_label.get("has_source_name")),
+                "resolved_by_kpi": external_id in kpi_resolved_group_ids,
             }
         )
     department_rows.sort(key=lambda item: (str(item["external_name"]).casefold(), int(item["external_id"])))
@@ -387,12 +476,20 @@ def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
     )
     known_departments = {int(item.external_id): item for item in departments}
     issue_candidates = _active_issue_department_candidates(db, connection_id=int(connection.id))
+    kpi_resolved_groups = _kpi_resolved_group_ids(
+        db,
+        connection_id=int(connection.id),
+    )
     missing_departments = sorted(
-        {int(item.external_id) for item in departments if not mapping_is_resolved(item)}
+        {
+            int(item.external_id)
+            for item in departments
+            if not mapping_is_resolved(item) and int(item.external_id) not in kpi_resolved_groups
+        }
         | {
             external_id
             for external_id in issue_candidates
-            if not mapping_is_resolved(known_departments.get(external_id))
+            if not mapping_is_resolved(known_departments.get(external_id)) and external_id not in kpi_resolved_groups
         }
     )
     discovered = bool(
@@ -409,6 +506,52 @@ def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
         "unmapped_payment_type_ids": missing_payments,
         "unmapped_department_ids": missing_departments,
     }
+
+
+def _apply_quickresto_kpi_product_mappings(
+    db: Session,
+    *,
+    venue_id: int,
+    connection: QuickRestoConnection,
+    products,
+) -> dict[int, QuickRestoKpiProductMapping]:
+    rows = {
+        int(row.external_product_id): row
+        for row in db.execute(
+            select(QuickRestoKpiProductMapping).where(QuickRestoKpiProductMapping.connection_id == int(connection.id))
+        ).scalars()
+    }
+    unknown_ids = sorted(
+        int(item.external_product_id) for item in products if int(item.external_product_id) not in rows
+    )
+    if unknown_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown QuickResto products: {unknown_ids}")
+    kpi_ids = sorted({int(item.kpi_metric_id) for item in products if item.kpi_metric_id is not None})
+    valid_kpi_ids = (
+        set(
+            db.execute(
+                select(KpiMetric.id).where(
+                    KpiMetric.venue_id == int(venue_id),
+                    KpiMetric.unit == "QTY",
+                    KpiMetric.id.in_(kpi_ids),
+                )
+            ).scalars()
+        )
+        if kpi_ids
+        else set()
+    )
+    if not set(kpi_ids).issubset(valid_kpi_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="KPI metric must be a quantity metric of this venue",
+        )
+    now = datetime.utcnow()
+    for item in products:
+        row = rows[int(item.external_product_id)]
+        row.kpi_metric_id = int(item.kpi_metric_id) if item.kpi_metric_id is not None else None
+        row.exclude_from_percentage_base = bool(item.kpi_metric_id is not None)
+        row.updated_at = now
+    return rows
 
 
 def _serialize_scope_audits(db: Session, *, connection_id: int, limit: int = 20) -> list[dict]:
@@ -623,7 +766,12 @@ def refresh_quickresto_catalog_route(
         connection.updated_by_user_id = user.id
         connection.updated_at = datetime.utcnow()
         db.commit()
-    except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+    except (
+        QuickRestoError,
+        QuickRestoSnapshotError,
+        IntegrationCredentialError,
+        ValueError,
+    ) as exc:
         db.rollback()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
@@ -711,6 +859,148 @@ def discover_quickresto_mappings(
     }
 
 
+@router.get("/{venue_id}/integrations/quickresto/kpi-mappings")
+def get_quickresto_kpi_mappings(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_view(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    return {
+        "products": serialize_quickresto_kpi_product_mappings(
+            db,
+            connection_id=int(connection.id),
+        ),
+        "permissions": {"can_manage": _can_manage_quickresto(db, venue_id=venue_id, user=user)},
+    }
+
+
+@router.post("/{venue_id}/integrations/quickresto/kpi-mappings/refresh")
+def refresh_quickresto_kpi_mappings(
+    venue_id: int,
+    issues_only: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_for_update_or_404(db, venue_id)
+    _require_quickresto_idle(db, connection)
+    snapshot_query = select(QuickRestoSourceSnapshot).where(
+        QuickRestoSourceSnapshot.connection_id == int(connection.id)
+    )
+    if issues_only:
+        snapshot_query = (
+            snapshot_query.join(
+                QuickRestoImportIssueShift,
+                QuickRestoImportIssueShift.source_snapshot_id == QuickRestoSourceSnapshot.id,
+            )
+            .join(
+                QuickRestoImportIssue,
+                QuickRestoImportIssue.id == QuickRestoImportIssueShift.issue_id,
+            )
+            .where(QuickRestoImportIssue.status.in_(ACTIVE_ISSUE_STATUSES))
+        )
+    snapshots = list(
+        db.execute(
+            snapshot_query.order_by(
+                QuickRestoSourceSnapshot.updated_at.desc(),
+                QuickRestoSourceSnapshot.id.desc(),
+            )
+        )
+        .unique()
+        .scalars()
+    )
+    latest_by_shift: dict[str, QuickRestoSourceSnapshot] = {}
+    for snapshot in snapshots:
+        latest_by_shift.setdefault(str(snapshot.external_shift_id), snapshot)
+    try:
+        sources = [open_source_snapshot(snapshot) for snapshot in latest_by_shift.values()]
+        summary = refresh_quickresto_product_catalog(
+            db,
+            connection_id=int(connection.id),
+            sources=sources,
+        )
+    except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    issue_candidates = _active_issue_department_candidates(
+        db,
+        connection_id=int(connection.id),
+    )
+    category_summary = {
+        "dish_category_ids_seen": len(issue_candidates),
+        "dish_category_paths_refreshed": 0,
+        "unresolved_dish_category_ids": sorted(issue_candidates),
+    }
+    category_refresh_error = None
+    if issue_candidates:
+        try:
+            # Category titles are helpful but not required for the product
+            # catalog. A remote QuickResto failure must not discard names read
+            # successfully from the encrypted source snapshots.
+            with db.begin_nested():
+                with build_quickresto_client(connection) as client:
+                    category_summary = refresh_dish_category_paths(
+                        db,
+                        connection_id=int(connection.id),
+                        client=client,
+                        external_ids=issue_candidates,
+                    ).as_summary()
+        except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+            category_refresh_error = str(exc)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "ok": True,
+        "summary": {
+            **summary,
+            **category_summary,
+            "source_snapshots_scanned": len(latest_by_shift),
+            **({"dish_category_refresh_error": category_refresh_error} if category_refresh_error else {}),
+        },
+        "products": serialize_quickresto_kpi_product_mappings(
+            db,
+            connection_id=int(connection.id),
+        ),
+        "mappings": _serialize_mappings(db, connection),
+    }
+
+
+@router.put("/{venue_id}/integrations/quickresto/kpi-mappings")
+def put_quickresto_kpi_mappings(
+    venue_id: int,
+    payload: QuickRestoKpiMappingsUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_for_update_or_404(db, venue_id)
+    _require_quickresto_idle(db, connection)
+    rows = _apply_quickresto_kpi_product_mappings(
+        db,
+        venue_id=venue_id,
+        connection=connection,
+        products=payload.products,
+    )
+    now = datetime.utcnow()
+    connection.updated_by_user_id = int(user.id)
+    connection.updated_at = now
+    db.commit()
+    return {
+        "ok": True,
+        "mapped_products": sum(int(row.kpi_metric_id is not None) for row in rows.values()),
+        "products": serialize_quickresto_kpi_product_mappings(
+            db,
+            connection_id=int(connection.id),
+        ),
+    }
+
+
 @router.put("/{venue_id}/integrations/quickresto/mappings")
 def put_quickresto_mappings(
     venue_id: int,
@@ -728,6 +1018,17 @@ def put_quickresto_mappings(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     valid_payment_ids = set(db.execute(select(PaymentMethod.id).where(PaymentMethod.venue_id == venue_id)).scalars())
     valid_department_ids = set(db.execute(select(Department.id).where(Department.venue_id == venue_id)).scalars())
+    if payload.kpi_products:
+        _apply_quickresto_kpi_product_mappings(
+            db,
+            venue_id=venue_id,
+            connection=connection,
+            products=payload.kpi_products,
+        )
+    kpi_resolved_group_ids = _kpi_resolved_group_ids(
+        db,
+        connection_id=int(connection.id),
+    )
     payment_mappings = {
         int(item.external_id): item
         for item in db.execute(
@@ -745,6 +1046,11 @@ def put_quickresto_mappings(
     issue_department_candidates = _active_issue_department_candidates(
         db,
         connection_id=int(connection.id),
+    )
+    issue_department_labels = _department_candidate_labels(
+        db,
+        connection_id=int(connection.id),
+        external_ids=issue_department_candidates,
     )
     for item in payload.payments:
         mapping = payment_mappings.get(item.external_id)
@@ -769,7 +1075,10 @@ def put_quickresto_mappings(
             mapping = QuickRestoDepartmentMapping(
                 connection_id=int(connection.id),
                 external_id=int(item.external_id),
-                external_name=f"Составная или скрытая группа QuickResto #{int(item.external_id)}",
+                external_name=str(
+                    issue_department_labels.get(int(item.external_id), {}).get("external_name")
+                    or f"Составная или скрытая группа QuickResto #{int(item.external_id)}"
+                )[:160],
                 department_id=None,
                 updated_at=datetime.utcnow(),
             )
@@ -780,6 +1089,12 @@ def put_quickresto_mappings(
             int(item.department_id) if item.department_id is not None else 0,
             *(int(allocation.department_id) for allocation in item.allocations),
         } - {0}
+        if target_ids and int(item.external_id) in kpi_resolved_group_ids:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Choose either department allocation or KPI routing for the QuickResto group",
+            )
         if not target_ids.issubset(valid_department_ids):
             raise HTTPException(status_code=400, detail="Department does not belong to venue")
         replace_mapping_distribution(
@@ -793,6 +1108,10 @@ def put_quickresto_mappings(
         "ok": True,
         "mappings": _serialize_mappings(db, connection),
         "mapping_readiness": _mapping_readiness(db, connection),
+        "kpi_products": serialize_quickresto_kpi_product_mappings(
+            db,
+            connection_id=int(connection.id),
+        ),
     }
 
 

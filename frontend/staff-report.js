@@ -578,7 +578,7 @@ function unitLabel(unit) {
   return unit ? String(unit) : "";
 }
 
-function calcTotalsFromDom({ hasDepartments }) {
+function calcTotalsFromDom({ hasDepartments, unallocatedTotal = 0 }) {
   const inputs = modalBody?.querySelectorAll("input[data-kind]") || [];
   const totals = { payments: 0, departments: 0, kpis: 0, revenue_total: 0, tips: 0 };
 
@@ -596,7 +596,9 @@ function calcTotalsFromDom({ hasDepartments }) {
   const tips = modalBody?.querySelector("#repTips");
   totals.tips = Math.max(0, numOr0(tips?.value));
 
-  const baseTotal = hasDepartments ? totals.departments : totals.revenue_total;
+  const baseTotal = hasDepartments
+    ? totals.departments + Number(unallocatedTotal || 0)
+    : totals.revenue_total;
   const discrepancy = totals.payments - baseTotal;
 
   return { ...totals, baseTotal, discrepancy };
@@ -781,13 +783,19 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
   const payments = Array.isArray(rep?.payments) ? rep.payments : [];
   const departments = Array.isArray(rep?.departments) ? rep.departments : [];
   const kpis = Array.isArray(rep?.kpis) ? rep.kpis : [];
+  const unallocatedTotal = showMoney
+    ? Number(rep?.unallocated_revenue_total || rep?.unallocated_total || 0)
+    : 0;
 
   const paymentsHtml = payments.length
     ? `<div class="rep-grid">${payments.map((it) => inputRow("PAYMENT", it)).join("")}</div>`
     : `<div class="muted">Способы оплат не настроены</div>`;
 
+  const unallocatedHtml = unallocatedTotal > 0
+    ? `<div class="rep-unallocated mt-8"><b>Вне департаментов (KPI)</b><span>${esc(fmtRub(unallocatedTotal))}</span><small>Выручка входит в общий итог, но не участвует в выручке и процентных начислениях департаментов.</small></div>`
+    : "";
   const deptsHtml = hasDepartments
-    ? `<div class="rep-grid">${departments.map((it) => inputRow("DEPT", it)).join("")}</div>`
+    ? `<div class="rep-grid">${departments.map((it) => inputRow("DEPT", it)).join("")}</div>${unallocatedHtml}`
     : `
       <div class="rep-grid rep-grid--single">
         <label class="rep-field">
@@ -818,6 +826,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
   const totals = {
     payments_total: showMoney ? (rep?.payments_total ?? null) : null,
     departments_total: showMoney ? (rep?.departments_total ?? null) : null,
+    unallocated_total: showMoney ? unallocatedTotal : null,
     discrepancy: showMoney ? (rep?.discrepancy ?? null) : null,
   };
 
@@ -828,8 +837,8 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
         <div class="rep-total__v" id="t_payments_total">${totals.payments_total === null ? "—" : esc(fmtRub(totals.payments_total))}</div>
       </div>
       <div class="rep-total">
-        <div class="muted small">${hasDepartments ? "Департаменты (итого)" : "Выручка (база)"}</div>
-        <div class="rep-total__v" id="t_base_total">${totals.discrepancy === null ? "—" : esc(fmtRub((hasDepartments ? (totals.departments_total ?? 0) : (rep?.revenue_total ?? 0))))}</div>
+        <div class="muted small">${hasDepartments ? (unallocatedTotal > 0 ? "Департаменты + KPI вне них" : "Департаменты (итого)") : "Выручка (база)"}</div>
+        <div class="rep-total__v" id="t_base_total">${totals.discrepancy === null ? "—" : esc(fmtRub((hasDepartments ? (totals.departments_total ?? 0) + unallocatedTotal : (rep?.revenue_total ?? 0))))}</div>
       </div>
       <div class="rep-total rep-total--discr" id="t_discr_box">
         <div class="muted small">Расхождение</div>
@@ -926,7 +935,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     ${section("История изменений", auditHtml, status === "CLOSED" ? "Все изменения закрытого отчёта сохраняются в истории" : "История появится после изменений закрытого отчёта")}
   `;
 
-  return { title: nightShiftsEnabled ? `${formatDateRuNoG(dayISO)} · ${shiftSlotLabel(selectedShiftSlot)}` : formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
+  return { title: nightShiftsEnabled ? `${formatDateRuNoG(dayISO)} · ${shiftSlotLabel(selectedShiftSlot)}` : formatDateRuNoG(dayISO), subtitle, body, hasDepartments, unallocatedTotal, editEnabled };
 }
 
 function collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled }) {
@@ -989,12 +998,12 @@ function collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled }) {
   return payload;
 }
 
-function wireTotalsLive({ hasDepartments }) {
+function wireTotalsLive({ hasDepartments, unallocatedTotal = 0 }) {
   const showMoney = canSeeMoney();
   if (!showMoney) return null;
 
   const update = () => {
-    const t = calcTotalsFromDom({ hasDepartments });
+    const t = calcTotalsFromDom({ hasDepartments, unallocatedTotal });
 
     const elPay = modalBody?.querySelector("#t_payments_total");
     const elBase = modalBody?.querySelector("#t_base_total");
@@ -1183,7 +1192,7 @@ async function openDay(dayISO) {
 
   // Live totals only when editing is enabled (draft or enabled closed edit)
   const hasDepartments = view.hasDepartments;
-  wireTotalsLive({ hasDepartments });
+  wireTotalsLive({ hasDepartments, unallocatedTotal: view.unallocatedTotal });
 
   await wireAttachmentsHandlers({ dayISO, attItems });
 
@@ -1208,7 +1217,10 @@ async function openDay(dayISO) {
     const st2 = { ...state, mode: "edit" };
     const v2 = renderReportModal(st2);
     openModal(v2.title, v2.subtitle, v2.body);
-    wireTotalsLive({ hasDepartments: v2.hasDepartments });
+    wireTotalsLive({
+      hasDepartments: v2.hasDepartments,
+      unallocatedTotal: v2.unallocatedTotal,
+    });
     await wireAttachmentsHandlers({ dayISO, attItems });
 
     // Save closed
@@ -1258,7 +1270,10 @@ async function openDay(dayISO) {
   modalBody?.querySelector("#btnCloseShift")?.addEventListener("click", async () => {
     if (!canClose()) return;
 
-    const totals = calcTotalsFromDom({ hasDepartments });
+    const totals = calcTotalsFromDom({
+      hasDepartments,
+      unallocatedTotal: view.unallocatedTotal,
+    });
     const comment = String(modalBody?.querySelector("#repComment")?.value || "").trim();
 
     if (totals.discrepancy !== 0 && !comment) {

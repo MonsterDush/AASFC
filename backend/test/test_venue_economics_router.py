@@ -80,6 +80,9 @@ class VenueEconomicsRouterContractTests(TestCase):
             "put_quickresto_scope",
             "post_quickresto_historical_scope_reconcile",
             "post_quickresto_historical_scope_preview",
+            "get_quickresto_kpi_mappings",
+            "refresh_quickresto_kpi_mappings",
+            "put_quickresto_kpi_mappings",
         }
         base_manifest = [row for row in manifest if row[2] not in new_route_names]
         base_digest = hashlib.sha256(
@@ -134,9 +137,24 @@ class VenueEconomicsRouterContractTests(TestCase):
                 "/venues/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope/preview",
                 "post_quickresto_historical_scope_preview",
             ),
+            (
+                ("GET",),
+                "/venues/{venue_id}/integrations/quickresto/kpi-mappings",
+                "get_quickresto_kpi_mappings",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/kpi-mappings/refresh",
+                "refresh_quickresto_kpi_mappings",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/integrations/quickresto/kpi-mappings",
+                "put_quickresto_kpi_mappings",
+            ),
         }
 
-        self.assertEqual(len(manifest), 184)
+        self.assertEqual(len(manifest), 187)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 
@@ -198,7 +216,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shift_intervals.router, 4),
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
-            (venue_quickresto.router, 15),
+            (venue_quickresto.router, 18),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()
@@ -212,7 +230,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 113)
+        self.assertEqual(len(native_manifest), 116)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):
@@ -503,6 +521,8 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
             patch.object(
                 venue_economics, "autofill_department_day_plans_from_history", return_value={"plan": dict(day_result)}
             ),
+            patch.object(venue_economics, "_recalculate_department_month_plan_payroll") as recalculate_month,
+            patch.object(venue_economics, "_recalculate_department_day_plan_payroll") as recalculate_day,
         ):
             month = venue_economics.put_venue_department_month_plans(5, bulk, "2026-07", self.db, self.user)
             autofilled_month = venue_economics.post_venue_department_month_plans_autofill(
@@ -526,6 +546,10 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
         self.assertEqual(copied_day["plan"]["items"][0]["usage_profile_count"], 2)
         self.assertEqual(autofilled_day["plan"]["items"][0]["usage_component_count"], 4)
         self.assertEqual(self.db.commits, 6)
+        self.assertEqual(recalculate_month.call_count, 3)
+        self.assertEqual(recalculate_day.call_count, 3)
+        self.assertEqual(recalculate_month.call_args_list[0].kwargs["source"], "economics_bulk")
+        self.assertEqual(recalculate_day.call_args_list[1].kwargs["source"], "economics_copy")
 
     def test_rules_mutation_commits_and_returns_payload(self):
         payload = VenueEconomicsRulesIn(max_expense_ratio_bps=3500, warn_on_draft_expenses=False)

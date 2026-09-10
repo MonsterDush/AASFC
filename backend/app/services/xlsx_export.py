@@ -44,6 +44,7 @@ _EXPORT_EXACT_EN = {
     "Департамент условия": "Condition department",
     "Департаменты": "Departments",
     "Департаменты итого, ₽": "Department total, ₽",
+    "Вне департаментов (KPI), ₽": "Outside departments (KPI), ₽",
     "Детали": "Details",
     "Детализация компонентов": "Component breakdown",
     "Дней": "Days",
@@ -518,6 +519,7 @@ def build_revenue_xlsx(
             "Выручка итого, ₽",
             "Оплаты итого, ₽",
             "Департаменты итого, ₽",
+            "Вне департаментов (KPI), ₽",
             "Расхождение, ₽",
             "Чаевые, ₽",
             "Комментарий",
@@ -533,6 +535,7 @@ def build_revenue_xlsx(
                 _minor_to_major(item.get("revenue_total_minor")),
                 _minor_to_major(item.get("payments_total_minor")),
                 _minor_to_major(item.get("departments_total_minor")),
+                _minor_to_major(item.get("unallocated_total_minor")),
                 _minor_to_major(item.get("discrepancy_minor")),
                 _minor_to_major(item.get("tips_total_minor")),
                 item.get("comment"),
@@ -541,9 +544,9 @@ def build_revenue_xlsx(
             ]
             for item in report_rows
         ],
-        currency_cols={5, 6, 7, 8, 9},
+        currency_cols={5, 6, 7, 8, 9, 10},
         date_cols={1},
-        datetime_cols={11},
+        datetime_cols={12},
     )
 
     values_ws = wb.create_sheet("Значения")

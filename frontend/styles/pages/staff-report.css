@@ -70,3 +70,6 @@
   .staff-report-legend{justify-content:flex-start}
   .staff-report-calendar .cal-cell{min-height:56px;padding:5px}
 }
+.rep-unallocated{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:10px 12px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accentSoftBg)}
+.rep-unallocated b,.rep-unallocated span{font-size:12px;font-weight:900}
+.rep-unallocated small{grid-column:1/-1;color:var(--muted);font-size:10px;line-height:1.4}
