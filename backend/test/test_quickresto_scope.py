@@ -14,7 +14,7 @@ from app.models.daily_report import DailyReport
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
-from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
@@ -133,6 +133,7 @@ class QuickRestoScopeTests(unittest.TestCase):
                 DailyReport.__table__,
                 QuickRestoConnection.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDepartmentAllocation.__table__,
                 QuickRestoExternalVenue.__table__,
                 QuickRestoSalePlaceScope.__table__,
                 QuickRestoScopeAudit.__table__,

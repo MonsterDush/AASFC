@@ -17,7 +17,7 @@ from app.models.finance_entry import FinanceEntry
 from app.models.payment_method import PaymentMethod
 from app.models.payroll_run import PayrollRun
 from app.models.quickresto_connection import QuickRestoConnection
-from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_department_mapping import QuickRestoDepartmentAllocation, QuickRestoDepartmentMapping
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
@@ -65,6 +65,7 @@ class QuickRestoScopePreviewTests(unittest.TestCase):
                 QuickRestoConnection.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
+                QuickRestoDepartmentAllocation.__table__,
                 QuickRestoDishCategoryPath.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,

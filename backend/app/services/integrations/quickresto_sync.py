@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from sqlalchemy import delete, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
@@ -38,6 +38,11 @@ from app.services.integrations.quickresto_category_hierarchy import (
     load_dish_category_root_index,
     referenced_dish_category_ids,
     refresh_dish_category_paths,
+)
+from app.services.integrations.quickresto_department_distribution import (
+    allocate_integer_total,
+    mapping_department_distribution,
+    mapping_is_resolved,
 )
 from app.services.integrations.quickresto_normalize import (
     QuickRestoDataError,
@@ -359,15 +364,12 @@ def _snapshot_category_ids(snapshots: list[QuickRestoSourceSnapshot]) -> set[int
 
 
 def _direct_department_mapping_ids(db: Session, *, connection_id: int) -> set[int]:
-    return {
-        int(value)
-        for value in db.execute(
-            select(QuickRestoDepartmentMapping.external_id).where(
-                QuickRestoDepartmentMapping.connection_id == int(connection_id),
-                QuickRestoDepartmentMapping.department_id.is_not(None),
-            )
-        ).scalars()
-    }
+    mappings = db.execute(
+        select(QuickRestoDepartmentMapping)
+        .where(QuickRestoDepartmentMapping.connection_id == int(connection_id))
+        .options(selectinload(QuickRestoDepartmentMapping.allocations))
+    ).scalars()
+    return {int(mapping.external_id) for mapping in mappings if mapping_is_resolved(mapping)}
 
 
 def _refresh_snapshot_category_paths(
@@ -462,7 +464,9 @@ def refresh_quickresto_mappings(
     existing_departments = {
         int(item.external_id): item
         for item in db.execute(
-            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            select(QuickRestoDepartmentMapping)
+            .where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            .options(selectinload(QuickRestoDepartmentMapping.allocations))
         ).scalars()
     }
     for mapping in existing_payments.values():
@@ -554,7 +558,7 @@ def refresh_quickresto_mappings(
         catalog_title = _catalog_title(name)
         title_key = _normalize_label(catalog_title)
         auto_match = department_by_title.get(title_key)
-        needs_department_target = mapping is None or mapping.department_id is None
+        needs_department_target = mapping is None or not mapping_is_resolved(mapping)
         if needs_department_target and auto_match is None and title_key not in known_department_titles:
             auto_match = Department(
                 venue_id=connection.venue_id,
@@ -582,7 +586,7 @@ def refresh_quickresto_mappings(
             existing_departments[external_id] = mapping
         else:
             mapping.external_name = _mapping_title(name)
-            if mapping.department_id is None:
+            if not mapping_is_resolved(mapping):
                 if auto_match is not None:
                     mapping.department_id = int(auto_match.id)
             mapping.updated_at = _utcnow()
@@ -600,7 +604,7 @@ def refresh_quickresto_mappings(
             if item.is_applicable and not item.excluded_from_revenue and item.payment_method_id is None
         ),
         "unmapped_department_ids": sorted(
-            item.external_id for item in existing_departments.values() if item.department_id is None
+            item.external_id for item in existing_departments.values() if not mapping_is_resolved(item)
         ),
     }
 
@@ -620,7 +624,9 @@ def _mapped_aggregate(
     department_mappings = {
         str(item.external_id): item
         for item in db.execute(
-            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            select(QuickRestoDepartmentMapping)
+            .where(QuickRestoDepartmentMapping.connection_id == connection.id)
+            .options(selectinload(QuickRestoDepartmentMapping.allocations))
         ).scalars()
     }
 
@@ -649,7 +655,7 @@ def _mapped_aggregate(
 
     department_values = aggregate.get("departments_external") or {}
     resolved_department_mapping_ids = {
-        int(mapping.external_id) for mapping in department_mappings.values() if mapping.department_id is not None
+        int(mapping.external_id) for mapping in department_mappings.values() if mapping_is_resolved(mapping)
     }
     indirect_external_ids = {
         int(external_id)
@@ -662,20 +668,25 @@ def _mapped_aggregate(
         external_ids=indirect_external_ids,
     )
     unresolved_categories: list[int] = []
+    resolved_department_totals: dict[int, int] = defaultdict(int)
+    resolved_department_distributions: dict[int, dict[int, int]] = {}
     for external_id, value in department_values.items():
         if not int(value or 0):
             continue
         mapping = department_mappings.get(str(external_id))
-        if mapping is None or mapping.department_id is None:
+        if not mapping_is_resolved(mapping):
             root_external_id = category_roots.get(int(external_id))
             if root_external_id is None:
                 unresolved_categories.append(int(external_id))
                 continue
             mapping = department_mappings.get(str(root_external_id))
-        if mapping is None or mapping.department_id is None:
+        distribution = mapping_department_distribution(mapping)
+        if not distribution:
             missing_departments.append(int(category_roots.get(int(external_id), int(external_id))))
             continue
-        departments_internal[int(mapping.department_id)] += int(value)
+        mapping_external_id = int(mapping.external_id)
+        resolved_department_totals[mapping_external_id] += int(value)
+        resolved_department_distributions[mapping_external_id] = distribution
 
     if unresolved_categories:
         raise QuickRestoDataError(
@@ -686,6 +697,10 @@ def _mapped_aggregate(
             "QuickResto mappings are incomplete"
             f" (payments={sorted(missing_payments)}, departments={sorted(missing_departments)})"
         )
+    for mapping_external_id, value in resolved_department_totals.items():
+        distribution = resolved_department_distributions[mapping_external_id]
+        for department_id, amount in allocate_integer_total(value, distribution).items():
+            departments_internal[department_id] += amount
     payment_total = sum(payments_internal.values())
     department_total = sum(departments_internal.values())
     expected = int(aggregate.get("revenue_total") or 0)

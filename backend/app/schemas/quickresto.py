@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class QuickRestoConnectionUpsertIn(BaseModel):
@@ -25,9 +25,26 @@ class QuickRestoPaymentMappingIn(BaseModel):
     excluded_from_revenue: bool = False
 
 
+class QuickRestoDepartmentAllocationIn(BaseModel):
+    department_id: int = Field(..., gt=0)
+    share_percent: int = Field(..., ge=1, le=100)
+
+
 class QuickRestoDepartmentMappingIn(BaseModel):
     external_id: int = Field(..., gt=0)
     department_id: int | None = Field(default=None, gt=0)
+    allocations: list[QuickRestoDepartmentAllocationIn] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_department_target(self):
+        if self.department_id is not None and self.allocations:
+            raise ValueError("Choose either one department or a percentage allocation")
+        target_ids = [int(item.department_id) for item in self.allocations]
+        if len(target_ids) != len(set(target_ids)):
+            raise ValueError("QuickResto department allocation targets must be unique")
+        if self.allocations and sum(int(item.share_percent) for item in self.allocations) != 100:
+            raise ValueError("QuickResto department allocation must total 100 percent")
+        return self
 
 
 class QuickRestoMappingsUpdateIn(BaseModel):

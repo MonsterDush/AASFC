@@ -4799,5 +4799,22 @@
   "💰 Начисления за расчётный период": "💰 Accruals for the pay period",
   "💼 ФОТ рассчитан": "Payroll calculated",
   "🛠 Импорт QuickResto ·": "🛠 QuickResto import ·",
-  "🧾 Черновые расходы ждут подтверждения": "🧾 Draft expenses awaiting confirmation"
+  "🧾 Черновые расходы ждут подтверждения": "🧾 Draft expenses awaiting confirmation",
+  "Удалить долю": "Remove allocation",
+  "Можно выбрать один департамент (100%) или распределить составную позицию между несколькими.": "Choose one department (100%) or split a composite item across several departments.",
+  "Добавить долю": "Add allocation",
+  "Проверьте описание и повторите импорт. Если причина сохранится, передайте код проблемы команде Axelio.": "Review the description and retry the import. If the issue persists, send the issue code to the Axelio team.",
+  "Обновите API-логин и API-пароль в настройках QuickResto, затем повторите импорт.": "Update the QuickResto API login and password, then retry the import.",
+  "Повторите импорт после восстановления QuickResto; временные ошибки также повторяются автоматически.": "Retry the import after QuickResto recovers; temporary failures are also retried automatically.",
+  "Исправьте состав или обязательные ссылки в закрытой смене QuickResto, затем повторите импорт. Axelio не запишет несверенные суммы в отчёт.": "Correct the composition or required references in the closed QuickResto shift, then retry. Axelio will not write unreconciled amounts to the report.",
+  "Проверьте существующий отчёт Axelio и его ручные изменения. После устранения конфликта повторите импорт.": "Review the existing Axelio report and its manual changes. Retry the import after resolving the conflict.",
+  "Повторите импорт. Если ошибка останется, команда Axelio сможет найти техническую причину по коду и времени карточки.": "Retry the import. If the error persists, the Axelio team can find the technical cause using the issue code and timestamp.",
+  "Обновите справочники QuickResto в настройках интеграции. После этого карточка покажет найденную группу для сопоставления.": "Refresh the QuickResto catalogs in the integration settings. The issue card will then show the detected group for mapping.",
+  "Обновите справочники QuickResto. Карточка покажет все найденные типы оплат и группы блюд для сопоставления.": "Refresh the QuickResto catalogs. The issue card will show every detected payment type and dish group for mapping.",
+  "Открыть настройки QuickResto": "Open QuickResto settings",
+  "Как решить": "How to resolve",
+  "Для каждой группы выберите разные департаменты; сумма долей должна быть ровно 100%.": "Choose distinct departments for each group; allocation shares must total exactly 100%.",
+  "Распределено между": "Allocated across",
+  "департаментами · изменить можно в центре проблем импорта": "departments · edit in the import issue center",
+  "Составная или скрытая группа QuickResto #": "Composite or hidden QuickResto group #"
 }

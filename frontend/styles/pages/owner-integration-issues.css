@@ -44,6 +44,7 @@
 .integration-issue-drawer.open .integration-issue-drawer__panel{transform:translateX(0)}
 .integration-issue-drawer__head{display:flex;flex:0 0 auto;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--border);background:var(--card)}
 .integration-issue-drawer__head h2{margin:0;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
+.integration-issue-drawer__head .btn{flex:0 0 auto;white-space:nowrap}
 .integration-issue-drawer__body{display:grid;flex:1 1 auto;align-content:start;gap:16px;min-height:0;padding:18px 20px calc(24px + env(safe-area-inset-bottom));overflow:auto;overscroll-behavior:contain}
 .integration-issue-detail-head{display:grid;gap:10px}
 .integration-issue-detail-head p{margin:0;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
@@ -71,6 +72,17 @@
 .integration-history-shift__choices b,.integration-history-shift__choices small{overflow-wrap:anywhere}
 .integration-history-shift__choices small{color:var(--muted);font-size:10px;line-height:1.4}
 .integration-issue-fields{display:grid;gap:9px}
+.integration-issue-allocation{display:grid;gap:8px;min-width:0;margin:0;padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.integration-issue-allocation[data-invalid="true"]{border-color:var(--statusErrorBorder);box-shadow:0 0 0 1px var(--statusErrorBorder)}
+.integration-issue-allocation legend{max-width:100%;padding:0 5px;font-size:12px;font-weight:900;overflow-wrap:anywhere}
+.integration-issue-allocation-rows{display:grid;gap:7px}
+.integration-issue-allocation-row{display:grid;grid-template-columns:minmax(0,1fr) 92px 38px;gap:7px;align-items:center}
+.integration-issue-allocation-row select,.integration-issue-allocation-share input{width:100%;min-width:0}
+.integration-issue-allocation-share{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px}
+.integration-issue-allocation-share span{font-size:12px;font-weight:900}
+.integration-issue-allocation-row [data-remove-issue-allocation]{min-width:38px;padding-inline:0;font-size:20px}
+.integration-issue-guide{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.integration-issue-guide-link{width:max-content;max-width:100%;color:var(--accent);font-size:12px;font-weight:900;text-decoration:underline;text-underline-offset:3px}
 .integration-issue-scope-editor{display:grid;gap:12px}
 .integration-issue-scope-group{min-width:0;margin:0;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
 .integration-issue-scope-group legend{padding:0 5px;font-size:12px;font-weight:900}
@@ -104,6 +116,7 @@
   .integration-issue-facts{grid-template-columns:minmax(0,1fr)}
   .integration-history-shift__choices{grid-template-columns:minmax(0,1fr)}
   .integration-history-shift__facts b{width:100%;margin-left:0}
+  .integration-issue-allocation-row{grid-template-columns:minmax(0,1fr) 82px 38px}
   .integration-issue-actions .btn,.integration-issue-resolution .btn,.integration-issue-scope-actions{width:100%;justify-self:stretch}
   .integration-issue-scope-actions .btn{width:100%}
 }
