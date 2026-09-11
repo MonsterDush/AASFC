@@ -37,7 +37,11 @@ from app.services.integrations.credentials import (
     decrypt_credential,
     encrypt_credential,
 )
-from app.services.integrations.quickresto import QuickRestoConfig, QuickRestoError
+from app.services.integrations.quickresto import (
+    QUICKRESTO_OBJECT_TYPES,
+    QuickRestoConfig,
+    QuickRestoError,
+)
 from app.services.integrations.quickresto_sync import (
     QuickRestoSyncError,
     build_quickresto_client,
@@ -68,6 +72,9 @@ from app.services.integrations.quickresto_department_distribution import (
     replace_mapping_distribution,
 )
 from app.services.integrations.quickresto_kpi import (
+    enrich_quickresto_product_catalog_from_directory,
+    product_directory_group_ids,
+    product_directory_group_names,
     product_group_names,
     product_names_by_group,
     refresh_quickresto_product_catalog,
@@ -330,6 +337,33 @@ def _kpi_resolved_group_ids(db: Session, *, connection_id: int) -> set[int]:
         for external_group_id, products in grouped.items()
         if products and all(product.kpi_metric_id is not None for product in products)
     }
+
+
+def _quickresto_product_ids_and_group_names(
+    db: Session,
+    *,
+    connection_id: int,
+) -> tuple[set[int], set[int], dict[int, str]]:
+    products = list(
+        db.execute(
+            select(QuickRestoKpiProductMapping).where(QuickRestoKpiProductMapping.connection_id == int(connection_id))
+        ).scalars()
+    )
+    departments = list(
+        db.execute(
+            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == int(connection_id))
+        ).scalars()
+    )
+    product_ids = {int(item.external_product_id) for item in products}
+    group_ids = {int(item.external_group_id) for item in products if item.external_group_id is not None}
+    group_names = {
+        int(item.external_id): str(item.external_name).strip()
+        for item in departments
+        if str(item.external_name or "").strip()
+        and not str(item.external_name).strip().startswith("#")
+        and not str(item.external_name).strip().startswith("Составная или скрытая группа QuickResto #")
+    }
+    return product_ids, group_ids, group_names
 
 
 def _department_candidate_labels(
@@ -929,27 +963,90 @@ def refresh_quickresto_kpi_mappings(
         db,
         connection_id=int(connection.id),
     )
-    category_summary = {
-        "dish_category_ids_seen": len(issue_candidates),
-        "dish_category_paths_refreshed": 0,
-        "unresolved_dish_category_ids": sorted(issue_candidates),
+    product_ids, product_group_ids, direct_group_names = _quickresto_product_ids_and_group_names(
+        db,
+        connection_id=int(connection.id),
+    )
+    directory_rows: list[dict] = []
+    directory_summary = {
+        "directory_rows_seen": 0,
+        "directory_products_matched": 0,
+        "directory_products_unresolved": len(product_ids),
+        "product_names_refreshed": 0,
+        "product_group_names_refreshed": 0,
     }
+    directory_group_names: dict[int, str] = {}
+    category_summary = {
+        "dish_category_ids_seen": len(issue_candidates | product_group_ids),
+        "dish_category_paths_refreshed": 0,
+        "unresolved_dish_category_ids": sorted(issue_candidates | product_group_ids),
+    }
+    directory_refresh_error = None
     category_refresh_error = None
-    if issue_candidates:
-        try:
-            # Category titles are helpful but not required for the product
-            # catalog. A remote QuickResto failure must not discard names read
-            # successfully from the encrypted source snapshots.
-            with db.begin_nested():
-                with build_quickresto_client(connection) as client:
-                    category_summary = refresh_dish_category_paths(
-                        db,
-                        connection_id=int(connection.id),
-                        client=client,
-                        external_ids=issue_candidates,
-                    ).as_summary()
-        except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
-            category_refresh_error = str(exc)
+    try:
+        with build_quickresto_client(connection) as client:
+            try:
+                module_name, class_name = QUICKRESTO_OBJECT_TYPES["dishes"]
+                directory_rows = client.list_all_objects(
+                    module_name=module_name,
+                    class_name=class_name,
+                    # QuickResto returns only root categories for this
+                    # hierarchical list unless a parent filter is present.
+                    # In real clouds the filtered response contains the
+                    # flattened tree, including Dish rows from every group.
+                    filters=[{"field": "parentId", "operation": "eq", "value": 0}],
+                )
+                product_group_ids.update(
+                    product_directory_group_ids(
+                        directory_rows,
+                        external_product_ids=product_ids,
+                    )
+                )
+                directory_group_names = product_directory_group_names(
+                    directory_rows,
+                    external_group_ids=product_group_ids,
+                )
+            except (QuickRestoError, ValueError) as exc:
+                directory_refresh_error = str(exc)
+
+            category_candidates = set(issue_candidates)
+            if directory_rows:
+                category_candidates.update(product_group_ids - set(direct_group_names) - set(directory_group_names))
+            category_summary = {
+                "dish_category_ids_seen": len(category_candidates),
+                "dish_category_paths_refreshed": 0,
+                "unresolved_dish_category_ids": sorted(category_candidates),
+            }
+            if category_candidates:
+                try:
+                    # Category titles are useful for grouping but not required
+                    # for restoring the actual dish titles.
+                    with db.begin_nested():
+                        category_summary = refresh_dish_category_paths(
+                            db,
+                            connection_id=int(connection.id),
+                            client=client,
+                            external_ids=category_candidates,
+                            direct_mapping_ids=direct_group_names,
+                        ).as_summary()
+                except (QuickRestoError, ValueError) as exc:
+                    category_refresh_error = str(exc)
+    except (IntegrationCredentialError, ValueError) as exc:
+        directory_refresh_error = str(exc)
+        category_refresh_error = str(exc)
+
+    if directory_rows:
+        category_group_names = load_dish_category_name_index(
+            db,
+            connection_id=int(connection.id),
+            external_ids=product_group_ids,
+        )
+        directory_summary = enrich_quickresto_product_catalog_from_directory(
+            db,
+            connection_id=int(connection.id),
+            rows=directory_rows,
+            group_names={**directory_group_names, **category_group_names, **direct_group_names},
+        )
     try:
         db.commit()
     except Exception:
@@ -959,8 +1056,10 @@ def refresh_quickresto_kpi_mappings(
         "ok": True,
         "summary": {
             **summary,
+            **directory_summary,
             **category_summary,
             "source_snapshots_scanned": len(latest_by_shift),
+            **({"product_directory_refresh_error": directory_refresh_error} if directory_refresh_error else {}),
             **({"dish_category_refresh_error": category_refresh_error} if category_refresh_error else {}),
         },
         "products": serialize_quickresto_kpi_product_mappings(

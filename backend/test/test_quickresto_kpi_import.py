@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
@@ -20,15 +21,26 @@ from app.models.quickresto_department_mapping import (
     QuickRestoDepartmentMapping,
 )
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.user import User
 from app.models.venue import Venue
-from app.routers.venue_quickresto import put_quickresto_kpi_mappings
+from app.routers.venue_quickresto import (
+    put_quickresto_kpi_mappings,
+    refresh_quickresto_kpi_mappings,
+)
 from app.schemas.quickresto import QuickRestoKpiMappingsUpdateIn
-from app.services.integrations.quickresto_kpi import product_catalog_from_sources
+from app.services.integrations.quickresto_kpi import (
+    enrich_quickresto_product_catalog_from_directory,
+    product_catalog_from_sources,
+    product_directory_group_ids,
+    product_directory_group_names,
+    refresh_quickresto_product_catalog,
+)
 from app.services.integrations.quickresto_normalize import (
     QuickRestoDataError,
     aggregate_normalized_shifts,
@@ -162,8 +174,10 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             QuickRestoDepartmentMapping.__table__,
             QuickRestoDepartmentAllocation.__table__,
             QuickRestoKpiProductMapping.__table__,
+            QuickRestoDishCategoryPath.__table__,
             QuickRestoSyncRun.__table__,
             QuickRestoImportIssue.__table__,
+            QuickRestoSourceSnapshot.__table__,
             DailyReport.__table__,
             DailyReportValue.__table__,
             QuickRestoReportImport.__table__,
@@ -263,6 +277,135 @@ class QuickRestoKpiImportTests(unittest.TestCase):
         self.assertEqual(normalized["product_sales_external"]["501:1106"]["revenue_minor"], 10_000)
         self.assertNotIn("503:1106", normalized["product_sales_external"])
         self.assertNotIn("504:1106", normalized["product_sales_external"])
+
+    def test_catalog_keeps_a_real_title_when_a_sanitized_snapshot_follows_it(self):
+        raw = {"orders": _orders()}
+        sanitized = {
+            "orders": [
+                {
+                    "returned": False,
+                    "payments": [],
+                    "orderItemList": [
+                        {"product": {"id": 501, "parentId": 1106}},
+                    ],
+                }
+            ]
+        }
+
+        catalog = product_catalog_from_sources([raw, sanitized])
+
+        self.assertEqual(catalog[501]["external_name"], "Бизнес-ланч KPI")
+        self.assertEqual(catalog[501]["external_group_name"], "Бизнес-ланчи")
+
+    def test_directory_restores_names_without_importing_unsold_dishes(self):
+        sanitized = {
+            "orders": [
+                {
+                    "returned": False,
+                    "payments": [],
+                    "orderItemList": [
+                        {"product": {"id": 501, "parentId": 1106}},
+                        {"product": {"id": 502, "parentId": 1107}},
+                    ],
+                }
+            ]
+        }
+        directory = [
+            {"id": 501, "itemTitle": "Бизнес-ланч обновлён", "parentId": 1106},
+            {"id": 502, "itemTitle": "Лимонад", "parentId": 1107},
+            {"id": 999, "itemTitle": "Никогда не продавалось", "parentId": 1108},
+            {"id": 1107, "itemTitle": "Напитки"},
+        ]
+        with Session(self.engine) as db:
+            _user, _venue, connection = self._seed(db)
+            refresh_quickresto_product_catalog(
+                db,
+                connection_id=int(connection.id),
+                sources=[sanitized],
+            )
+            before = {
+                int(row.external_product_id): row for row in db.execute(select(QuickRestoKpiProductMapping)).scalars()
+            }
+            self.assertEqual(before[501].external_name, "Бизнес-ланч KPI")
+            self.assertEqual(before[502].external_name, "Позиция QuickResto #502")
+
+            self.assertEqual(
+                product_directory_group_ids(directory, external_product_ids=before),
+                {1106, 1107},
+            )
+            self.assertEqual(
+                product_directory_group_names(directory, external_group_ids={1106, 1107}),
+                {1107: "Напитки"},
+            )
+            summary = enrich_quickresto_product_catalog_from_directory(
+                db,
+                connection_id=int(connection.id),
+                rows=directory,
+                group_names={1106: "Бизнес-ланчи", 1107: "Напитки"},
+            )
+            db.commit()
+
+            mappings = {
+                int(row.external_product_id): row for row in db.execute(select(QuickRestoKpiProductMapping)).scalars()
+            }
+            self.assertEqual(set(mappings), {501, 502})
+            self.assertEqual(mappings[501].external_name, "Бизнес-ланч обновлён")
+            self.assertEqual(mappings[501].external_group_name, "Бизнес-ланчи")
+            self.assertEqual(mappings[502].external_name, "Лимонад")
+            self.assertEqual(mappings[502].external_group_name, "Напитки")
+            self.assertEqual(summary["directory_rows_seen"], 4)
+            self.assertEqual(summary["directory_products_matched"], 2)
+            self.assertEqual(summary["directory_products_unresolved"], 0)
+            self.assertEqual(summary["product_names_refreshed"], 2)
+
+    def test_refresh_endpoint_requests_flattened_directory_and_repairs_existing_rows(self):
+        class DirectoryClient:
+            filters = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, _exc_type, _exc, _traceback):
+                return None
+
+            def list_all_objects(self, *, module_name, class_name, filters):
+                self.filters = filters
+                self.module_name = module_name
+                self.class_name = class_name
+                return [
+                    {"id": 502, "itemTitle": "Лимонад", "parentId": 1107},
+                    {"id": 1107, "itemTitle": "Напитки"},
+                ]
+
+        client = DirectoryClient()
+        with Session(self.engine) as db:
+            user, _venue, connection = self._seed(db)
+            db.add(
+                QuickRestoKpiProductMapping(
+                    connection_id=int(connection.id),
+                    external_product_id=502,
+                    external_name="Позиция QuickResto #502",
+                    external_group_id=1107,
+                    external_group_name=None,
+                    kpi_metric_id=None,
+                    exclude_from_percentage_base=True,
+                )
+            )
+            db.commit()
+
+            with patch(
+                "app.routers.venue_quickresto.build_quickresto_client",
+                return_value=client,
+            ):
+                response = refresh_quickresto_kpi_mappings(21, False, db, user)
+
+            products = {int(item["external_product_id"]): item for item in response["products"]}
+            self.assertEqual(products[502]["external_name"], "Лимонад")
+            self.assertEqual(products[502]["external_group_name"], "Напитки")
+            self.assertEqual(response["summary"]["directory_products_matched"], 1)
+            self.assertEqual(response["summary"]["directory_products_unresolved"], 0)
+            self.assertEqual(client.filters, [{"field": "parentId", "operation": "eq", "value": 0}])
+            self.assertTrue(client.class_name.endswith(".Dish"))
 
     def test_mapped_product_increments_kpi_and_routes_revenue_outside_departments(self):
         normalized = normalize_closed_shift(_closed_shift(), _orders(), cutoff_hour=6)
