@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260910-kpirouting1" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260911-monthlyqueue1" />
   <script>
     (() => {
       try {
@@ -48,6 +48,7 @@
       <section class="card section-card">
         <div class="section-card__head quickresto-section-head">
           <div>
+            <div class="quickresto-step-label">Шаг 1 из 6</div>
             <b>Подключение</b>
             <div class="muted small mt-4" id="connectionStatus">Не настроено</div>
           </div>
@@ -63,7 +64,7 @@
             <div class="muted small">Это не данные для входа в бэк-офис и не логин или пароль кассового терминала.</div>
             <a class="link small" href="https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/" target="_blank" rel="noopener noreferrer">Открыть инструкцию QuickResto <span aria-hidden="true">↗</span></a>
           </aside>
-          <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" /></label>
+          <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" required /></label>
           <label>
             <span>Граница бизнес-дня</span>
             <select id="cutoffHour" aria-describedby="cutoffHourHelp"></select>
@@ -110,10 +111,7 @@
           <div class="muted small mt-8" id="importModeHint"></div>
         </fieldset>
         <div class="quickresto-actions mt-12" id="connectionActions">
-          <button class="btn primary" id="saveConnection">Сохранить подключение</button>
-          <button class="btn" id="discoverMappings">Проверить и получить справочники</button>
-          <button class="btn" id="runSync">Импортировать закрытые смены</button>
-          <button class="btn subtle" id="runFullSync" title="Повторно сверить всю историю от выбранной даты">Полная сверка</button>
+          <button class="btn primary" id="saveConnection">Сохранить и проверить подключение</button>
         </div>
         <div class="quickresto-readonly mt-12" id="readOnlyHint" hidden>Доступ только для просмотра. Изменять настройки и повторять импорт может владелец или администратор заведения.</div>
         <div class="muted small mt-8" id="connectionHint" aria-live="polite"></div>
@@ -123,6 +121,7 @@
       <section class="card section-card quickresto-scope" id="scopeSection" data-status="NEEDS_SELECTION">
         <div class="section-card__head quickresto-section-head">
           <div>
+            <div class="quickresto-step-label">Шаг 2 из 6</div>
             <b>Область импорта</b>
             <div class="muted small mt-4">Выберите конкретное заведение внутри облака QuickResto, его места реализации и связанные склады. Смены других заведений в Axelio не попадут.</div>
           </div>
@@ -160,6 +159,73 @@
         </details>
       </section>
 
+      <section class="card section-card" id="paymentSection">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <div class="quickresto-step-label">Шаг 3 из 6</div>
+            <b>Сопоставление типов оплат</b>
+            <div class="muted small mt-4">Axelio сопоставляет одинаковые названия автоматически и создаёт новый способ оплаты, если совпадения нет. Списания всегда исключаются из выручки.</div>
+          </div>
+          <button class="btn primary" id="savePaymentMappings" type="button">Сохранить оплаты</button>
+        </div>
+        <div class="quickresto-actions mt-12">
+          <button class="btn" id="discoverMappings" type="button">Обновить справочники и автосопоставить</button>
+        </div>
+        <div id="paymentMappings" class="quickresto-mapping-list mt-12"></div>
+        <div class="muted small mt-8" id="paymentMappingHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card quickresto-kpi-link">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <div class="quickresto-step-label">Шаг 4 из 6</div>
+            <b>KPI из позиций QuickResto</b>
+            <div class="muted small mt-4">Свяжите одну позицию или их пул со счётчиком KPI Axelio и исключите выручку этих позиций из процентных начислений.</div>
+          </div>
+          <a class="btn" id="openKpiMappings" href="#">Настроить KPI</a>
+        </div>
+      </section>
+
+      <section class="card section-card" id="departmentSection">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <div class="quickresto-step-label">Шаг 5 из 6</div>
+            <b>Сопоставление групп блюд</b>
+            <div class="muted small mt-4">Обычные группы Axelio сопоставляет автоматически. Для составной или скрытой группы можно отредактировать процентное распределение по департаментам либо учитывать её позиции как KPI.</div>
+          </div>
+          <button class="btn primary" id="saveMappings">Сохранить группы блюд</button>
+        </div>
+        <div id="departmentMappings" class="quickresto-mapping-list mt-12"></div>
+        <div class="muted small mt-8" id="mappingHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card quickresto-launch" id="importSection">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <div class="quickresto-step-label">Шаг 6 из 6</div>
+            <b>Запуск импорта</b>
+            <div class="muted small mt-4">Большой период будет автоматически разбит на календарные месяцы. Они обрабатываются последовательно и не удерживают страницу открытой.</div>
+          </div>
+          <span class="quickresto-status" id="batchStatus">Не запускался</span>
+        </div>
+        <div class="quickresto-batch-progress mt-12" id="batchProgress" hidden>
+          <div class="quickresto-batch-progress__head">
+            <b id="batchProgressTitle">Подготавливаем очередь…</b>
+            <span id="batchProgressPercent">0%</span>
+          </div>
+          <div class="quickresto-progress-track" id="batchProgressTrack"><progress id="batchProgressBar" max="100" value="0" aria-labelledby="batchProgressTitle batchProgressPercent">0%</progress></div>
+          <div class="quickresto-batch-progress__meta" id="batchProgressMeta"></div>
+          <div class="quickresto-run-error" id="batchProgressError" hidden></div>
+          <button class="btn" id="retryBatch" type="button" hidden>Продолжить с месяца ошибки</button>
+        </div>
+        <div class="quickresto-actions mt-12">
+          <button class="btn primary" id="runSync">Импортировать закрытые смены</button>
+          <button class="btn subtle" id="runFullSync" title="Повторно сверить всю историю от выбранной даты">Полная сверка</button>
+          <a class="btn" id="openImportHistory" href="#">История импортов</a>
+        </div>
+        <div class="muted small mt-8" id="importHint" aria-live="polite"></div>
+      </section>
+
       <section class="card section-card quickresto-issues-link" id="issueSection" data-attention="false">
         <div class="section-card__head quickresto-section-head">
           <div>
@@ -169,53 +235,11 @@
           <a class="btn" id="openIssues" href="#">Открыть центр проблем</a>
         </div>
       </section>
-
-      <section class="card section-card quickresto-kpi-link">
-        <div class="section-card__head quickresto-section-head">
-          <div>
-            <b>KPI из позиций QuickResto</b>
-            <div class="muted small mt-4">Свяжите одну позицию или их пул со счётчиком KPI Axelio и исключите выручку этих позиций из процентных начислений.</div>
-          </div>
-          <a class="btn" id="openKpiMappings" href="#">Настроить KPI</a>
-        </div>
-      </section>
-
-      <section class="card section-card">
-        <div class="section-card__head quickresto-section-head">
-          <div>
-            <b>Сопоставление оплат</b>
-            <div class="muted small mt-4">Axelio сопоставляет одинаковые названия автоматически и создаёт новый способ оплаты, если совпадения нет. Списания всегда исключаются из выручки.</div>
-          </div>
-        </div>
-        <div id="paymentMappings" class="quickresto-mapping-list mt-12"></div>
-      </section>
-
-      <section class="card section-card">
-        <div class="section-card__head quickresto-section-head">
-          <div>
-            <b>Сопоставление групп блюд</b>
-            <div class="muted small mt-4">Обычные группы Axelio сопоставляет автоматически. Для составной или скрытой группы можно отредактировать процентное распределение по департаментам либо учитывать её позиции как KPI.</div>
-          </div>
-          <button class="btn primary" id="saveMappings">Сохранить сопоставления</button>
-        </div>
-        <div id="departmentMappings" class="quickresto-mapping-list mt-12"></div>
-        <div class="muted small mt-8" id="mappingHint" aria-live="polite"></div>
-      </section>
-
-      <section class="card section-card">
-        <div class="section-card__head quickresto-section-head">
-          <div>
-            <b>Последние запуски</b>
-            <div class="muted small mt-4">История импорта без персональных данных гостей.</div>
-          </div>
-        </div>
-        <div id="runHistory" class="quickresto-history mt-12"></div>
-      </section>
     </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260910-kpirouting1"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260911-monthlyqueue1"></script>
 </body>
 </html>

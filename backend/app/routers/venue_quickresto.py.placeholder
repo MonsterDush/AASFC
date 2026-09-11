@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -52,6 +52,14 @@ from app.services.integrations.quickresto_sync import (
     retry_quickresto_import_issue,
     sync_quickresto_connection,
 )
+from app.services.integrations.quickresto_import_batches import (
+    ACTIVE_BATCH_STATUSES,
+    create_quickresto_import_batch,
+    latest_quickresto_import_batch,
+    quickresto_import_batch_is_active,
+    retry_quickresto_import_batch,
+    serialize_quickresto_import_batch,
+)
 from app.services.integrations.quickresto_scope_reconciliation import (
     confirm_quickresto_historical_scope_reconciliation,
     preview_quickresto_historical_scope_reconciliation,
@@ -82,14 +90,6 @@ from app.services.integrations.quickresto_kpi import (
     serialize_quickresto_kpi_product_mappings,
 )
 from app.services.integrations.quickresto_snapshot import QuickRestoSnapshotError
-from app.services.integrations.quickresto_import_batches import (
-    active_quickresto_import_batch,
-    create_quickresto_import_batch,
-    latest_quickresto_import_batch,
-    retry_quickresto_import_batch,
-    run_quickresto_import_batch_worker,
-    serialize_quickresto_import_batch,
-)
 from app.services.integrations.quickresto_scope import (
     QuickRestoScopeConflictError,
     QuickRestoScopeError,
@@ -182,12 +182,9 @@ def _connection_for_update_or_404(db: Session, venue_id: int) -> QuickRestoConne
 
 
 def _require_quickresto_idle(db: Session, connection: QuickRestoConnection) -> None:
-    if active_quickresto_import_batch(db, connection_id=int(connection.id)) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Помесячный импорт QuickResto выполняется. Дождитесь его завершения перед изменением интеграции.",
-        )
-    if quickresto_sync_is_active(connection):
+    if quickresto_sync_is_active(connection) or quickresto_import_batch_is_active(
+        db, connection_id=int(connection.id)
+    ):
         raise HTTPException(
             status_code=409,
             detail="QuickResto import is running. Wait for it to finish before changing the integration.",
@@ -249,25 +246,23 @@ def _serialize_run(run: QuickRestoSyncRun) -> dict:
         "status": run.status,
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "summary": run.summary_json,
+        "error": run.error_message,
         "shifts_seen": int(run.shifts_seen or 0),
         "shifts_imported": int(run.shifts_imported or 0),
         "reports_created": int(run.reports_created or 0),
         "reports_updated": int(run.reports_updated or 0),
         "reports_unchanged": int(run.reports_unchanged or 0),
-        "summary": run.summary_json,
-        "error": run.error_message,
     }
 
 
 def _serialize_import_batch(db: Session, batch: QuickRestoImportBatch) -> dict:
-    result = serialize_quickresto_import_batch(batch)
-    issue_ids: set[int] = set()
-    summary = batch.summary_json if isinstance(batch.summary_json, dict) else {}
-    for value in summary.get("issue_ids") or []:
-        try:
-            issue_ids.add(int(value))
-        except (TypeError, ValueError, OverflowError):
-            continue
+    data = serialize_quickresto_import_batch(batch)
+    issue_ids = {
+        int(value)
+        for value in (batch.summary_json or {}).get("issue_ids", [])
+        if str(value).isdigit() and int(value) > 0
+    }
     if batch.last_sync_run_id is not None:
         issue_ids.update(
             int(value)
@@ -278,8 +273,8 @@ def _serialize_import_batch(db: Session, batch: QuickRestoImportBatch) -> dict:
                 )
             ).scalars()
         )
-    result["issue_ids"] = sorted(issue_id for issue_id in issue_ids if issue_id > 0)
-    return result
+    data["issue_ids"] = sorted(issue_ids)
+    return data
 
 
 def _serialized_issue_counters(db: Session, *, connection_id: int) -> dict:
@@ -1465,7 +1460,6 @@ def post_quickresto_historical_scope_reconcile(
 @router.post("/{venue_id}/integrations/quickresto/sync")
 def post_quickresto_sync(
     venue_id: int,
-    background_tasks: BackgroundTasks,
     full: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1477,16 +1471,15 @@ def post_quickresto_sync(
             batch = create_quickresto_import_batch(
                 db,
                 connection=connection,
-                requested_by_user_id=int(user.id),
+                requested_by_user_id=user.id,
                 force_full=full,
             )
         except QuickRestoSyncError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        background_tasks.add_task(run_quickresto_import_batch_worker, int(batch.id))
         return {
             "ok": True,
             "queued": True,
-            "import_batch": _serialize_import_batch(db, batch),
+            "batch": _serialize_import_batch(db, batch),
         }
     try:
         run = sync_quickresto_connection(
@@ -1500,62 +1493,8 @@ def post_quickresto_sync(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
         "ok": run.status in {"SUCCEEDED", "PARTIAL"},
-        "queued": False,
         "run": _serialize_run(run),
     }
-
-
-@router.get("/{venue_id}/integrations/quickresto/import-batches")
-def list_quickresto_import_batches(
-    venue_id: int,
-    status: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    _require_quickresto_view(db, venue_id=venue_id, user=user)
-    connection = _connection_or_404(db, venue_id)
-    statement = select(QuickRestoImportBatch).where(QuickRestoImportBatch.connection_id == int(connection.id))
-    if status:
-        normalized = str(status).strip().upper()
-        if normalized not in {"PENDING", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"}:
-            raise HTTPException(status_code=422, detail="Unknown QuickResto import batch status")
-        statement = statement.where(QuickRestoImportBatch.status == normalized)
-    rows = list(
-        db.execute(
-            statement.order_by(
-                QuickRestoImportBatch.created_at.desc(),
-                QuickRestoImportBatch.id.desc(),
-            ).limit(limit)
-        ).scalars()
-    )
-    return {"batches": [_serialize_import_batch(db, item) for item in rows]}
-
-
-@router.post("/{venue_id}/integrations/quickresto/import-batches/{batch_id}/retry")
-def post_quickresto_import_batch_retry(
-    venue_id: int,
-    batch_id: int,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    _require_quickresto_manage(db, venue_id=venue_id, user=user)
-    connection = _connection_or_404(db, venue_id)
-    batch = db.execute(
-        select(QuickRestoImportBatch).where(
-            QuickRestoImportBatch.id == int(batch_id),
-            QuickRestoImportBatch.connection_id == int(connection.id),
-        )
-    ).scalar_one_or_none()
-    if batch is None:
-        raise HTTPException(status_code=404, detail="QuickResto import batch not found")
-    try:
-        batch = retry_quickresto_import_batch(db, batch=batch)
-    except QuickRestoSyncError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(run_quickresto_import_batch_worker, int(batch.id))
-    return {"ok": True, "import_batch": _serialize_import_batch(db, batch)}
 
 
 @router.get("/{venue_id}/integrations/quickresto/runs")
@@ -1578,3 +1517,57 @@ def list_quickresto_runs(
         .all()
     )
     return [_serialize_run(item) for item in rows]
+
+
+@router.get("/{venue_id}/integrations/quickresto/import-batches")
+def list_quickresto_import_batches(
+    venue_id: int,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_view(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    statement = select(QuickRestoImportBatch).where(
+        QuickRestoImportBatch.connection_id == int(connection.id)
+    )
+    if status:
+        normalized_status = str(status).strip().upper()
+        allowed = set(ACTIVE_BATCH_STATUSES) | {"PARTIAL", "SUCCEEDED", "FAILED"}
+        if normalized_status not in allowed:
+            raise HTTPException(status_code=400, detail="Unknown QuickResto import status")
+        statement = statement.where(QuickRestoImportBatch.status == normalized_status)
+    rows = list(
+        db.execute(
+            statement.order_by(
+                QuickRestoImportBatch.created_at.desc(),
+                QuickRestoImportBatch.id.desc(),
+            ).limit(limit)
+        ).scalars()
+    )
+    return {"items": [_serialize_import_batch(db, item) for item in rows]}
+
+
+@router.post("/{venue_id}/integrations/quickresto/import-batches/{batch_id}/retry")
+def retry_quickresto_import_batch_route(
+    venue_id: int,
+    batch_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    batch = db.execute(
+        select(QuickRestoImportBatch).where(
+            QuickRestoImportBatch.id == int(batch_id),
+            QuickRestoImportBatch.connection_id == int(connection.id),
+        )
+    ).scalar_one_or_none()
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Очередь импорта QuickResto не найдена")
+    try:
+        batch = retry_quickresto_import_batch(db, batch=batch)
+    except QuickRestoSyncError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "queued": True, "batch": _serialize_import_batch(db, batch)}

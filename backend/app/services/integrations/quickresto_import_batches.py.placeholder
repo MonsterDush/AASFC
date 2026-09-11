@@ -1,0 +1,501 @@
+from __future__ import annotations
+
+from contextlib import nullcontext
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_import_batch import QuickRestoImportBatch
+from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.services.integrations.quickresto import QuickRestoClient
+from app.services.integrations.quickresto_notifications import enqueue_quickresto_import_notification
+from app.services.integrations.quickresto_scope import QuickRestoScopeError, ensure_quickresto_scope_ready
+from app.services.integrations.quickresto_sync import (
+    QuickRestoSyncError,
+    build_quickresto_client,
+    quickresto_sync_is_active,
+    reclaim_stale_quickresto_sync_state,
+    sync_quickresto_connection,
+)
+
+
+ACTIVE_BATCH_STATUSES = frozenset({"PENDING", "RUNNING"})
+TERMINAL_BATCH_STATUSES = frozenset({"PARTIAL", "SUCCEEDED", "FAILED"})
+_BATCH_LEASE_TIMEOUT = timedelta(minutes=30)
+_STALE_BATCH_MESSAGE = "Предыдущий обработчик месячного импорта остановился. Очередь восстановлена с текущего месяца."
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _next_month_boundary(value: date) -> date:
+    if value.month == 12:
+        return date(value.year + 1, 1, 1)
+    return date(value.year, value.month + 1, 1)
+
+
+def monthly_periods_count(period_start: date, period_end_exclusive: date) -> int:
+    if period_end_exclusive <= period_start:
+        raise ValueError("QuickResto import period end must be later than its start")
+    count = 0
+    cursor = period_start
+    while cursor < period_end_exclusive:
+        count += 1
+        cursor = min(_next_month_boundary(cursor), period_end_exclusive)
+    return count
+
+
+def _batch_totals(batch: QuickRestoImportBatch) -> dict[str, Any]:
+    summary = dict(batch.summary_json) if isinstance(batch.summary_json, dict) else {}
+    totals = summary.get("totals")
+    if not isinstance(totals, dict):
+        totals = {}
+    return {
+        "shifts_seen": int(totals.get("shifts_seen") or 0),
+        "shifts_imported": int(totals.get("shifts_imported") or 0),
+        "reports_created": int(totals.get("reports_created") or 0),
+        "reports_updated": int(totals.get("reports_updated") or 0),
+        "reports_unchanged": int(totals.get("reports_unchanged") or 0),
+        "issue_count": int(totals.get("issue_count") or 0),
+    }
+
+
+def serialize_quickresto_import_batch(batch: QuickRestoImportBatch) -> dict[str, Any]:
+    return {
+        "id": int(batch.id),
+        "trigger": str(batch.trigger),
+        "force_full": bool(batch.force_full),
+        "status": str(batch.status),
+        "period_start": batch.period_start.isoformat(),
+        "period_end_exclusive": batch.period_end_exclusive.isoformat(),
+        "next_period_start": batch.next_period_start.isoformat(),
+        "current_period_start": batch.current_period_start.isoformat() if batch.current_period_start else None,
+        "current_period_end_exclusive": (
+            batch.current_period_end_exclusive.isoformat() if batch.current_period_end_exclusive else None
+        ),
+        "total_periods": int(batch.total_periods),
+        "completed_periods": int(batch.completed_periods),
+        "partial_periods": int(batch.partial_periods),
+        "retry_count": int(batch.retry_count),
+        "last_sync_run_id": batch.last_sync_run_id,
+        "error": batch.error_message,
+        "summary": batch.summary_json,
+        "created_at": batch.created_at.isoformat(),
+        "started_at": batch.started_at.isoformat() if batch.started_at else None,
+        "finished_at": batch.finished_at.isoformat() if batch.finished_at else None,
+        "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+    }
+
+
+def latest_quickresto_import_batch(
+    db: Session,
+    *,
+    connection_id: int,
+) -> QuickRestoImportBatch | None:
+    return db.execute(
+        select(QuickRestoImportBatch)
+        .where(QuickRestoImportBatch.connection_id == int(connection_id))
+        .order_by(QuickRestoImportBatch.created_at.desc(), QuickRestoImportBatch.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def active_quickresto_import_batch(
+    db: Session,
+    *,
+    connection_id: int,
+) -> QuickRestoImportBatch | None:
+    return db.execute(
+        select(QuickRestoImportBatch)
+        .where(
+            QuickRestoImportBatch.connection_id == int(connection_id),
+            QuickRestoImportBatch.status.in_(ACTIVE_BATCH_STATUSES),
+        )
+        .order_by(QuickRestoImportBatch.created_at.asc(), QuickRestoImportBatch.id.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def quickresto_import_batch_is_active(db: Session, *, connection_id: int) -> bool:
+    return active_quickresto_import_batch(db, connection_id=connection_id) is not None
+
+
+def create_quickresto_import_batch(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    requested_by_user_id: int | None,
+    force_full: bool,
+    today: date | None = None,
+) -> QuickRestoImportBatch:
+    connection_id = int(connection.id)
+    connection = db.execute(
+        select(QuickRestoConnection)
+        .where(QuickRestoConnection.id == connection_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if connection is None:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection no longer exists")
+    now = _utcnow()
+    if quickresto_sync_is_active(connection, now=now):
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto sync is already running")
+    reclaim_stale_quickresto_sync_state(db, connection=connection, now=now)
+    if active_quickresto_import_batch(db, connection_id=connection_id) is not None:
+        db.rollback()
+        raise QuickRestoSyncError("Помесячный импорт QuickResto уже поставлен в очередь")
+    if not connection.is_active:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection is disabled")
+    try:
+        ensure_quickresto_scope_ready(connection)
+    except QuickRestoScopeError as exc:
+        db.rollback()
+        raise QuickRestoSyncError(str(exc)) from exc
+
+    target_today = today or now.date()
+    historical = bool(force_full or connection.last_full_reconciliation_at is None)
+    if historical:
+        period_start = connection.sync_from_date
+        if period_start is None:
+            db.rollback()
+            raise QuickRestoSyncError("Укажите дату «Импортировать начиная с» перед историческим импортом")
+    else:
+        cursor = connection.incremental_cursor_closed_at
+        overlap_start = (
+            cursor.astimezone(timezone.utc).date() - timedelta(days=2)
+            if cursor is not None and cursor.tzinfo is not None
+            else cursor.date() - timedelta(days=2)
+            if cursor is not None
+            else target_today
+        )
+        period_start = max(connection.sync_from_date or overlap_start, overlap_start)
+    if period_start > target_today:
+        db.rollback()
+        raise QuickRestoSyncError("Дата начала импорта находится в будущем")
+
+    period_end_exclusive = target_today + timedelta(days=1)
+    total_periods = monthly_periods_count(period_start, period_end_exclusive)
+    batch = QuickRestoImportBatch(
+        connection_id=connection_id,
+        requested_by_user_id=requested_by_user_id,
+        trigger="FULL" if force_full else "MANUAL",
+        force_full=historical,
+        status="PENDING",
+        period_start=period_start,
+        period_end_exclusive=period_end_exclusive,
+        next_period_start=period_start,
+        total_periods=total_periods,
+        completed_periods=0,
+        partial_periods=0,
+        retry_count=0,
+        summary_json={"totals": _batch_totals_from_values()},
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    connection.last_sync_started_at = now
+    connection.last_sync_status = "QUEUED"
+    connection.last_sync_error = None
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def _batch_totals_from_values(**values: int) -> dict[str, int]:
+    return {
+        "shifts_seen": int(values.get("shifts_seen") or 0),
+        "shifts_imported": int(values.get("shifts_imported") or 0),
+        "reports_created": int(values.get("reports_created") or 0),
+        "reports_updated": int(values.get("reports_updated") or 0),
+        "reports_unchanged": int(values.get("reports_unchanged") or 0),
+        "issue_count": int(values.get("issue_count") or 0),
+    }
+
+
+def _merge_run_into_batch_summary(
+    batch: QuickRestoImportBatch,
+    *,
+    run_summary: dict[str, Any],
+    run_id: int,
+    run_status: str,
+    sequence: int,
+    period_start: date,
+    period_end_exclusive: date,
+) -> None:
+    summary = dict(batch.summary_json) if isinstance(batch.summary_json, dict) else {}
+    totals = _batch_totals(batch)
+    for name in totals:
+        totals[name] += int(run_summary.get(name) or 0)
+    periods = list(summary.get("periods") or [])
+    periods.append(
+        {
+            "sequence": int(sequence),
+            "period_start": period_start.isoformat(),
+            "period_end_exclusive": period_end_exclusive.isoformat(),
+            "run_id": int(run_id),
+            "status": str(run_status),
+            "shifts_seen": int(run_summary.get("shifts_seen") or 0),
+            "shifts_imported": int(run_summary.get("shifts_imported") or 0),
+            "reports_created": int(run_summary.get("reports_created") or 0),
+            "reports_updated": int(run_summary.get("reports_updated") or 0),
+            "issue_count": int(run_summary.get("issue_count") or 0),
+        }
+    )
+    summary["totals"] = totals
+    summary["periods"] = periods
+    issue_ids = {
+        int(value)
+        for value in summary.get("issue_ids") or []
+        if str(value).isdigit() and int(value) > 0
+    }
+    for conflict in run_summary.get("conflicts") or []:
+        if isinstance(conflict, dict) and int(conflict.get("issue_id") or 0) > 0:
+            issue_ids.add(int(conflict["issue_id"]))
+    summary["issue_ids"] = sorted(issue_ids)
+    batch.summary_json = summary
+
+
+def _notify_completed_batch_safely(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    batch: QuickRestoImportBatch,
+) -> None:
+    if batch.last_sync_run_id is None:
+        return
+    totals = _batch_totals(batch)
+    try:
+        enqueue_quickresto_import_notification(
+            db,
+            venue_id=int(connection.venue_id),
+            connection_id=int(connection.id),
+            run_id=int(batch.last_sync_run_id),
+            status=str(batch.status),
+            shifts_seen=totals["shifts_seen"],
+            shifts_imported=totals["shifts_imported"],
+            reports_created=totals["reports_created"],
+            reports_updated=totals["reports_updated"],
+            reports_unchanged=totals["reports_unchanged"],
+            issue_count=totals["issue_count"],
+            report_import_mode=str(connection.report_import_mode or "CLOSED"),
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        try:
+            import sentry_sdk
+
+            sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
+
+
+def process_quickresto_import_batch(
+    db: Session,
+    *,
+    batch_id: int,
+    client: QuickRestoClient | None = None,
+) -> QuickRestoImportBatch:
+    batch = db.execute(
+        select(QuickRestoImportBatch)
+        .where(QuickRestoImportBatch.id == int(batch_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if batch is None:
+        db.rollback()
+        raise QuickRestoSyncError("Очередь импорта QuickResto не найдена")
+    if str(batch.status).upper() not in ACTIVE_BATCH_STATUSES:
+        db.rollback()
+        return batch
+
+    connection = db.get(QuickRestoConnection, int(batch.connection_id))
+    if connection is None or not connection.is_active:
+        batch.status = "FAILED"
+        batch.error_message = "Подключение QuickResto удалено или отключено"
+        batch.finished_at = _utcnow()
+        batch.updated_at = batch.finished_at
+        db.commit()
+        return batch
+
+    managed_client = client is None
+    active_client = client or build_quickresto_client(connection)
+    context = active_client if managed_client else nullcontext(active_client)
+    refresh_catalog = True
+    with context as current_client:
+        while batch.next_period_start < batch.period_end_exclusive:
+            period_start = batch.next_period_start
+            period_end_exclusive = min(_next_month_boundary(period_start), batch.period_end_exclusive)
+            sequence = int(batch.completed_periods) + 1
+            now = _utcnow()
+            batch.status = "RUNNING"
+            batch.started_at = batch.started_at or now
+            batch.current_period_start = period_start
+            batch.current_period_end_exclusive = period_end_exclusive
+            batch.error_message = None
+            batch.updated_at = now
+            db.commit()
+            try:
+                run = sync_quickresto_connection(
+                    db,
+                    connection=connection,
+                    requested_by_user_id=batch.requested_by_user_id,
+                    trigger="MONTHLY_IMPORT",
+                    client=current_client,
+                    force_full=bool(batch.force_full),
+                    period_start=period_start,
+                    period_end_exclusive=period_end_exclusive,
+                    include_undated_sources=sequence == 1,
+                    finalize_full_reconciliation=False,
+                    refresh_catalog=refresh_catalog,
+                    batch_id=int(batch.id),
+                    batch_sequence=sequence,
+                    notify_result=False,
+                )
+            except QuickRestoSyncError as exc:
+                batch = db.get(QuickRestoImportBatch, int(batch_id))
+                if batch is None:
+                    raise
+                failed_run = db.execute(
+                    select(QuickRestoSyncRun)
+                    .where(
+                        QuickRestoSyncRun.connection_id == int(batch.connection_id),
+                        QuickRestoSyncRun.trigger == "MONTHLY_IMPORT",
+                        QuickRestoSyncRun.started_at >= now,
+                    )
+                    .order_by(QuickRestoSyncRun.started_at.desc(), QuickRestoSyncRun.id.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                if failed_run is not None:
+                    batch.last_sync_run_id = int(failed_run.id)
+                batch.status = "FAILED"
+                batch.error_message = str(exc)[:1000]
+                batch.finished_at = _utcnow()
+                batch.updated_at = batch.finished_at
+                db.commit()
+                return batch
+
+            refresh_catalog = False
+            batch = db.get(QuickRestoImportBatch, int(batch_id))
+            connection = db.get(QuickRestoConnection, int(batch.connection_id))
+            run_summary = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
+            _merge_run_into_batch_summary(
+                batch,
+                run_summary=run_summary,
+                run_id=int(run.id),
+                run_status=str(run.status),
+                sequence=sequence,
+                period_start=period_start,
+                period_end_exclusive=period_end_exclusive,
+            )
+            batch.completed_periods = sequence
+            if str(run.status).upper() == "PARTIAL":
+                batch.partial_periods = int(batch.partial_periods) + 1
+            batch.last_sync_run_id = int(run.id)
+            batch.next_period_start = period_end_exclusive
+            batch.current_period_start = None
+            batch.current_period_end_exclusive = None
+            batch.updated_at = _utcnow()
+            if batch.next_period_start < batch.period_end_exclusive:
+                connection.last_sync_status = "QUEUED"
+                connection.last_sync_error = None
+            db.commit()
+
+    batch = db.get(QuickRestoImportBatch, int(batch_id))
+    connection = db.get(QuickRestoConnection, int(batch.connection_id))
+    finished_at = _utcnow()
+    batch.status = "PARTIAL" if int(batch.partial_periods) > 0 else "SUCCEEDED"
+    batch.finished_at = finished_at
+    batch.updated_at = finished_at
+    batch.current_period_start = None
+    batch.current_period_end_exclusive = None
+    connection.last_sync_completed_at = finished_at
+    connection.last_sync_status = batch.status
+    connection.last_sync_error = (
+        "Некоторые месяцы требуют внимания в центре проблем импорта"
+        if batch.status == "PARTIAL"
+        else None
+    )
+    if batch.force_full:
+        connection.last_full_reconciliation_at = finished_at
+    db.commit()
+    _notify_completed_batch_safely(db, connection=connection, batch=batch)
+    db.refresh(batch)
+    return batch
+
+
+def retry_quickresto_import_batch(
+    db: Session,
+    *,
+    batch: QuickRestoImportBatch,
+) -> QuickRestoImportBatch:
+    batch = db.execute(
+        select(QuickRestoImportBatch)
+        .where(QuickRestoImportBatch.id == int(batch.id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if batch is None:
+        db.rollback()
+        raise QuickRestoSyncError("Очередь импорта QuickResto не найдена")
+    if str(batch.status).upper() != "FAILED":
+        db.rollback()
+        raise QuickRestoSyncError("Продолжить можно только остановившийся импорт")
+    if active_quickresto_import_batch(db, connection_id=int(batch.connection_id)) is not None:
+        db.rollback()
+        raise QuickRestoSyncError("Для подключения уже выполняется другой помесячный импорт")
+    connection = db.get(QuickRestoConnection, int(batch.connection_id))
+    if connection is None or not connection.is_active:
+        db.rollback()
+        raise QuickRestoSyncError("Подключение QuickResto удалено или отключено")
+    now = _utcnow()
+    batch.status = "PENDING"
+    batch.retry_count = int(batch.retry_count) + 1
+    batch.error_message = None
+    batch.finished_at = None
+    batch.current_period_start = None
+    batch.current_period_end_exclusive = None
+    batch.updated_at = now
+    connection.last_sync_status = "QUEUED"
+    connection.last_sync_error = None
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def reclaim_stale_quickresto_import_batches(db: Session, *, now: datetime | None = None) -> int:
+    timestamp = now or _utcnow()
+    cutoff = timestamp - _BATCH_LEASE_TIMEOUT
+    batches = list(
+        db.execute(
+            select(QuickRestoImportBatch).where(
+                QuickRestoImportBatch.status == "RUNNING",
+                QuickRestoImportBatch.updated_at <= cutoff,
+            )
+        ).scalars()
+    )
+    recovered = 0
+    for batch in batches:
+        connection = db.get(QuickRestoConnection, int(batch.connection_id))
+        if connection is not None and quickresto_sync_is_active(connection, now=timestamp):
+            continue
+        batch.status = "PENDING"
+        batch.error_message = _STALE_BATCH_MESSAGE
+        batch.current_period_start = None
+        batch.current_period_end_exclusive = None
+        batch.updated_at = timestamp
+        if connection is not None:
+            reclaim_stale_quickresto_sync_state(db, connection=connection, now=timestamp)
+            connection.last_sync_status = "QUEUED"
+            connection.last_sync_error = _STALE_BATCH_MESSAGE
+        recovered += 1
+    if recovered:
+        db.commit()
+    return recovered

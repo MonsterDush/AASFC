@@ -10,3 +10,4 @@ htmlcov/
 artifacts/ui-audit-*/
 node_modules/
 .pnpm-store/
+.worktrees/

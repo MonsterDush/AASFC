@@ -37,9 +37,11 @@ class MigrationContractTests(unittest.TestCase):
         category_paths = scripts.get_revision("a4c6e8f0b2d1")
         department_allocations = scripts.get_revision("b6d8f0a2c4e7")
         kpi_product_mappings = scripts.get_revision("c7e9a1b3d5f8")
+        import_batches = scripts.get_revision("d8f0a2c4e6b9")
 
-        self.assertEqual(heads, ["c7e9a1b3d5f8"])
+        self.assertEqual(heads, ["d8f0a2c4e6b9"])
         self.assertEqual(kpi_product_mappings.down_revision, "b6d8f0a2c4e7")
+        self.assertEqual(import_batches.down_revision, "c7e9a1b3d5f8")
         self.assertEqual(department_allocations.down_revision, "a4c6e8f0b2d1")
         self.assertEqual(category_paths.down_revision, "d3e5f7a9b1c2")
         self.assertEqual(scripts.get_revision("d3e5f7a9b1c2").down_revision, "c2f4a6b8d0e1")

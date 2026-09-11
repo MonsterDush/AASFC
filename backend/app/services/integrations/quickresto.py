@@ -118,6 +118,8 @@ class QuickRestoClient:
         self._session = session or requests.Session()
         self._sleep = sleep
         self._jitter = jitter
+        self._closed_shift_fallback_cache: list[dict[str, Any]] | None = None
+        self._order_fallback_cache: list[dict[str, Any]] | None = None
         self._session.auth = (config.login, config.password)
         self._session.headers.update(
             {
@@ -217,12 +219,21 @@ class QuickRestoClient:
         self,
         *,
         closed_since: datetime | None = None,
+        closed_before: datetime | None = None,
         page_size: int = 500,
         max_pages: int = 100,
     ) -> list[dict[str, Any]]:
-        """List closed shifts, falling back to a full scan if filters are unsupported or ignored."""
+        """List closed shifts in a half-open close-time range.
+
+        A real QuickResto cloud normally honors both filters. If it does not,
+        one full scan is cached on this client and reused by the remaining
+        monthly chunks handled by the same worker.
+        """
 
         normalized_since = self._normalize_datetime(closed_since) if closed_since is not None else None
+        normalized_before = self._normalize_datetime(closed_before) if closed_before is not None else None
+        if normalized_since is not None and normalized_before is not None and normalized_before <= normalized_since:
+            raise ValueError("QuickResto closed_before must be later than closed_since")
         filters: list[dict[str, Any]] = [{"field": "status", "operation": "eq", "value": "CLOSED"}]
         if normalized_since is not None:
             filters.append(
@@ -230,6 +241,14 @@ class QuickRestoClient:
                     "field": "closed",
                     "operation": "gte",
                     "value": self._format_datetime(normalized_since),
+                }
+            )
+        if normalized_before is not None:
+            filters.append(
+                {
+                    "field": "closed",
+                    "operation": "lt",
+                    "value": self._format_datetime(normalized_before),
                 }
             )
 
@@ -243,19 +262,37 @@ class QuickRestoClient:
                 sort_fields=("closed", "id"),
                 sort_orders=("asc", "asc"),
             )
-            if all(self._closed_shift_matches(row, normalized_since, unknown_matches=False) for row in rows):
+            if all(
+                self._closed_shift_matches(
+                    row,
+                    normalized_since,
+                    normalized_before,
+                    unknown_matches=False,
+                )
+                for row in rows
+            ):
                 return rows
         except QuickRestoHTTPError as exc:
             if exc.status_code not in _FILTER_FALLBACK_STATUS_CODES:
                 raise
 
-        rows = self.list_all_objects(
-            module_name=QUICKRESTO_OBJECT_TYPES["shifts"][0],
-            class_name=QUICKRESTO_OBJECT_TYPES["shifts"][1],
-            page_size=page_size,
-            max_pages=max_pages,
-        )
-        return [row for row in rows if self._closed_shift_matches(row, normalized_since, unknown_matches=True)]
+        if self._closed_shift_fallback_cache is None:
+            self._closed_shift_fallback_cache = self.list_all_objects(
+                module_name=QUICKRESTO_OBJECT_TYPES["shifts"][0],
+                class_name=QUICKRESTO_OBJECT_TYPES["shifts"][1],
+                page_size=page_size,
+                max_pages=max_pages,
+            )
+        return [
+            row
+            for row in self._closed_shift_fallback_cache
+            if self._closed_shift_matches(
+                row,
+                normalized_since,
+                normalized_before,
+                unknown_matches=True,
+            )
+        ]
 
     def list_orders_for_shift_ids(
         self,
@@ -291,14 +328,17 @@ class QuickRestoClient:
             if exc.status_code not in _FILTER_FALLBACK_STATUS_CODES:
                 raise
 
-        rows = self.list_all_objects(
-            module_name=QUICKRESTO_OBJECT_TYPES["orders"][0],
-            class_name=QUICKRESTO_OBJECT_TYPES["orders"][1],
-            page_size=page_size,
-            max_pages=max_pages,
-        )
+        if self._order_fallback_cache is None:
+            self._order_fallback_cache = self.list_all_objects(
+                module_name=QUICKRESTO_OBJECT_TYPES["orders"][0],
+                class_name=QUICKRESTO_OBJECT_TYPES["orders"][1],
+                page_size=page_size,
+                max_pages=max_pages,
+            )
         target_set = set(targets)
-        return self._deduplicate_rows([row for row in rows if str(row.get("shiftId") or "") in target_set])
+        return self._deduplicate_rows(
+            [row for row in self._order_fallback_cache if str(row.get("shiftId") or "") in target_set]
+        )
 
     @staticmethod
     def _normalize_filters(filters: Iterable[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -352,12 +392,13 @@ class QuickRestoClient:
         cls,
         row: dict[str, Any],
         closed_since: datetime | None,
+        closed_before: datetime | None,
         *,
         unknown_matches: bool,
     ) -> bool:
         if str(row.get("status") or "").upper() != "CLOSED":
             return False
-        if closed_since is None:
+        if closed_since is None and closed_before is None:
             return True
         raw_closed = str(row.get("closed") or row.get("localClosedTime") or "").strip()
         if not raw_closed:
@@ -371,7 +412,12 @@ class QuickRestoClient:
             parsed = datetime.fromisoformat(raw_closed.replace("Z", "+00:00"))
         except ValueError:
             return bool(unknown_matches)
-        return cls._normalize_datetime(parsed) >= closed_since
+        normalized = cls._normalize_datetime(parsed)
+        if closed_since is not None and normalized < closed_since:
+            return False
+        if closed_before is not None and normalized >= closed_before:
+            return False
+        return True
 
     @staticmethod
     def _deduplicate_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

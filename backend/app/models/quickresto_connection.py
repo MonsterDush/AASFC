@@ -124,3 +124,4 @@ class QuickRestoConnection(Base):
         "QuickRestoSalePlaceScope", back_populates="connection", cascade="all, delete-orphan"
     )
     store_scopes = relationship("QuickRestoStoreScope", back_populates="connection", cascade="all, delete-orphan")
+    import_batches = relationship("QuickRestoImportBatch", back_populates="connection", cascade="all, delete-orphan")

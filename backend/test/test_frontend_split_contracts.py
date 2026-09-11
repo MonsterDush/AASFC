@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 55)
+        self.assertEqual(len(html_pages), 56)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -178,7 +178,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260910-kpirouting1", html)
+        self.assertIn("20260911-monthlyqueue1", html)
         self.assertIn('id="scopeSection"', html)
         self.assertIn('id="externalVenue"', html)
         self.assertIn('id="salePlaceOptions"', html)
@@ -218,7 +218,7 @@ class QuickRestoIntegrationContractTests(TestCase):
             "/integrations/quickresto/discover`",
             "/integrations/quickresto/mappings`",
             "/integrations/quickresto/sync${suffix}`",
-            "/integrations/quickresto/runs?limit=10`",
+            "/integrations/quickresto/import-batches?limit=1`",
         ):
             self.assertIn(endpoint, script)
         self.assertIn('el.apiPassword.value = ""', script)
@@ -827,7 +827,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 56)
+        self.assertEqual(consumer_count, 57)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):
