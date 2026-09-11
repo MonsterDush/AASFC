@@ -435,8 +435,7 @@ def process_quickresto_import_batch(
                 finalize_full_reconciliation=False,
                 refresh_catalog=period_start == batch.period_start,
                 batch_id=int(batch.id),
-                batch_period_index=period_index,
-                batch_period_total=int(batch.total_periods),
+                batch_sequence=period_index,
                 notify_result=False,
             )
         except QuickRestoSyncError as exc:

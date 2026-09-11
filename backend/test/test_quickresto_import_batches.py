@@ -116,6 +116,7 @@ class QuickRestoImportBatchTests(unittest.TestCase):
             patch(
                 "app.services.integrations.quickresto_import_batches.sync_quickresto_connection",
                 side_effect=fake_sync,
+                autospec=True,
             ),
             patch("app.services.integrations.quickresto_import_batches.enqueue_quickresto_import_notification"),
         ):
@@ -157,6 +158,7 @@ class QuickRestoImportBatchTests(unittest.TestCase):
         with patch(
             "app.services.integrations.quickresto_import_batches.sync_quickresto_connection",
             side_effect=failed_sync,
+            autospec=True,
         ):
             failed = process_quickresto_import_batch(self.db, batch_id=batch.id, client=object())
 
