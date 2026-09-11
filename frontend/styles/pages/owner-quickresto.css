@@ -101,8 +101,11 @@
 .quickresto-batch-progress__head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .quickresto-batch-progress__head b{min-width:0;overflow-wrap:anywhere}
 .quickresto-batch-progress__head>span{flex:0 0 auto;color:var(--accent);font-size:13px;font-weight:900}
-.quickresto-progress-track{position:relative;height:10px;overflow:hidden;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft)}
-.quickresto-progress-track>span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--statusSuccessText));transition:width .3s ease}
+.quickresto-progress,.quickresto-progress-track{position:relative;height:10px;overflow:hidden;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft)}
+.quickresto-progress>progress,.quickresto-progress-track>progress{display:block;width:100%;height:100%;overflow:hidden;border:0;border-radius:inherit;background:transparent;-webkit-appearance:none;appearance:none}
+.quickresto-progress>progress::-webkit-progress-bar,.quickresto-progress-track>progress::-webkit-progress-bar{background:transparent}
+.quickresto-progress>progress::-webkit-progress-value,.quickresto-progress-track>progress::-webkit-progress-value{border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--statusSuccessText));transition:width .3s ease}
+.quickresto-progress>progress::-moz-progress-bar,.quickresto-progress-track>progress::-moz-progress-bar{border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--statusSuccessText));transition:width .3s ease}
 .quickresto-progress-track[data-active="true"]::after{position:absolute;inset:0;background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.36) 45%,transparent 65%);content:"";transform:translateX(-100%);animation:quickresto-progress-shimmer 1.5s linear infinite}
 @keyframes quickresto-progress-shimmer{to{transform:translateX(100%)}}
 .quickresto-batch-progress__meta{display:flex;flex-wrap:wrap;gap:7px 14px;color:var(--muted);font-size:12px}

@@ -207,9 +207,9 @@ function renderBatchProgress() {
     ? `Обрабатывается: ${formatMonthPeriod(activePeriod, activePeriodEnd)}`
     : `${formatMonthPeriod(batch.period_start, batch.period_end_exclusive)} · ${batchStatusLabel(status)}`;
   el.batchProgressPercent.textContent = `${percent}%`;
-  el.batchProgressTrack.setAttribute("aria-valuenow", String(percent));
   el.batchProgressTrack.dataset.active = batchIsActive(batch) ? "true" : "false";
-  el.batchProgressBar.style.width = `${percent}%`;
+  el.batchProgressBar.value = percent;
+  el.batchProgressBar.textContent = `${percent}%`;
   const totals = batch.summary?.totals || {};
   el.batchProgressMeta.innerHTML = [
     `<span>Месяцев: <b>${completed} из ${total}</b></span>`,

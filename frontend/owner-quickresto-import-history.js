@@ -151,7 +151,7 @@ function batchCard(batch) {
         ${statusBadge(normalized)}
       </div>
       <div class="quickresto-progress mt-12" aria-label="Обработано ${completed} из ${total} месяцев">
-        <div class="quickresto-progress__bar" style="width:${progressPercent(batch)}%"></div>
+        <progress class="quickresto-progress__bar" max="100" value="${progressPercent(batch)}">${progressPercent(batch)}%</progress>
       </div>
       <div class="quickresto-history-stats mt-8">
         <span>Смен импортировано: <b>${Number(batchTotals.shifts_imported || 0)}</b></span>
@@ -177,7 +177,9 @@ function renderActiveBatch() {
   el.activeBatchLabel.textContent = current
     ? `Сейчас: ${formatMonth(current)} · месяц ${Math.min(completed + 1, total)} из ${total}`
     : `Обработано ${completed} из ${total} месяцев`;
-  el.activeBatchProgress.style.width = `${progressPercent(batch)}%`;
+  const activePercent = progressPercent(batch);
+  el.activeBatchProgress.value = activePercent;
+  el.activeBatchProgress.textContent = `${activePercent}%`;
   const batchTotals = totals(batch);
   el.activeBatchMeta.textContent = `Импортировано смен: ${Number(batchTotals.shifts_imported || 0)} · создано отчётов: ${Number(batchTotals.reports_created || 0)}`;
 }

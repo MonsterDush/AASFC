@@ -213,7 +213,7 @@
             <b id="batchProgressTitle">Подготавливаем очередь…</b>
             <span id="batchProgressPercent">0%</span>
           </div>
-          <div class="quickresto-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="batchProgressTrack"><span id="batchProgressBar"></span></div>
+          <div class="quickresto-progress-track" id="batchProgressTrack"><progress id="batchProgressBar" max="100" value="0" aria-labelledby="batchProgressTitle batchProgressPercent">0%</progress></div>
           <div class="quickresto-batch-progress__meta" id="batchProgressMeta"></div>
           <div class="quickresto-run-error" id="batchProgressError" hidden></div>
           <button class="btn" id="retryBatch" type="button" hidden>Продолжить с месяца ошибки</button>
