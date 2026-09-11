@@ -144,7 +144,7 @@ function renderProducts() {
   const filtered = filteredProducts();
   const visible = filtered.slice(0, MAX_VISIBLE_PRODUCTS);
   if (!state.products.length) {
-    el.productList.innerHTML = `<div class="quickresto-kpi-empty">Позиции пока не найдены. Нажмите «Обновить позиции»: Axelio прочитает сохранённые зашифрованные смены, не меняя отчёты.</div>`;
+    el.productList.innerHTML = `<div class="quickresto-kpi-empty">Позиции пока не найдены. Нажмите «Обновить позиции»: Axelio найдёт проданные позиции в сохранённых зашифрованных сменах и запросит их актуальные названия у QuickResto, не меняя отчёты.</div>`;
     return;
   }
   if (!filtered.length) {
@@ -184,8 +184,8 @@ function applyProducts(products) {
 
 async function refreshProducts() {
   if (!state.canManage) return;
-  setBusy(el.refreshProducts, true, "Читаем смены…");
-  el.mappingHint.textContent = "Получаем названия позиций из сохранённых смен…";
+  setBusy(el.refreshProducts, true, "Обновляем справочник…");
+  el.mappingHint.textContent = "Получаем актуальные названия блюд и групп из QuickResto…";
   try {
     const result = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/kpi-mappings/refresh`,
@@ -193,8 +193,27 @@ async function refreshProducts() {
     );
     applyProducts(result.products);
     const count = Number(result.summary?.products_seen || 0);
-    el.mappingHint.textContent = `Справочник обновлён: найдено ${count} позиций в сохранённых сменах.`;
-    toast("Позиции QuickResto обновлены", "ok");
+    const matched = Number(result.summary?.directory_products_matched || 0);
+    const renamed = Number(result.summary?.product_names_refreshed || 0);
+    const renamedGroups = Number(
+      result.summary?.product_group_names_refreshed || 0,
+    );
+    const unresolved = Number(
+      result.summary?.directory_products_unresolved || 0,
+    );
+    const directoryError = String(
+      result.summary?.product_directory_refresh_error || "",
+    ).trim();
+    if (directoryError) {
+      el.mappingHint.textContent = `Найдено ${count} проданных позиций, но QuickResto не отдал справочник названий: ${directoryError}`;
+      toast("Не удалось получить названия из QuickResto", "err");
+    } else if (unresolved) {
+      el.mappingHint.textContent = `Справочник обновлён частично: распознано ${matched} позиций, без названия осталось ${unresolved}. Запустите обычную синхронизацию — следующие живые заказы дополнят названия.`;
+      toast("Часть названий QuickResto не найдена", "err");
+    } else {
+      el.mappingHint.textContent = `Справочник обновлён: сверено ${matched} позиций, обновлено названий ${renamed}, названий групп ${renamedGroups}.`;
+      toast("Названия позиций QuickResto обновлены", "ok");
+    }
   } catch (error) {
     el.mappingHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");

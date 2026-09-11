@@ -1572,6 +1572,14 @@ def _stage_quickresto_sources(
         detail = _object_detail(client, "orders", object_id)
         order_details_by_shift[str(detail.get("shiftId") or "")].append(detail)
 
+    # Source snapshots deliberately keep only product ids. Capture the titles
+    # from the live order details before that privacy boundary is applied.
+    refresh_quickresto_product_catalog(
+        db,
+        connection_id=int(connection.id),
+        sources=({"orders": orders} for orders in order_details_by_shift.values()),
+    )
+
     night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
     snapshot_store_ids = selected_store_ids(db, connection_id=int(connection.id))
     sealed_rows = []
