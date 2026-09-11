@@ -74,6 +74,7 @@ from .quickresto_external_venue import QuickRestoExternalVenue
 from .quickresto_sale_place_scope import QuickRestoSalePlaceScope
 from .quickresto_store_scope import QuickRestoStoreScope
 from .quickresto_sync_run import QuickRestoSyncRun
+from .quickresto_import_batch import QuickRestoImportBatch
 from .quickresto_shift_import import QuickRestoShiftImport
 from .quickresto_report_import import QuickRestoReportImport
 from .quickresto_source_snapshot import QuickRestoSourceSnapshot
@@ -163,6 +164,7 @@ __all__ = [
     "QuickRestoSalePlaceScope",
     "QuickRestoStoreScope",
     "QuickRestoSyncRun",
+    "QuickRestoImportBatch",
     "QuickRestoShiftImport",
     "QuickRestoReportImport",
     "QuickRestoSourceSnapshot",

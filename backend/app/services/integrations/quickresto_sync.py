@@ -1248,14 +1248,23 @@ def _list_closed_shift_rows(
     client: QuickRestoClient,
     *,
     closed_since: datetime | None,
+    closed_before: datetime | None = None,
 ) -> list[dict[str, Any]]:
     if hasattr(client, "list_closed_shifts"):
-        rows = client.list_closed_shifts(closed_since=closed_since)
+        rows = client.list_closed_shifts(closed_since=closed_since, closed_before=closed_before)
     else:
         rows = _object_rows(client, "shifts")
     output = [row for row in rows if str(row.get("status") or "").upper() == "CLOSED"]
-    if closed_since is not None and not hasattr(client, "list_closed_shifts"):
-        output = [row for row in output if (closed_at := _remote_closed_at(row)) is None or closed_at >= closed_since]
+    if not hasattr(client, "list_closed_shifts") and (closed_since is not None or closed_before is not None):
+        output = [
+            row
+            for row in output
+            if (closed_at := _remote_closed_at(row)) is None
+            or (
+                (closed_since is None or closed_at >= closed_since)
+                and (closed_before is None or closed_at < closed_before)
+            )
+        ]
     return output
 
 
@@ -1434,31 +1443,67 @@ def _stage_quickresto_sources(
     venue: Venue,
     client: QuickRestoClient,
     force_full: bool,
+    period_start: date | None = None,
+    period_end_exclusive: date | None = None,
+    include_undated_sources: bool = True,
+    finalize_full_reconciliation: bool = True,
 ) -> tuple[list[QuickRestoSourceSnapshot], bool, dict[str, Any], list[dict[str, Any]]]:
     now = _utcnow()
+    if (period_start is None) != (period_end_exclusive is None):
+        raise ValueError("QuickResto sync period must include both start and end")
+    if period_start is not None and period_end_exclusive is not None and period_end_exclusive <= period_start:
+        raise ValueError("QuickResto sync period end must be later than its start")
     pending_scope = pending_quickresto_scope(connection)
     last_full = connection.last_full_reconciliation_at
     full_reconciliation = bool(
         pending_scope or force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30)
     )
     closed_since = None
-    if not full_reconciliation and connection.incremental_cursor_closed_at is not None:
+    closed_before = None
+    if period_start is not None and period_end_exclusive is not None:
+        # The API filters shifts by close time while Axelio assigns the report
+        # month by opening time. Keep a two-day overlap, then apply the exact
+        # business-date window locally.
+        closed_since = datetime.combine(period_start - timedelta(days=2), datetime.min.time(), tzinfo=timezone.utc)
+        closed_before = datetime.combine(
+            period_end_exclusive + timedelta(days=2),
+            datetime.min.time(),
+            tzinfo=timezone.utc,
+        )
+    elif not full_reconciliation and connection.incremental_cursor_closed_at is not None:
         closed_since = _ensure_utc(connection.incremental_cursor_closed_at) - timedelta(hours=48)
-    closed_shifts = _list_closed_shift_rows(client, closed_since=closed_since)
+    closed_shifts = _list_closed_shift_rows(
+        client,
+        closed_since=closed_since,
+        closed_before=closed_before,
+    )
     cloud_closed_shifts_seen = len(closed_shifts)
-    if connection.sync_from_date is not None:
+    if connection.sync_from_date is not None or period_start is not None:
         filtered: list[dict[str, Any]] = []
         for shift in closed_shifts:
+            target_date = None
             try:
                 target_date = business_date_for_shift(
                     shift,
                     cutoff_hour=connection.business_day_cutoff_hour,
                 )
             except (QuickRestoDataError, ValueError):
-                # Keep malformed rows visible so they become durable issues.
-                filtered.append(shift)
+                # A close timestamp still assigns malformed rows to one batch;
+                # completely undated rows are retained only by the first chunk
+                # so they become one durable issue instead of repeating monthly.
+                remote_closed_at = _remote_closed_at(shift)
+                target_date = remote_closed_at.date() if remote_closed_at is not None else None
+            if target_date is None:
+                if include_undated_sources:
+                    filtered.append(shift)
                 continue
-            if target_date >= connection.sync_from_date:
+            if connection.sync_from_date is not None and target_date < connection.sync_from_date:
+                continue
+            if period_start is not None and target_date < period_start:
+                continue
+            if period_end_exclusive is not None and target_date >= period_end_exclusive:
+                continue
+            if target_date is not None:
                 filtered.append(shift)
         closed_shifts = filtered
 
@@ -1475,6 +1520,14 @@ def _stage_quickresto_sources(
                 select(QuickRestoShiftImport).where(
                     QuickRestoShiftImport.connection_id == int(connection.id),
                     _scope_resolution_requires_review(historical_scope_generation),
+                    *(
+                        (
+                            QuickRestoShiftImport.business_date >= period_start,
+                            QuickRestoShiftImport.business_date < period_end_exclusive,
+                        )
+                        if period_start is not None and period_end_exclusive is not None
+                        else ()
+                    ),
                 )
             ).scalars()
         )
@@ -1675,7 +1728,7 @@ def _stage_quickresto_sources(
         current = connection.incremental_cursor_closed_at
         if current is None or newest > _ensure_utc(current):
             connection.incremental_cursor_closed_at = newest
-    if full_reconciliation:
+    if full_reconciliation and finalize_full_reconciliation:
         connection.last_full_reconciliation_at = now
     # This commit is intentional: encrypted allowlisted source data must survive
     # any later normalization or report conflict in the same synchronization.
@@ -1983,10 +2036,15 @@ def _perform_sync(
     actor_user_id: int,
     client: QuickRestoClient,
     force_full: bool = False,
+    period_start: date | None = None,
+    period_end_exclusive: date | None = None,
+    include_undated_sources: bool = True,
+    finalize_full_reconciliation: bool = True,
+    refresh_catalog: bool = True,
 ) -> dict[str, Any]:
-    catalog_summary = refresh_quickresto_catalog(db, connection=connection, client=client)
+    catalog_summary = refresh_quickresto_catalog(db, connection=connection, client=client) if refresh_catalog else {}
     ensure_quickresto_scope_ready(connection)
-    mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
+    mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client) if refresh_catalog else {}
     venue = db.get(Venue, int(connection.venue_id))
     if venue is None:
         raise QuickRestoDataError("Axelio venue no longer exists")
@@ -1997,6 +2055,10 @@ def _perform_sync(
         venue=venue,
         client=client,
         force_full=force_full,
+        period_start=period_start,
+        period_end_exclusive=period_end_exclusive,
+        include_undated_sources=include_undated_sources,
+        finalize_full_reconciliation=finalize_full_reconciliation,
     )
     category_summary = _refresh_snapshot_category_paths(
         db,
@@ -2075,6 +2137,8 @@ def _perform_sync(
         "conflicts": conflicts,
         "issue_count": len(conflicts),
         "ignored_groups": ignored_groups,
+        "period_start": period_start.isoformat() if period_start is not None else None,
+        "period_end_exclusive": period_end_exclusive.isoformat() if period_end_exclusive is not None else None,
     }
 
 
@@ -2411,6 +2475,14 @@ def sync_quickresto_connection(
     trigger: str,
     client: QuickRestoClient | None = None,
     force_full: bool = False,
+    period_start: date | None = None,
+    period_end_exclusive: date | None = None,
+    include_undated_sources: bool = True,
+    finalize_full_reconciliation: bool = True,
+    refresh_catalog: bool = True,
+    batch_id: int | None = None,
+    batch_sequence: int | None = None,
+    notify_result: bool = True,
 ) -> QuickRestoSyncRun:
     connection_id = int(connection.id)
     locked_connection = db.execute(
@@ -2444,6 +2516,13 @@ def sync_quickresto_connection(
         trigger=str(trigger or "MANUAL").upper(),
         status="RUNNING",
         started_at=now,
+        summary_json={
+            **({"batch_id": int(batch_id)} if batch_id is not None else {}),
+            **({"batch_sequence": int(batch_sequence)} if batch_sequence is not None else {}),
+            **({"period_start": period_start.isoformat()} if period_start is not None else {}),
+            **({"period_end_exclusive": period_end_exclusive.isoformat()} if period_end_exclusive is not None else {}),
+        }
+        or None,
     )
     db.add(run)
     connection.last_sync_started_at = now
@@ -2465,7 +2544,16 @@ def sync_quickresto_connection(
                 actor_user_id=actor_user_id,
                 client=current_client,
                 force_full=force_full,
+                period_start=period_start,
+                period_end_exclusive=period_end_exclusive,
+                include_undated_sources=include_undated_sources,
+                finalize_full_reconciliation=finalize_full_reconciliation,
+                refresh_catalog=refresh_catalog,
             )
+        if batch_id is not None:
+            summary["batch_id"] = int(batch_id)
+        if batch_sequence is not None:
+            summary["batch_sequence"] = int(batch_sequence)
         finished_at = _utcnow()
         run.status = "PARTIAL" if summary["conflicts"] else "SUCCEEDED"
         run.finished_at = finished_at
@@ -2482,14 +2570,15 @@ def sync_quickresto_connection(
         diagnostic_issue = None
         if summary["conflicts"]:
             diagnostic_issue = db.get(QuickRestoImportIssue, int(summary["conflicts"][0]["issue_id"]))
-        _enqueue_sync_notification_safely(
-            db,
-            connection=connection,
-            run=run,
-            issue_count=int(summary.get("issue_count") or 0),
-            technical_summary=diagnostic_issue.technical_summary if diagnostic_issue is not None else None,
-            correlation_id=diagnostic_issue.correlation_id if diagnostic_issue is not None else None,
-        )
+        if notify_result:
+            _enqueue_sync_notification_safely(
+                db,
+                connection=connection,
+                run=run,
+                issue_count=int(summary.get("issue_count") or 0),
+                technical_summary=diagnostic_issue.technical_summary if diagnostic_issue is not None else None,
+                correlation_id=diagnostic_issue.correlation_id if diagnostic_issue is not None else None,
+            )
         db.refresh(run)
         return run
     except (

@@ -240,6 +240,25 @@ class QuickRestoClientTests(unittest.TestCase):
         self.assertIn("filters", listing.call_args_list[0].kwargs)
         self.assertNotIn("filters", listing.call_args_list[1].kwargs)
 
+    def test_closed_shift_filter_applies_an_exclusive_upper_bound(self):
+        session = Mock()
+        session.headers = {}
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+        )
+        inside = {"id": 1, "status": "CLOSED", "closed": "2026-08-31T23:59:59Z"}
+        outside = {"id": 2, "status": "CLOSED", "closed": "2026-09-01T00:00:00Z"}
+        with patch.object(client, "list_all_objects", return_value=[inside, outside]) as listing:
+            rows = client.list_closed_shifts(
+                closed_since=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                closed_before=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(rows, [inside])
+        filters = listing.call_args_list[0].kwargs["filters"]
+        self.assertIn({"field": "closed", "operation": "lt", "value": "2026-09-01T00:00:00.000Z"}, filters)
+
     def test_order_filter_falls_back_once_when_cloud_returns_another_shift(self):
         session = Mock()
         session.headers = {}

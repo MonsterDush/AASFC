@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260911-monthlyqueue1" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · История импортов QuickResto</title>
+</head>
+<body class="owner-quickresto-page quickresto-history-page">
+  <div class="container quickresto-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">История импортов QuickResto</b>
+          <div class="muted">запуски по месяцам и проблемы, требующие решения</div>
+        </div>
+      </div>
+      <div class="quickresto-history-actions">
+        <button class="btn subtle inline" id="backToQuickResto" type="button" data-nav-button>К интеграции</button>
+        <div class="userpill" data-userpill>…</div>
+      </div>
+    </div>
+
+    <main class="quickresto-content">
+      <section class="card section-card quickresto-history-hero">
+        <div class="quickresto-history-hero__copy">
+          <div class="quickresto-step__eyebrow">QuickResto · история</div>
+          <b id="venueTitle">Заведение</b>
+          <div class="muted small mt-4">Каждый большой период разбит на календарные месяцы. Здесь видно, какой месяц выполняется, что завершилось и где нужна помощь пользователя.</div>
+        </div>
+        <button class="btn" id="refreshHistory" type="button">Обновить</button>
+      </section>
+
+      <section class="card section-card" id="activeBatchSection" hidden>
+        <div class="section-card__head">
+          <div>
+            <b>Текущий импорт</b>
+            <div class="muted small mt-4" id="activeBatchLabel">Подготавливаем очередь…</div>
+          </div>
+          <span class="quickresto-status" id="activeBatchStatus">PENDING</span>
+        </div>
+        <div class="quickresto-progress mt-12" aria-hidden="true">
+          <progress class="quickresto-progress__bar" id="activeBatchProgress" max="100" value="0">0%</progress>
+        </div>
+        <div class="quickresto-progress__meta mt-8" id="activeBatchMeta"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-history-head">
+          <div>
+            <b>Запуски импорта</b>
+            <div class="muted small mt-4">Откройте проблему у частичного или упавшего месяца, исправьте сопоставление и повторите импорт.</div>
+          </div>
+          <label class="quickresto-history-filter">
+            <span>Статус</span>
+            <select id="statusFilter">
+              <option value="">Все</option>
+              <option value="PENDING">В очереди</option>
+              <option value="RUNNING">Выполняется</option>
+              <option value="SUCCEEDED">Успешно</option>
+              <option value="PARTIAL">Нужна проверка</option>
+              <option value="FAILED">Ошибка</option>
+            </select>
+          </label>
+        </div>
+        <div class="quickresto-history-list mt-12" id="historyList" aria-live="polite">
+          <div class="quickresto-history-empty">Загружаем историю…</div>
+        </div>
+        <div class="muted small mt-8" id="historyHint" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/owner-quickresto-import-history.js?v=20260911-monthlyqueue1"></script>
+</body>
+</html>

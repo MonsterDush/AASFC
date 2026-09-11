@@ -75,6 +75,7 @@ const extractedPageStyles = new Map([
   ["owner-payroll.html", "styles/pages/owner-payroll.css"],
   ["owner-payment-methods.html", "styles/pages/owner-catalogs.css"],
   ["owner-quickresto.html", "styles/pages/owner-quickresto.css"],
+  ["owner-quickresto-import-history.html", "styles/pages/owner-quickresto.css"],
   ["owner-quickresto-kpi.html", "styles/pages/owner-quickresto-kpi.css"],
   ["owner-recurring-expenses.html", "styles/pages/finance-pages.css"],
   ["owner-subscription.html", "styles/pages/owner-subscription.css"],
@@ -121,7 +122,8 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-kpi.html", "20260726-polish10"],
   ["owner-payroll.html", "20260802-payrollpayments1"],
   ["owner-payment-methods.html", "20260726-polish10"],
-  ["owner-quickresto.html", "20260910-kpirouting1"],
+  ["owner-quickresto.html", "20260911-monthlyqueue1"],
+  ["owner-quickresto-import-history.html", "20260911-monthlyqueue1"],
   ["owner-quickresto-kpi.html", "20260910-qrkpi1"],
   ["owner-pay-profile.html", "20260906-tiers1"],
   ["owner-pay-profiles.html", "20260906-tiers1"],
@@ -166,6 +168,7 @@ const inlineFreePages = [
   "owner-payroll.html",
   "owner-payment-methods.html",
   "owner-quickresto.html",
+  "owner-quickresto-import-history.html",
   "owner-quickresto-kpi.html",
   "owner-recurring-expenses.html",
   "owner-setup.html",
@@ -194,7 +197,8 @@ const inlineFreeEntrypoints = new Map([
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260726-navmore1"],
   ["owner-payroll.html", "/owner-payroll.js?v=20260906-tiers1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
-  ["owner-quickresto.html", "/owner-quickresto.js?v=20260910-kpirouting1"],
+  ["owner-quickresto.html", "/owner-quickresto.js?v=20260911-monthlyqueue1"],
+  ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20260911-monthlyqueue1"],
   ["owner-quickresto-kpi.html", "/owner-quickresto-kpi.js?v=20260911-qrnames1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
   ["owner-setup.html", "/owner-setup.js?v=20260906-names-scopes1"],
@@ -220,6 +224,7 @@ const inlineFreeModules = [
   "owner-integrations.js",
   "owner-kpi.js",
   "owner-quickresto.js",
+  "owner-quickresto-import-history.js",
   "owner-quickresto-kpi.js",
   "owner-pay-profile.js",
   "owner-pay-profiles.js",
@@ -361,7 +366,7 @@ assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest une
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
-assert.equal(htmlPageFiles.length, 55, "every frontend HTML page must use the global loader");
+assert.equal(htmlPageFiles.length, 56, "every frontend HTML page must use the global loader");
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(

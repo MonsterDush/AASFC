@@ -21,6 +21,7 @@ from app.models.quickresto_department_mapping import (
     QuickRestoDepartmentMapping,
 )
 from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_import_batch import QuickRestoImportBatch
 from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
@@ -176,6 +177,7 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             QuickRestoKpiProductMapping.__table__,
             QuickRestoDishCategoryPath.__table__,
             QuickRestoSyncRun.__table__,
+            QuickRestoImportBatch.__table__,
             QuickRestoImportIssue.__table__,
             QuickRestoSourceSnapshot.__table__,
             DailyReport.__table__,

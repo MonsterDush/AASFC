@@ -40,10 +40,13 @@ const elementIds = [
   "connectionHint",
   "mappingReadinessHint",
   "paymentMappings",
+  "paymentSection",
+  "savePaymentMappings",
+  "paymentMappingHint",
   "departmentMappings",
+  "departmentSection",
   "saveMappings",
   "mappingHint",
-  "runHistory",
   "reportImportClosed",
   "reportImportDraft",
   "importModeHint",
@@ -68,6 +71,18 @@ const elementIds = [
   "issueOpenCount",
   "openIssues",
   "openKpiMappings",
+  "importSection",
+  "importHint",
+  "batchStatus",
+  "batchProgress",
+  "batchProgressTitle",
+  "batchProgressPercent",
+  "batchProgressTrack",
+  "batchProgressBar",
+  "batchProgressMeta",
+  "batchProgressError",
+  "retryBatch",
+  "openImportHistory",
 ];
 const el = Object.fromEntries(
   elementIds.map((id) => [id, document.getElementById(id)]),
@@ -90,7 +105,7 @@ const state = {
   mappings: { payments: [], departments: [] },
   paymentMethods: [],
   departments: [],
-  runs: [],
+  importBatch: null,
   venueNightShiftsEnabled: false,
   canManage: true,
   issueOpenCount: 0,
@@ -104,7 +119,10 @@ const state = {
   scopeAudit: [],
 };
 
+let batchPollTimer = null;
+
 el.openKpiMappings.href = `/owner-quickresto-kpi.html?venue_id=${encodeURIComponent(venueId)}`;
+el.openImportHistory.href = `/owner-quickresto-import-history.html?venue_id=${encodeURIComponent(venueId)}`;
 
 const esc = (value) =>
   String(value ?? "")
@@ -130,6 +148,113 @@ function setBusy(button, busy, label = "Выполняется…") {
     delete button.dataset.previousText;
   }
   button.disabled = !!busy;
+}
+
+function scrollToStep(target) {
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function batchIsActive(batch = state.importBatch) {
+  return ["PENDING", "RUNNING"].includes(
+    String(batch?.status || "").toUpperCase(),
+  );
+}
+
+function batchStatusLabel(status) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "PENDING") return "В очереди";
+  if (normalized === "RUNNING") return "Импортируется";
+  if (normalized === "SUCCEEDED") return "Завершён";
+  if (normalized === "PARTIAL") return "Требует внимания";
+  if (normalized === "FAILED") return "Остановлен";
+  return "Не запускался";
+}
+
+function formatMonthPeriod(start, endExclusive) {
+  if (!start) return "—";
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = endExclusive
+    ? new Date(new Date(`${endExclusive}T00:00:00`).getTime() - 86400000)
+    : startDate;
+  const locale = document.documentElement.lang === "en" ? "en-US" : "ru-RU";
+  const month = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(startDate);
+  if (
+    startDate.getDate() === 1 &&
+    endDate.getMonth() === startDate.getMonth() &&
+    endDate.getFullYear() === startDate.getFullYear()
+  ) {
+    return month;
+  }
+  return `${formatDate(start)}–${formatDate(endDate.toISOString().slice(0, 10))}`;
+}
+
+function renderBatchProgress() {
+  const batch = state.importBatch;
+  const status = String(batch?.status || "").toUpperCase();
+  el.batchStatus.textContent = batchStatusLabel(status);
+  el.batchStatus.dataset.status = status || "NEVER";
+  el.batchProgress.hidden = !batch;
+  if (!batch) return;
+  const total = Math.max(Number(batch.total_periods || 0), 1);
+  const completed = Math.min(Number(batch.completed_periods || 0), total);
+  const percent = Math.round((completed / total) * 100);
+  const activePeriod = batch.current_period_start || batch.next_period_start;
+  const activePeriodEnd = batch.current_period_end_exclusive || null;
+  el.batchProgressTitle.textContent = batchIsActive(batch)
+    ? `Обрабатывается: ${formatMonthPeriod(activePeriod, activePeriodEnd)}`
+    : `${formatMonthPeriod(batch.period_start, batch.period_end_exclusive)} · ${batchStatusLabel(status)}`;
+  el.batchProgressPercent.textContent = `${percent}%`;
+  el.batchProgressTrack.dataset.active = batchIsActive(batch) ? "true" : "false";
+  el.batchProgressBar.value = percent;
+  el.batchProgressBar.textContent = `${percent}%`;
+  const totals = batch.summary?.totals || {};
+  el.batchProgressMeta.innerHTML = [
+    `<span>Месяцев: <b>${completed} из ${total}</b></span>`,
+    `<span>Смен импортировано: <b>${Number(totals.shifts_imported || 0)}</b></span>`,
+    `<span>Отчётов создано: <b>${Number(totals.reports_created || 0)}</b></span>`,
+    Number(batch.partial_periods || 0)
+      ? `<span>С вниманием: <b>${Number(batch.partial_periods)}</b></span>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  el.batchProgressError.hidden = !batch.error;
+  el.batchProgressError.textContent = batch.error || "";
+  el.retryBatch.hidden = !(status === "FAILED" && state.canManage);
+}
+
+async function refreshBatchProgress() {
+  if (!state.configured) return;
+  try {
+    const result = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches?limit=1`,
+    );
+    state.importBatch = result.items?.[0] || null;
+    if (state.connection && state.importBatch) {
+      state.connection.last_sync_status = state.importBatch.status;
+      state.connection.last_sync_error = state.importBatch.error || null;
+    }
+    renderBatchProgress();
+    renderConnection();
+    applyPermissions();
+    if (!batchIsActive()) stopBatchPolling();
+  } catch {
+    // Keep the last durable state visible; the next poll or reload can recover.
+  }
+}
+
+function startBatchPolling() {
+  if (batchPollTimer || !batchIsActive()) return;
+  batchPollTimer = window.setInterval(refreshBatchProgress, 5000);
+}
+
+function stopBatchPolling() {
+  if (!batchPollTimer) return;
+  window.clearInterval(batchPollTimer);
+  batchPollTimer = null;
 }
 
 function options(items, selectedId, emptyLabel = "— не сопоставлено —") {
@@ -398,6 +523,7 @@ function renderNightShiftSettings() {
 }
 
 function applyPermissions() {
+  const importLocked = batchIsActive();
   const editableFields = [
     el.cloud,
     el.apiLogin,
@@ -413,35 +539,39 @@ function applyPermissions() {
     el.externalVenue,
   ];
   editableFields.forEach((field) => {
-    if (field) field.disabled = !state.canManage;
+    if (field) field.disabled = !state.canManage || importLocked;
   });
   const providerConflict =
     state.activePosProvider && state.activePosProvider !== "QUICKRESTO";
-  el.isActive.disabled = !state.canManage || !!providerConflict;
+  el.isActive.disabled = !state.canManage || importLocked || !!providerConflict;
   el.connectionActions.hidden = !state.canManage;
   el.saveMappings.hidden = !state.canManage;
+  el.savePaymentMappings.hidden = !state.canManage;
   el.refreshScopeCatalog.hidden = !state.canManage;
   el.saveScope.hidden = !state.canManage;
   el.readOnlyHint.hidden = state.canManage;
   el.paymentMappings.querySelectorAll("select").forEach((field) => {
-    field.disabled = !state.canManage;
+    field.disabled = !state.canManage || importLocked;
   });
   el.departmentMappings
     .querySelectorAll("select, input, button")
     .forEach((field) => {
-    field.disabled = !state.canManage;
+    field.disabled = !state.canManage || importLocked;
     });
   el.scopeContent.querySelectorAll("input, select").forEach((field) => {
-    field.disabled = !state.canManage;
+    field.disabled = !state.canManage || importLocked;
   });
-  el.refreshScopeCatalog.disabled = !state.configured;
+  el.saveConnection.disabled = !state.canManage || importLocked;
+  el.refreshScopeCatalog.disabled = !state.configured || importLocked;
   el.saveScope.disabled =
-    !state.configured || !(state.catalog?.venues || []).length;
+    !state.configured || importLocked || !(state.catalog?.venues || []).length;
   const ready = scopeReady();
   const importReady = requiredMappingsReady();
-  el.discoverMappings.disabled = !ready;
-  el.runSync.disabled = !importReady;
-  el.runFullSync.disabled = !importReady;
+  el.discoverMappings.disabled = !ready || importLocked;
+  el.savePaymentMappings.disabled = !ready || importLocked;
+  el.saveMappings.disabled = !ready || importLocked;
+  el.runSync.disabled = !importReady || importLocked;
+  el.runFullSync.disabled = !importReady || importLocked;
   renderMappingReadiness();
 }
 
@@ -556,30 +686,8 @@ function renderMappings() {
   applyPermissions();
 }
 
-function renderRuns() {
-  el.runHistory.innerHTML = state.runs.length
-    ? state.runs
-        .map((run) => {
-          const summary = run.summary || {};
-          const time = run.started_at
-            ? new Date(run.started_at).toLocaleString()
-            : "—";
-          return `<div class="itemcard quickresto-run-row">
-      <div><b>${esc(run.status)}</b><div class="muted small">${esc(time)} · ${esc(run.trigger)}</div></div>
-      <div class="quickresto-run-metrics">
-        <span>Смен в облаке: ${Number(summary.cloud_closed_shifts_seen ?? summary.shifts_seen ?? 0)}</span>
-        <span>В области: ${Number(summary.shifts_in_scope ?? summary.shifts_seen ?? 0)}</span>
-        <span>Создано отчётов: ${Number(summary.reports_created || 0)}</span>
-      </div>
-      ${run.error ? `<div class="quickresto-run-error">${esc(run.error)}</div>` : ""}
-    </div>`;
-        })
-        .join("")
-    : `<div class="quickresto-empty">Синхронизация ещё не запускалась.</div>`;
-}
-
-function collectMappingsPayload() {
-  const payments = (state.mappings.payments || [])
+function collectPaymentMappingsPayload() {
+  return (state.mappings.payments || [])
     .filter(
       (item) => item.is_available !== false && item.is_applicable !== false,
     )
@@ -596,6 +704,9 @@ function collectMappingsPayload() {
         excluded_from_revenue: writeoff,
       };
     });
+}
+
+function collectDepartmentMappingsPayload() {
   let invalid = false;
   const departments = (state.mappings.departments || []).map((item) => {
     const group = el.departmentMappings.querySelector(
@@ -658,7 +769,7 @@ function collectMappingsPayload() {
       "Для каждой распределяемой группы выберите разные департаменты; сумма долей должна быть ровно 100%.",
     );
   }
-  return { payments, departments };
+  return departments;
 }
 
 async function refreshAxelioCatalogs() {
@@ -677,6 +788,7 @@ async function load() {
   }
   el.backToIntegrations.dataset.href = `/owner-integrations.html?venue_id=${encodeURIComponent(venueId)}`;
   el.openIssues.href = `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}&provider=quickresto`;
+  el.openImportHistory.href = `/owner-quickresto-import-history.html?venue_id=${encodeURIComponent(venueId)}`;
   const [venue, integration] = await Promise.all([
     getVenueById(venueId),
     api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`),
@@ -698,6 +810,7 @@ async function load() {
   state.mappings = integration.mappings || { payments: [], departments: [] };
   state.mappingReadiness =
     integration.mapping_readiness || state.mappingReadiness;
+  state.importBatch = integration.import_batch || null;
   state.scopeAudit = integration.scope_audit || [];
   const venueName = venue?.name || `Заведение ${venueId}`;
   el.title.textContent = `QuickResto · ${venueName}`;
@@ -705,15 +818,11 @@ async function load() {
   el.issueOpenCount.textContent = String(state.issueOpenCount);
   el.issueSection.dataset.attention =
     state.issueOpenCount > 0 ? "true" : "false";
-  state.runs = state.configured
-    ? await api(
-        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/runs?limit=10`,
-      )
-    : [];
   renderConnection();
   renderMappings();
   renderScopeAudit();
-  renderRuns();
+  renderBatchProgress();
+  if (batchIsActive()) startBatchPolling();
 }
 
 el.saveConnection?.addEventListener("click", async () => {
@@ -734,6 +843,9 @@ el.saveConnection?.addEventListener("click", async () => {
       night_shift_start_hour: Number(el.nightShiftStartHour.value || 22),
       sync_from_date: el.syncFromDate.value || null,
     };
+    if (!body.sync_from_date) {
+      throw new Error("Укажите дату, начиная с которой импортировать смены.");
+    }
     if (
       body.night_shift_split_enabled &&
       body.night_shift_start_hour <= body.business_day_cutoff_hour
@@ -762,9 +874,17 @@ el.saveConnection?.addEventListener("click", async () => {
     }
     el.apiLogin.value = "";
     el.apiPassword.value = "";
+    const catalogResult = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/catalog/refresh`,
+      { method: "POST" },
+    );
+    state.catalog = catalogResult.catalog || state.catalog;
+    if (state.connection)
+      state.connection.scope_status = state.catalog.scope_status;
     renderConnection();
     renderMappings();
-    toast("Подключение сохранено", "ok");
+    toast("Подключение проверено. Выберите заведение и точки.", "ok");
+    scrollToStep(el.scopeSection);
   } catch (error) {
     el.connectionHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");
@@ -920,8 +1040,10 @@ el.saveScope?.addEventListener("click", async () => {
           : "Новая область проверена и активирована",
         scan.run?.status === "PARTIAL" ? "err" : "ok",
       );
+      scrollToStep(el.paymentSection);
     } else {
       toast("Область импорта сохранена", "ok");
+      scrollToStep(el.paymentSection);
     }
   } catch (error) {
     el.scopeHint.textContent = errorMessage(error);
@@ -935,7 +1057,7 @@ el.saveScope?.addEventListener("click", async () => {
 el.discoverMappings?.addEventListener("click", async () => {
   if (!state.canManage || !scopeReady()) return;
   setBusy(el.discoverMappings, true, "Проверяем…");
-  el.connectionHint.textContent = "";
+  el.paymentMappingHint.textContent = "";
   try {
     const result = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/discover`,
@@ -952,13 +1074,48 @@ el.discoverMappings?.addEventListener("click", async () => {
     renderScope();
     renderMappings();
     const summary = result.summary || {};
-    el.connectionHint.textContent = `Доступных способов оплаты: ${summary.payment_types_available ?? summary.payment_types_seen ?? 0}; групп блюд: ${summary.departments_seen || 0}. Создано в Axelio: способов оплаты ${summary.payment_methods_created || 0}, департаментов ${summary.departments_created || 0}.`;
+    el.paymentMappingHint.textContent = `Доступных способов оплаты: ${summary.payment_types_available ?? summary.payment_types_seen ?? 0}; групп блюд: ${summary.departments_seen || 0}. Создано в Axelio: способов оплаты ${summary.payment_methods_created || 0}, департаментов ${summary.departments_created || 0}.`;
     toast("Соединение работает, справочники загружены", "ok");
   } catch (error) {
-    el.connectionHint.textContent = errorMessage(error);
+    el.paymentMappingHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");
   } finally {
     setBusy(el.discoverMappings, false);
+    applyPermissions();
+  }
+});
+
+el.paymentMappings?.addEventListener("change", () => {
+  el.paymentMappingHint.textContent = "Есть несохранённые изменения.";
+});
+
+el.savePaymentMappings?.addEventListener("click", async () => {
+  if (!state.canManage || !scopeReady()) return;
+  setBusy(el.savePaymentMappings, true, "Сохраняем оплаты…");
+  el.paymentMappingHint.textContent = "";
+  try {
+    const result = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/mappings`,
+      {
+        method: "PUT",
+        body: {
+          payments: collectPaymentMappingsPayload(),
+          departments: [],
+        },
+      },
+    );
+    state.mappings = result.mappings || state.mappings;
+    state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
+    renderMappings();
+    renderMappingReadiness();
+    el.paymentMappingHint.textContent = "Типы оплат сохранены.";
+    toast("Типы оплат сохранены", "ok");
+    scrollToStep(el.openKpiMappings.closest("section"));
+  } catch (error) {
+    el.paymentMappingHint.textContent = errorMessage(error);
+    toast(errorMessage(error), "err");
+  } finally {
+    setBusy(el.savePaymentMappings, false);
     applyPermissions();
   }
 });
@@ -970,15 +1127,22 @@ el.saveMappings?.addEventListener("click", async () => {
   try {
     const result = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/mappings`,
-      { method: "PUT", body: collectMappingsPayload() },
+      {
+        method: "PUT",
+        body: {
+          payments: [],
+          departments: collectDepartmentMappingsPayload(),
+        },
+      },
     );
     state.mappings = result.mappings || state.mappings;
     state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
     state.scopeAudit = result.scope_audit || state.scopeAudit;
     renderScopeAudit();
     renderMappings();
-    el.mappingHint.textContent = "Сопоставления сохранены.";
-    toast("Сопоставления сохранены", "ok");
+    el.mappingHint.textContent = "Группы блюд сохранены.";
+    toast("Группы блюд сохранены", "ok");
+    scrollToStep(el.importSection);
   } catch (error) {
     el.mappingHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");
@@ -990,16 +1154,31 @@ el.saveMappings?.addEventListener("click", async () => {
 
 async function runImport({ full = false, button = el.runSync } = {}) {
   if (!state.canManage || !requiredMappingsReady()) return;
-  setBusy(button, true, full ? "Сверяем всю историю…" : "Импортируем…");
-  el.connectionHint.textContent = "";
+  setBusy(button, true, full ? "Создаём очередь…" : "Ставим в очередь…");
+  el.importHint.textContent = "";
   try {
     const suffix = full ? "?full=true" : "";
     const result = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync${suffix}`,
       { method: "POST" },
     );
+    if (result.queued && result.batch) {
+      state.importBatch = result.batch;
+      if (state.connection) state.connection.last_sync_status = "QUEUED";
+      renderBatchProgress();
+      applyPermissions();
+      startBatchPolling();
+      el.importHint.textContent = `Создано месячных запусков: ${Number(result.batch.total_periods || 1)}. Обработка начнётся фоновым worker и продолжится без открытой страницы.`;
+      toast(
+        full
+          ? "Полная сверка поставлена в очередь"
+          : "Импорт поставлен в очередь",
+        "ok",
+      );
+      return;
+    }
     const run = result.run || {};
-    el.connectionHint.textContent =
+    el.importHint.textContent =
       run.status === "PARTIAL"
         ? "Импорт завершён частично. Откройте центр проблем импорта."
         : full
@@ -1017,13 +1196,36 @@ async function runImport({ full = false, button = el.runSync } = {}) {
     );
     await load();
   } catch (error) {
-    el.connectionHint.textContent = errorMessage(error);
+    el.importHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");
   } finally {
     setBusy(button, false);
     applyPermissions();
   }
 }
+
+el.retryBatch?.addEventListener("click", async () => {
+  const batchId = Number(state.importBatch?.id || 0);
+  if (!batchId || !state.canManage) return;
+  setBusy(el.retryBatch, true, "Возобновляем…");
+  try {
+    const result = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches/${encodeURIComponent(batchId)}/retry`,
+      { method: "POST" },
+    );
+    state.importBatch = result.batch || state.importBatch;
+    renderBatchProgress();
+    applyPermissions();
+    startBatchPolling();
+    toast("Импорт продолжится с месяца ошибки", "ok");
+  } catch (error) {
+    el.importHint.textContent = errorMessage(error);
+    toast(errorMessage(error), "err");
+  } finally {
+    setBusy(el.retryBatch, false);
+    applyPermissions();
+  }
+});
 
 el.runSync?.addEventListener("click", async () => {
   await runImport({ button: el.runSync });
