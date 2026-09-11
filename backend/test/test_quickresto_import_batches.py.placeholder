@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+import unittest
+from unittest.mock import patch
+
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
+
+from app.core.db import Base
+from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_import_batch import QuickRestoImportBatch
+from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.user import User
+from app.models.venue import Venue
+from app.services.integrations.quickresto_import_batches import (
+    create_quickresto_import_batch,
+    monthly_periods_count,
+    process_quickresto_import_batch,
+    retry_quickresto_import_batch,
+)
+from app.services.integrations.quickresto_sync import QuickRestoSyncError
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "JSON"
+
+
+class QuickRestoImportBatchTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(
+            self.engine,
+            tables=[
+                User.__table__,
+                Venue.__table__,
+                QuickRestoConnection.__table__,
+                QuickRestoSyncRun.__table__,
+                QuickRestoImportIssue.__table__,
+                QuickRestoImportBatch.__table__,
+            ],
+        )
+
+    def tearDown(self):
+        self.engine.dispose()
+
+    def _seed(self, db: Session) -> QuickRestoConnection:
+        db.add(User(id=1, system_role="NONE"))
+        db.add(Venue(id=21, name="Monthly import"))
+        connection = QuickRestoConnection(
+            id=3,
+            venue_id=21,
+            cloud="monthly-test",
+            api_login_encrypted="login",
+            api_password_encrypted="password",
+            external_venue_id=77,
+            scope_status="READY",
+            is_active=True,
+            sync_from_date=date(2024, 11, 15),
+            created_by_user_id=1,
+        )
+        db.add(connection)
+        db.commit()
+        return connection
+
+    def test_period_count_uses_calendar_month_boundaries(self):
+        self.assertEqual(monthly_periods_count(date(2024, 11, 15), date(2025, 2, 1)), 3)
+        self.assertEqual(monthly_periods_count(date(2024, 11, 1), date(2024, 12, 1)), 1)
+
+    def test_historical_batch_processes_each_month_as_a_separate_run(self):
+        with Session(self.engine) as db:
+            connection = self._seed(db)
+            batch = create_quickresto_import_batch(
+                db,
+                connection=connection,
+                requested_by_user_id=1,
+                force_full=False,
+                today=date(2025, 1, 5),
+            )
+            self.assertEqual(batch.total_periods, 3)
+            self.assertEqual(batch.status, "PENDING")
+
+            calls: list[tuple[date, date, int]] = []
+
+            def fake_sync(session, **kwargs):
+                calls.append(
+                    (
+                        kwargs["period_start"],
+                        kwargs["period_end_exclusive"],
+                        kwargs["batch_sequence"],
+                    )
+                )
+                run = QuickRestoSyncRun(
+                    connection_id=3,
+                    requested_by_user_id=1,
+                    trigger="MONTHLY_IMPORT",
+                    status="SUCCEEDED",
+                    started_at=datetime.now(timezone.utc),
+                    finished_at=datetime.now(timezone.utc),
+                    shifts_seen=2,
+                    shifts_imported=2,
+                    reports_created=1,
+                    summary_json={
+                        "shifts_seen": 2,
+                        "shifts_imported": 2,
+                        "reports_created": 1,
+                        "reports_updated": 0,
+                        "reports_unchanged": 0,
+                        "issue_count": 0,
+                        "conflicts": [],
+                    },
+                )
+                session.add(run)
+                session.commit()
+                session.refresh(run)
+                return run
+
+            with (
+                patch(
+                    "app.services.integrations.quickresto_import_batches.sync_quickresto_connection",
+                    side_effect=fake_sync,
+                ),
+                patch(
+                    "app.services.integrations.quickresto_import_batches.enqueue_quickresto_import_notification"
+                ) as notify,
+            ):
+                result = process_quickresto_import_batch(db, batch_id=int(batch.id), client=object())
+
+            self.assertEqual(result.status, "SUCCEEDED")
+            self.assertEqual(result.completed_periods, 3)
+            self.assertEqual(
+                calls,
+                [
+                    (date(2024, 11, 15), date(2024, 12, 1), 1),
+                    (date(2024, 12, 1), date(2025, 1, 1), 2),
+                    (date(2025, 1, 1), date(2025, 1, 6), 3),
+                ],
+            )
+            self.assertEqual(result.summary_json["totals"]["shifts_imported"], 6)
+            self.assertIsNotNone(db.get(QuickRestoConnection, 3).last_full_reconciliation_at)
+            notify.assert_called_once()
+
+    def test_failed_batch_retries_the_same_month(self):
+        with Session(self.engine) as db:
+            connection = self._seed(db)
+            batch = create_quickresto_import_batch(
+                db,
+                connection=connection,
+                requested_by_user_id=1,
+                force_full=True,
+                today=date(2024, 12, 2),
+            )
+            with patch(
+                "app.services.integrations.quickresto_import_batches.sync_quickresto_connection",
+                side_effect=QuickRestoSyncError("temporary"),
+            ):
+                failed = process_quickresto_import_batch(db, batch_id=int(batch.id), client=object())
+            self.assertEqual(failed.status, "FAILED")
+            self.assertEqual(failed.completed_periods, 0)
+            self.assertEqual(failed.next_period_start, date(2024, 11, 15))
+
+            queued = retry_quickresto_import_batch(db, batch=failed)
+            self.assertEqual(queued.status, "PENDING")
+            self.assertEqual(queued.retry_count, 1)
+            self.assertEqual(queued.next_period_start, date(2024, 11, 15))
+
+
+if __name__ == "__main__":
+    unittest.main()

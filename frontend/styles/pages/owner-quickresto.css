@@ -3,9 +3,11 @@
 .quickresto-hero__layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
 .quickresto-hero__layout b{display:block;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
 .quickresto-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.quickresto-step-label{margin-bottom:4px;color:var(--accent);font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
 .quickresto-section-head{gap:14px}
 .quickresto-status{padding:5px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:900;letter-spacing:.04em}
 .quickresto-status[data-status="SUCCEEDED"]{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBgSoft);color:var(--statusSuccessText)}
+.quickresto-status[data-status="PENDING"],.quickresto-status[data-status="QUEUED"],.quickresto-status[data-status="RUNNING"]{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
 .quickresto-status[data-status="FAILED"],.quickresto-status[data-status="PARTIAL"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
 .quickresto-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .quickresto-form label{display:grid;gap:6px;min-width:0}
@@ -93,6 +95,32 @@
 .quickresto-run-row{display:grid;grid-template-columns:minmax(160px,.7fr) minmax(0,1fr);gap:10px;align-items:center;background:var(--card)}
 .quickresto-run-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;color:var(--muted);font-size:12px}
 .quickresto-run-error{grid-column:1/-1;color:var(--statusErrorText);font-size:12px}
+.quickresto-launch{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 82%)}
+.quickresto-batch-progress{display:grid;gap:10px;padding:13px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.quickresto-batch-progress[hidden]{display:none!important}
+.quickresto-batch-progress__head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.quickresto-batch-progress__head b{min-width:0;overflow-wrap:anywhere}
+.quickresto-batch-progress__head>span{flex:0 0 auto;color:var(--accent);font-size:13px;font-weight:900}
+.quickresto-progress-track{position:relative;height:10px;overflow:hidden;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft)}
+.quickresto-progress-track>span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--statusSuccessText));transition:width .3s ease}
+.quickresto-progress-track[data-active="true"]::after{position:absolute;inset:0;background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.36) 45%,transparent 65%);content:"";transform:translateX(-100%);animation:quickresto-progress-shimmer 1.5s linear infinite}
+@keyframes quickresto-progress-shimmer{to{transform:translateX(100%)}}
+.quickresto-batch-progress__meta{display:flex;flex-wrap:wrap;gap:7px 14px;color:var(--muted);font-size:12px}
+.quickresto-batch-progress__meta b{color:var(--text)}
+.quickresto-history-toolbar{display:flex;align-items:end;gap:10px}
+.quickresto-history-toolbar label{display:grid;min-width:min(280px,100%);gap:6px}
+.quickresto-history-toolbar label>span{color:var(--muted);font-size:12px;font-weight:800}
+.quickresto-history-page{display:grid;gap:12px}
+.quickresto-history-batch{display:grid;gap:0}
+.quickresto-history-periods{border-top:1px solid var(--border);padding-top:10px}
+.quickresto-history-periods summary{cursor:pointer;font-size:12px;font-weight:900}
+.quickresto-history-periods__list{display:grid;gap:7px}
+.quickresto-history-period{display:grid;gap:4px;padding:10px 11px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft)}
+.quickresto-history-period>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.quickresto-history-period>div:first-child b{min-width:0;overflow-wrap:anywhere}
+.quickresto-history-period>div:first-child span{flex:0 0 auto;color:var(--muted);font-size:11px;font-weight:900}
+.quickresto-history-period[data-status="FAILED"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft)}
+.quickresto-history-period[data-status="PARTIAL"]{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
 .quickresto-readonly{padding:11px 12px;border:1px solid var(--statusWarningBorder);border-radius:12px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:12px;font-weight:800;line-height:1.45}
 .quickresto-issues{position:relative;overflow:hidden;transition:border-color .18s ease,background .18s ease}
 .quickresto-issues::before{position:absolute;inset:0 auto 0 0;width:4px;background:var(--border);content:""}
@@ -175,4 +203,7 @@
   .quickresto-allocation-row{grid-template-columns:minmax(0,1fr) 82px 38px}
   .quickresto-department-allocation>[data-add-department-allocation]{width:100%;justify-self:stretch}
   .quickresto-issue-ignore .btn,.quickresto-issue-resolution-card .btn,.quickresto-issue-actions>.btn{width:100%;justify-self:stretch}
+  .quickresto-history-toolbar{align-items:stretch;flex-direction:column}
+  .quickresto-history-toolbar label,.quickresto-history-toolbar .btn{width:100%}
+  .quickresto-batch-progress__head,.quickresto-history-period>div:first-child{align-items:flex-start;flex-direction:column}
 }

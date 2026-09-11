@@ -1,0 +1,216 @@
+import {
+  api,
+  applyTelegramTheme,
+  ensureLogin,
+  getVenueById,
+  mountCommonUI,
+  mountNav,
+  setActiveVenueId,
+  toast,
+} from "/app.js?v=20260820-i18nmetrika1";
+
+applyTelegramTheme();
+mountCommonUI("venue");
+await ensureLogin({ silent: true });
+await mountNav({ activeTab: "venue", requireVenue: true });
+
+const params = new URLSearchParams(location.search);
+const venueId = params.get("venue_id") || "";
+if (venueId) setActiveVenueId(venueId);
+
+const el = Object.fromEntries(
+  [
+    "title",
+    "venueTitle",
+    "backToQuickResto",
+    "statusFilter",
+    "refreshHistory",
+    "historyHint",
+    "historyList",
+  ].map((id) => [id, document.getElementById(id)]),
+);
+
+let canManage = false;
+let pollingTimer = null;
+
+const esc = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+function errorMessage(error) {
+  return String(
+    error?.data?.detail || error?.message || "Не удалось загрузить историю",
+  );
+}
+
+function statusLabel(status) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "PENDING") return "В очереди";
+  if (normalized === "RUNNING") return "Выполняется";
+  if (normalized === "SUCCEEDED") return "Завершён";
+  if (normalized === "PARTIAL") return "Требует внимания";
+  if (normalized === "FAILED") return "Остановлен";
+  return normalized || "—";
+}
+
+function formatDate(value, withTime = false) {
+  if (!value) return "—";
+  const parsed = new Date(value.length === 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat(
+    document.documentElement.lang === "en" ? "en-US" : "ru-RU",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+    },
+  ).format(parsed);
+}
+
+function periodLabel(start, endExclusive) {
+  if (!start) return "—";
+  const end = endExclusive
+    ? new Date(new Date(`${endExclusive}T00:00:00`).getTime() - 86400000)
+        .toISOString()
+        .slice(0, 10)
+    : start;
+  return `${formatDate(start)}–${formatDate(end)}`;
+}
+
+function periodRows(batch) {
+  const completed = Array.isArray(batch.summary?.periods)
+    ? batch.summary.periods
+    : [];
+  const rows = [...completed];
+  const status = String(batch.status || "").toUpperCase();
+  if (["PENDING", "RUNNING", "FAILED"].includes(status)) {
+    rows.push({
+      sequence: Number(batch.completed_periods || 0) + 1,
+      period_start: batch.current_period_start || batch.next_period_start,
+      period_end_exclusive: batch.current_period_end_exclusive,
+      status,
+      pending: true,
+    });
+  }
+  return rows;
+}
+
+function renderBatch(batch) {
+  const status = String(batch.status || "").toUpperCase();
+  const total = Math.max(Number(batch.total_periods || 0), 1);
+  const completed = Math.min(Number(batch.completed_periods || 0), total);
+  const percent = Math.round((completed / total) * 100);
+  const totals = batch.summary?.totals || {};
+  const issueId = Number(batch.issue_ids?.[0] || 0);
+  const issueLink = issueId
+    ? `<a class="btn" href="/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}&provider=quickresto&issue_id=${encodeURIComponent(issueId)}">Открыть проблему #${issueId}</a>`
+    : "";
+  const retry = status === "FAILED" && canManage
+    ? `<button class="btn primary" type="button" data-retry-batch="${Number(batch.id)}">Продолжить с месяца ошибки</button>`
+    : "";
+  const rows = periodRows(batch)
+    .map(
+      (period) => `<div class="quickresto-history-period" data-status="${esc(period.status)}">
+        <div><b>${Number(period.sequence || 0)}. ${esc(periodLabel(period.period_start, period.period_end_exclusive))}</b><span>${esc(statusLabel(period.status))}</span></div>
+        <div class="muted small">Смен: ${Number(period.shifts_imported || 0)} · отчётов создано: ${Number(period.reports_created || 0)}${period.issue_count ? ` · проблем: ${Number(period.issue_count)}` : ""}</div>
+      </div>`,
+    )
+    .join("");
+  return `<article class="card section-card quickresto-history-batch" data-status="${esc(status)}">
+    <div class="section-card__head quickresto-section-head">
+      <div><b>Импорт #${Number(batch.id)}</b><div class="muted small mt-4">${esc(periodLabel(batch.period_start, batch.period_end_exclusive))} · создан ${esc(formatDate(batch.created_at, true))}</div></div>
+      <span class="quickresto-status" data-status="${esc(status)}">${esc(statusLabel(status))}</span>
+    </div>
+    <div class="quickresto-progress-track mt-12" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
+    <div class="quickresto-batch-progress__meta">
+      <span>Месяцев: <b>${completed} из ${total}</b></span>
+      <span>Смен: <b>${Number(totals.shifts_imported || 0)}</b></span>
+      <span>Создано отчётов: <b>${Number(totals.reports_created || 0)}</b></span>
+      <span>Обновлено отчётов: <b>${Number(totals.reports_updated || 0)}</b></span>
+    </div>
+    ${batch.error ? `<div class="quickresto-run-error mt-8">${esc(batch.error)}</div>` : ""}
+    <div class="quickresto-actions mt-12">${issueLink}${retry}</div>
+    <details class="quickresto-history-periods mt-12"${status === "FAILED" || status === "PARTIAL" ? " open" : ""}>
+      <summary>Запуски по месяцам</summary>
+      <div class="quickresto-history-periods__list mt-8">${rows || `<div class="quickresto-empty">Первый месяц ещё не запущен.</div>`}</div>
+    </details>
+  </article>`;
+}
+
+function stopPolling() {
+  if (!pollingTimer) return;
+  window.clearInterval(pollingTimer);
+  pollingTimer = null;
+}
+
+function ensurePolling(items) {
+  const active = items.some((item) =>
+    ["PENDING", "RUNNING"].includes(String(item.status || "").toUpperCase()),
+  );
+  if (!active) {
+    stopPolling();
+    return;
+  }
+  if (!pollingTimer) pollingTimer = window.setInterval(() => loadHistory({ quiet: true }), 5000);
+}
+
+async function loadHistory({ quiet = false } = {}) {
+  if (!venueId) return;
+  if (!quiet) el.historyHint.textContent = "Загружаем…";
+  try {
+    const status = String(el.statusFilter.value || "");
+    const suffix = status ? `?status=${encodeURIComponent(status)}&limit=100` : "?limit=100";
+    const result = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches${suffix}`,
+    );
+    const items = Array.isArray(result.items) ? result.items : [];
+    el.historyList.innerHTML = items.length
+      ? items.map(renderBatch).join("")
+      : `<div class="card section-card quickresto-empty">Импортов с выбранным статусом пока нет.</div>`;
+    el.historyHint.textContent = `Найдено импортов: ${items.length}`;
+    ensurePolling(items);
+  } catch (error) {
+    el.historyHint.textContent = errorMessage(error);
+    if (!quiet) toast(errorMessage(error), "err");
+  }
+}
+
+el.statusFilter.addEventListener("change", () => loadHistory());
+el.refreshHistory.addEventListener("click", () => loadHistory());
+el.historyList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-retry-batch]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches/${encodeURIComponent(button.dataset.retryBatch)}/retry`,
+      { method: "POST" },
+    );
+    toast("Импорт продолжится с месяца ошибки", "ok");
+    await loadHistory({ quiet: true });
+  } catch (error) {
+    toast(errorMessage(error), "err");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+if (!venueId) {
+  toast("Сначала выберите заведение", "err");
+} else {
+  el.backToQuickResto.dataset.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
+  const [venue, integration] = await Promise.all([
+    getVenueById(venueId),
+    api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`),
+  ]);
+  const venueName = venue?.name || `Заведение ${venueId}`;
+  el.title.textContent = `Импорты QuickResto · ${venueName}`;
+  el.venueTitle.textContent = venueName;
+  canManage = integration.permissions?.can_manage ?? false;
+  await loadHistory();
+}
