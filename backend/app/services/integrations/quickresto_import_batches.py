@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
