@@ -690,7 +690,7 @@ def get_quickresto_connection(
             },
             "permissions": {"can_view": True, "can_manage": can_manage},
             "active_pos_provider": selected_provider,
-                        "issues": {"open_count": 0, "affected_shift_count": 0, "oldest_failed_at": None},
+            "issues": {"open_count": 0, "affected_shift_count": 0, "oldest_failed_at": None},
             "import_batch": None,
         }
     latest_batch = latest_quickresto_import_batch(db, connection_id=int(connection.id))
@@ -1515,9 +1515,7 @@ def list_quickresto_import_batches(
 ):
     _require_quickresto_view(db, venue_id=venue_id, user=user)
     connection = _connection_or_404(db, venue_id)
-    statement = select(QuickRestoImportBatch).where(
-        QuickRestoImportBatch.connection_id == int(connection.id)
-    )
+    statement = select(QuickRestoImportBatch).where(QuickRestoImportBatch.connection_id == int(connection.id))
     if status:
         normalized = str(status).strip().upper()
         if normalized not in {"PENDING", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"}:

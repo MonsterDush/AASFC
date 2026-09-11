@@ -2520,11 +2520,7 @@ def sync_quickresto_connection(
             **({"batch_id": int(batch_id)} if batch_id is not None else {}),
             **({"batch_sequence": int(batch_sequence)} if batch_sequence is not None else {}),
             **({"period_start": period_start.isoformat()} if period_start is not None else {}),
-            **(
-                {"period_end_exclusive": period_end_exclusive.isoformat()}
-                if period_end_exclusive is not None
-                else {}
-            ),
+            **({"period_end_exclusive": period_end_exclusive.isoformat()} if period_end_exclusive is not None else {}),
         }
         or None,
     )

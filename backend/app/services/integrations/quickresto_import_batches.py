@@ -368,8 +368,7 @@ def _enqueue_batch_notification(
         issue_count=totals["issue_count"],
         report_import_mode=str(connection.report_import_mode or "CLOSED"),
         technical_summary=(
-            f"Помесячный импорт: обработано {int(batch.completed_periods)} "
-            f"из {int(batch.total_periods)} периодов"
+            f"Помесячный импорт: обработано {int(batch.completed_periods)} из {int(batch.total_periods)} периодов"
         ),
         correlation_id=f"quickresto-import-batch-{int(batch.id)}",
     )
