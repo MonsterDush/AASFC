@@ -401,6 +401,16 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             ).scalar_one()
             self.assertEqual(nested_path.parent_external_id, 5)
             self.assertEqual(nested_path.root_external_id, 6)
+            product_catalog = {
+                int(item.external_product_id): item
+                for item in db.execute(
+                    select(QuickRestoKpiProductMapping).where(
+                        QuickRestoKpiProductMapping.connection_id == connection.id
+                    )
+                ).scalars()
+            }
+            self.assertEqual(product_catalog[5].external_name, "Кальян")
+            self.assertEqual(product_catalog[8].external_name, "Coca Cola")
             self.assertIsNone(
                 db.execute(
                     select(QuickRestoDepartmentMapping).where(

@@ -45,6 +45,10 @@ QUICKRESTO_OBJECT_TYPES: dict[str, tuple[str, str]] = {
         "warehouse.nomenclature.dish",
         "ru.edgex.quickresto.modules.warehouse.nomenclature.dish.DishCategory",
     ),
+    "dishes": (
+        "warehouse.nomenclature.dish",
+        "ru.edgex.quickresto.modules.warehouse.nomenclature.dish.Dish",
+    ),
     "shifts": (
         "front.zreport",
         "ru.edgex.quickresto.modules.front.zreport.Shift",

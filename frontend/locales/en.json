@@ -4908,5 +4908,19 @@
   "Автоперерасчёт после изменения дневного плана департамента": "Automatic recalculation after changing the daily department plan",
   "Автоперерасчёт после массового изменения дневных планов департамента": "Automatic recalculation after bulk changes to daily department plans",
   "Для удаления планов оставьте все выбранные дни недели пустыми": "Leave all selected weekdays empty to delete plans",
-  "Вне департаментов (KPI), ₽": "Outside departments (KPI), ₽"
+  "Вне департаментов (KPI), ₽": "Outside departments (KPI), ₽",
+  "Позиции пока не найдены. Нажмите «Обновить позиции»: Axelio найдёт проданные позиции в сохранённых зашифрованных сменах и запросит их актуальные названия у QuickResto, не меняя отчёты.": "No items found yet. Click Refresh items: Axelio will find sold items in the stored encrypted shifts and request their current names from QuickResto without changing reports.",
+  "Обновляем справочник…": "Refreshing catalog…",
+  "Получаем актуальные названия блюд и групп из QuickResto…": "Loading current item and group names from QuickResto…",
+  "Найдено": "Found",
+  "проданных позиций, но QuickResto не отдал справочник названий:": "sold items, but QuickResto did not return the name catalog:",
+  "Не удалось получить названия из QuickResto": "Failed to load names from QuickResto",
+  "Справочник обновлён частично: распознано": "Catalog partially refreshed: recognized",
+  "позиций, без названия осталось": "items; names are still missing for",
+  ". Запустите обычную синхронизацию — следующие живые заказы дополнят названия.": ". Run a regular sync so future live orders can fill in the missing names.",
+  "Часть названий QuickResto не найдена": "Some QuickResto names were not found",
+  "Справочник обновлён: сверено": "Catalog refreshed: matched",
+  "позиций, обновлено названий": "items; item names updated:",
+  ", названий групп": ", group names updated:",
+  "Названия позиций QuickResto обновлены": "QuickResto item names refreshed"
 }
