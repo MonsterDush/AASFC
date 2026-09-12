@@ -151,6 +151,8 @@ class QuickRestoIntegrationContractTests(TestCase):
         kpi_html = (FRONTEND / "owner-quickresto-kpi.html").read_text(encoding="utf-8")
         kpi_script = (FRONTEND / "owner-quickresto-kpi.js").read_text(encoding="utf-8")
         kpi_styles = (FRONTEND / "styles" / "pages" / "owner-quickresto-kpi.css").read_text(encoding="utf-8")
+        history_script = (FRONTEND / "owner-quickresto-import-history.js").read_text(encoding="utf-8")
+        router = (PROJECT_ROOT / "backend" / "app" / "routers" / "venue_quickresto.py").read_text(encoding="utf-8")
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
@@ -178,7 +180,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260911-monthlyqueue1", html)
+        self.assertIn("20260913-monthlyqueue2", html)
         self.assertIn('id="scopeSection"', html)
         self.assertIn('id="externalVenue"', html)
         self.assertIn('id="salePlaceOptions"', html)
@@ -221,6 +223,12 @@ class QuickRestoIntegrationContractTests(TestCase):
             "/integrations/quickresto/import-batches?limit=1`",
         ):
             self.assertIn(endpoint, script)
+        self.assertIn("state.importBatch = result.batches?.[0] || null", script)
+        self.assertNotIn("result.items?.[0]", script)
+        self.assertGreaterEqual(script.count("result.import_batch"), 4)
+        self.assertIn("state.batches = result.batches || result.items || []", history_script)
+        self.assertIn('return {"batches": [_serialize_import_batch(db, item) for item in rows]}', router)
+        self.assertGreaterEqual(router.count('"import_batch": _serialize_import_batch'), 2)
         self.assertIn('el.apiPassword.value = ""', script)
         self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
         self.assertIn("/owner-integration-issues.js", issues_html)
