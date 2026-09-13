@@ -23,7 +23,7 @@ import {
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
 import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260726-navmore1";
 import { createPositionDomain } from "/positions/position-domain.js?v=20260720-unified6";
-import { createPositionEditor } from "/positions/position-editor.js?v=20260723-functional1";
+import { createPositionEditor } from "/positions/position-editor.js?v=20260913-effectivepay1";
 import { createPositionList } from "/positions/position-list.js?v=20260725-polish3";
 import { createPositionInviteController } from "/positions/invite-controller.js?v=20260725-polish4";
 

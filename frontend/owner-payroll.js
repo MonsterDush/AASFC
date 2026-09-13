@@ -223,9 +223,26 @@ function componentSnapshot(component) {
     : (component || {});
 }
 
+function payrollLineProfileTitles(line, breakdown) {
+  const titles = Array.isArray(breakdown?.pay_profile_titles)
+    ? breakdown.pay_profile_titles.map((title) => String(title || "").trim()).filter(Boolean)
+    : [];
+  if (!titles.length && line?.pay_profile_title) titles.push(String(line.pay_profile_title).trim());
+  return [...new Set(titles)];
+}
+
 function breakdownBadges(component) {
   const snap = componentSnapshot(component);
   const badges = [];
+  if (component?.pay_profile_title) {
+    badges.push(`<span class="payroll-chip payroll-chip--muted">Профиль: ${esc(component.pay_profile_title)}</span>`);
+  }
+  const positionTitles = Array.isArray(component?.position_titles)
+    ? component.position_titles.map((title) => String(title || '').trim()).filter(Boolean)
+    : [];
+  if (positionTitles.length) {
+    badges.push(`<span class="payroll-chip payroll-chip--muted">Должность: ${esc(positionTitles.join(' + '))}</span>`);
+  }
   if (snap?.boost_enabled && snap?.boost_percent_bps != null && !snap?.percent_tiers?.length) {
     badges.push(`<span class="payroll-chip ${snap?.boost_applied ? 'payroll-chip--ok' : 'payroll-chip--muted'}">boost ${esc(fmtPercentBps(snap.boost_percent_bps))}${snap?.boost_applied ? ' ✓' : ''}</span>`);
   }
@@ -1123,6 +1140,7 @@ function renderLines() {
     const breakdown = line.breakdown || {};
     const metrics = breakdown.metrics || {};
     const components = Array.isArray(breakdown.components) ? breakdown.components : [];
+    const profileTitles = payrollLineProfileTitles(line, breakdown);
     const row = document.createElement("div");
     row.className = "payroll-person";
     row.dataset.payrollLineId = String(line?.id || "");
@@ -1143,7 +1161,7 @@ function renderLines() {
           <div class="payroll-person__identity">
             <div class="payroll-person__title">
               <b>${esc(memberName(line.member))}</b>
-              ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
+              ${profileTitles.map((title) => `<span class="badge">${esc(title)}</span>`).join("")}
               ${stateBadge}
             </div>
             <div class="payroll-person__metrics">

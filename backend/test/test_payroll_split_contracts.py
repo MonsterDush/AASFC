@@ -298,6 +298,89 @@ class PayrollMonthOrchestratorTests(TestCase):
         self.assertEqual(finance_entries[0]["source_id"], 101)
         self.assertGreaterEqual(db.flush_count, 3)
 
+    def test_month_calculation_sums_and_prorates_fixed_salary_without_shifts(self):
+        db = self._Session()
+        member = SimpleNamespace(id=17, short_name="Иван", full_name=None, tg_username=None)
+        bar_profile = SimpleNamespace(id=3, title="Бар")
+        hall_profile = SimpleNamespace(id=4, title="Зал")
+        bar_component = SimpleNamespace(
+            id=5,
+            component_type="SALARY_FIXED_MONTH",
+            title="Оклад бармена",
+            amount_minor=100_000,
+            rate_minor=None,
+            percent_bps=None,
+            kpi_metric_id=None,
+        )
+        hall_component = SimpleNamespace(
+            id=6,
+            component_type="SALARY_FIXED_MONTH",
+            title="Оклад официанта",
+            amount_minor=310_000,
+            rate_minor=None,
+            percent_bps=None,
+            kpi_metric_id=None,
+        )
+        contexts = [
+            SimpleNamespace(
+                assignment=None,
+                profile=bar_profile,
+                member_user=member,
+                metrics=calculator.PayrollMemberMetrics(),
+                position_ids={11},
+                position_titles={"Бармен"},
+            ),
+            SimpleNamespace(
+                assignment=None,
+                profile=hall_profile,
+                member_user=member,
+                metrics=calculator.PayrollMemberMetrics(),
+                position_ids={12},
+                position_titles={"Официант"},
+                profile_active_dates={date(2026, 3, day) for day in range(16, 32)},
+            ),
+        ]
+
+        with (
+            patch.object(calculator, "_pick_latest_assignments", return_value=[]),
+            patch.object(calculator, "load_position_payroll_contexts", return_value=contexts),
+            patch.object(
+                calculator,
+                "_load_profile_components",
+                return_value={3: [bar_component], 4: [hall_component]},
+            ),
+            patch.object(calculator, "_load_revenue_metrics", return_value=calculator.PayrollRevenueMetrics()),
+            patch.object(calculator, "_load_kpi_metrics", return_value=calculator.PayrollKpiMetrics()),
+            patch.object(
+                calculator,
+                "_load_venue_plan_metrics",
+                return_value=calculator.PayrollVenuePlanMetrics(),
+            ),
+            patch.object(calculator, "create_finance_entry"),
+        ):
+            result = calculator.calculate_payroll_for_month(
+                db=db,
+                venue_id=7,
+                month="2026-03",
+                calculated_by_user_id=99,
+            )
+
+        self.assertEqual(result.run.total_amount_minor, 260_000)
+        self.assertEqual(result.run.lines_count, 1)
+        self.assertEqual(result.lines[0].amount_minor, 260_000)
+        self.assertIsNone(result.lines[0].pay_profile_id)
+        breakdown = json.loads(result.lines[0].breakdown_json)
+        self.assertEqual(breakdown["pay_profile_ids"], [3, 4])
+        self.assertEqual(breakdown["pay_profile_titles"], ["Бар", "Зал"])
+        self.assertEqual(
+            [(item["pay_profile_id"], item["amount_minor"]) for item in breakdown["components"]],
+            [(3, 100_000), (4, 160_000)],
+        )
+        hall_breakdown = breakdown["components"][1]
+        self.assertTrue(hall_breakdown["prorated"])
+        self.assertEqual(hall_breakdown["profile_active_dates_count"], 16)
+        self.assertEqual(hall_breakdown["month_dates_count"], 31)
+
     def test_month_recalculation_records_percent_decision_and_minimum_top_up(self):
         db = self._Session()
         existing_run = PayrollRun(

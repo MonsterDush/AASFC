@@ -29,6 +29,7 @@ from app.models import (
     PayrollRecalculationLog,
     PayrollRun,
     PositionPermissionTemplate,
+    PositionPayProfilePeriod,
     QuickRestoConnection,
     QuickRestoImportIssue,
     QuickRestoImportIssueAudit,
@@ -122,6 +123,7 @@ _SPECIALIZED_USER_REFS = frozenset(
         ("daily_report_tip_allocations", "user_id"),
         ("pay_profile_assignments", "member_user_id"),
         ("payroll_lines", "member_user_id"),
+        ("position_pay_profile_periods", "member_user_id"),
         ("shift_assignments", "member_user_id"),
         ("shift_availabilities", "member_user_id"),
         ("shift_comment_mentions", "mentioned_user_id"),
@@ -325,9 +327,47 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         existing = target_by_key.get(key)
         if existing is None:
             row.member_user_id = int(target_user.id)
+            for period in db.execute(
+                select(PositionPayProfilePeriod).where(
+                    PositionPayProfilePeriod.venue_position_id == int(row.id)
+                )
+            ).scalars():
+                period.member_user_id = int(target_user.id)
             target_by_key[key] = row
             position_map[int(row.id)] = int(row.id)
             continue
+        source_periods = (
+            db.execute(
+                select(PositionPayProfilePeriod).where(
+                    PositionPayProfilePeriod.venue_position_id == int(row.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        target_period_keys = {
+            _position_pay_profile_period_key(period)
+            for period in db.execute(
+                select(PositionPayProfilePeriod).where(
+                    PositionPayProfilePeriod.venue_position_id == int(existing.id)
+                )
+            ).scalars()
+        }
+        unmatched_periods = [
+            period
+            for period in source_periods
+            if _position_pay_profile_period_key(period) not in target_period_keys
+        ]
+        if unmatched_periods:
+            # Two accounts may have the same current role but different salary
+            # history. Keep both position rows so neither timeline is erased.
+            row.member_user_id = int(target_user.id)
+            for period in source_periods:
+                period.member_user_id = int(target_user.id)
+            position_map[int(row.id)] = int(row.id)
+            continue
+        for period in source_periods:
+            db.delete(period)
         existing.is_active = bool(existing.is_active or row.is_active)
         position_map[int(row.id)] = int(existing.id)
         assignment_rows = (
@@ -356,6 +396,16 @@ def _venue_position_merge_key(row: VenuePosition) -> tuple:
         int(getattr(row, "percent", 0) or 0),
         int(row.pay_profile_id) if getattr(row, "pay_profile_id", None) is not None else None,
         tuple(sorted(parse_permission_codes(getattr(row, "permission_codes", None)))),
+    )
+
+
+def _position_pay_profile_period_key(row: PositionPayProfilePeriod) -> tuple:
+    return (
+        int(row.venue_id),
+        int(row.pay_profile_id),
+        row.valid_from,
+        row.valid_to,
+        bool(row.is_active),
     )
 
 

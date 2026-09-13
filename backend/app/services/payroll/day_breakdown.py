@@ -356,18 +356,31 @@ def _component_allocation_for_day(
     month_component_amount_minor = int(component.get("amount_minor") or 0)
 
     if component_type == "SALARY_FIXED_MONTH":
-        if not month_dates or target_date not in month_dates:
+        raw_active_dates = component.get("profile_active_dates")
+        active_dates = set(month_dates)
+        if isinstance(raw_active_dates, list):
+            active_dates = set()
+            for day in raw_active_dates:
+                try:
+                    active_dates.add(date.fromisoformat(str(day)))
+                except (TypeError, ValueError):
+                    continue
+        ordered_active_dates = sorted(day for day in month_dates if day in active_dates)
+        if not ordered_active_dates or target_date not in active_dates:
             return None
         allocation = _allocate_minor_by_keys(
-            month_component_amount_minor, sorted(month_dates), {day: 1 for day in month_dates}
+            month_component_amount_minor,
+            ordered_active_dates,
+            {day: 1 for day in ordered_active_dates},
         )
         amount_minor = int(allocation.get(target_date, 0))
         if amount_minor == 0:
             return None
         title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
         source_amount_minor = component.get("source_amount_minor", month_component_amount_minor)
-        base_text = f"1 день из {len(month_dates)}"
-        formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {len(month_dates)} дней месяца"
+        base_text = f"1 день из {len(ordered_active_dates)} дней действия профиля"
+        source_month_days = int(component.get("month_dates_count") or len(month_dates))
+        formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {source_month_days} дней месяца"
         salary_accrual_day = component.get("salary_accrual_day")
         if salary_accrual_day is not None:
             formula_text += f" · начисление {int(salary_accrual_day)}-го числа"

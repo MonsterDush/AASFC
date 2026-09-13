@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
@@ -14,6 +14,7 @@ from app.models.shift_interval import ShiftIntervalPosition
 from app.models import (
     DailyReport,
     PayProfile,
+    PositionPayProfilePeriod,
     Shift,
     ShiftAssignment,
     ShiftInterval,
@@ -24,6 +25,7 @@ from app.models import (
 from app.routers import venue_positions, venue_shifts
 from app.schemas.venue_shifts import ShiftAssignmentAddIn
 from app.services.payroll.position_contexts import load_position_payroll_contexts
+from app.services.payroll.position_profile_periods import set_position_pay_profile
 from app.services.venue_member_names import load_owner_notes, owner_display_name
 
 
@@ -79,6 +81,7 @@ class FourFixesDatabaseBehaviorTests(TestCase):
             VenueMember.__table__,
             PayProfile.__table__,
             VenuePosition.__table__,
+            PositionPayProfilePeriod.__table__,
             ShiftInterval.__table__,
             ShiftIntervalPosition.__table__,
             Shift.__table__,
@@ -313,3 +316,171 @@ class FourFixesDatabaseBehaviorTests(TestCase):
             self.assertEqual(by_profile[22].metrics.shifts_count, 1)
             self.assertEqual(by_profile[21].position_titles, {"Бармен"})
             self.assertEqual(by_profile[22].position_titles, {"Официант"})
+
+    def test_effective_period_selects_profile_by_shift_date_and_keeps_zero_shift_salary_context(self):
+        with Session(self.engine) as db:
+            owner, employee, first_position, second_position = self._seed_people_and_positions(db)
+            second_position.is_active = False
+            first_position.pay_profile_id = 22
+            db.add_all(
+                [
+                    PositionPayProfilePeriod(
+                        venue_id=5,
+                        venue_position_id=first_position.id,
+                        member_user_id=employee.id,
+                        pay_profile_id=21,
+                        valid_from=date(2026, 8, 1),
+                        valid_to=date(2026, 8, 15),
+                        is_active=True,
+                    ),
+                    PositionPayProfilePeriod(
+                        venue_id=5,
+                        venue_position_id=first_position.id,
+                        member_user_id=employee.id,
+                        pay_profile_id=22,
+                        valid_from=date(2026, 8, 16),
+                        valid_to=None,
+                        is_active=True,
+                    ),
+                    ShiftInterval(
+                        id=31,
+                        venue_id=5,
+                        title="День",
+                        start_time=time(10, 0),
+                        end_time=time(18, 0),
+                        is_active=True,
+                    ),
+                ]
+            )
+            for shift_id, shift_date in ((41, date(2026, 8, 10)), (42, date(2026, 8, 20))):
+                db.add(
+                    Shift(
+                        id=shift_id,
+                        venue_id=5,
+                        date=shift_date,
+                        interval_id=31,
+                        shift_slot="DAY",
+                        is_active=True,
+                    )
+                )
+                db.add(
+                    ShiftAssignment(
+                        shift_id=shift_id,
+                        member_user_id=employee.id,
+                        venue_position_id=first_position.id,
+                    )
+                )
+                db.add(
+                    DailyReport(
+                        venue_id=5,
+                        date=shift_date,
+                        shift_slot="DAY",
+                        status="CLOSED",
+                        created_by_user_id=owner.id,
+                    )
+                )
+            db.commit()
+
+            contexts = load_position_payroll_contexts(
+                db,
+                venue_id=5,
+                month_start=date(2026, 8, 1),
+                month_end_excl=date(2026, 9, 1),
+                fallback_assignments=[],
+            )
+
+            by_profile = {int(context.profile.id): context for context in contexts}
+            self.assertEqual(set(by_profile), {21, 22})
+            self.assertEqual(by_profile[21].metrics.worked_dates, {date(2026, 8, 10)})
+            self.assertEqual(by_profile[22].metrics.worked_dates, {date(2026, 8, 20)})
+            self.assertEqual(len(by_profile[21].profile_active_dates), 15)
+            self.assertEqual(len(by_profile[22].profile_active_dates), 16)
+
+    def test_profile_change_closes_previous_period_without_rewriting_it(self):
+        with Session(self.engine) as db:
+            _owner, employee, first_position, _second_position = self._seed_people_and_positions(db)
+            previous = PositionPayProfilePeriod(
+                venue_id=5,
+                venue_position_id=first_position.id,
+                member_user_id=employee.id,
+                pay_profile_id=21,
+                valid_from=date(2026, 1, 1),
+                valid_to=None,
+                is_active=True,
+            )
+            db.add(previous)
+            db.flush()
+
+            created = set_position_pay_profile(
+                db,
+                position=first_position,
+                pay_profile_id=22,
+                effective_from=date(2026, 8, 16),
+            )
+            db.commit()
+
+            self.assertEqual(previous.valid_to, date(2026, 8, 15))
+            self.assertIsNotNone(created)
+            self.assertEqual(created.valid_from, date(2026, 8, 16))
+            self.assertIsNone(created.valid_to)
+            self.assertEqual(first_position.pay_profile_id, 22)
+
+    def test_reactivating_position_on_closed_period_day_creates_open_period(self):
+        with Session(self.engine) as db:
+            _owner, employee, first_position, _second_position = self._seed_people_and_positions(db)
+            closed = PositionPayProfilePeriod(
+                venue_id=5,
+                venue_position_id=first_position.id,
+                member_user_id=employee.id,
+                pay_profile_id=21,
+                valid_from=date(2026, 1, 1),
+                valid_to=date.today(),
+                is_active=True,
+            )
+            db.add(closed)
+            db.flush()
+
+            created = set_position_pay_profile(
+                db,
+                position=first_position,
+                pay_profile_id=21,
+                effective_from=date.today(),
+            )
+            db.commit()
+
+            self.assertIsNotNone(created)
+            self.assertNotEqual(created.id, closed.id)
+            self.assertEqual(closed.valid_to, date.today() - timedelta(days=1))
+            self.assertEqual(created.valid_from, date.today())
+            self.assertIsNone(created.valid_to)
+
+    def test_same_profile_on_two_positions_creates_one_salary_context(self):
+        with Session(self.engine) as db:
+            _owner, employee, first_position, second_position = self._seed_people_and_positions(db)
+            second_position.pay_profile_id = 21
+            db.add_all(
+                [
+                    PositionPayProfilePeriod(
+                        venue_id=5,
+                        venue_position_id=position.id,
+                        member_user_id=employee.id,
+                        pay_profile_id=21,
+                        valid_from=date(2026, 8, 1),
+                        valid_to=None,
+                    )
+                    for position in (first_position, second_position)
+                ]
+            )
+            db.commit()
+
+            contexts = load_position_payroll_contexts(
+                db,
+                venue_id=5,
+                month_start=date(2026, 8, 1),
+                month_end_excl=date(2026, 9, 1),
+                fallback_assignments=[],
+            )
+
+            self.assertEqual(len(contexts), 1)
+            self.assertEqual(contexts[0].position_ids, {11, 12})
+            self.assertEqual(len(contexts[0].profile_active_dates), 31)

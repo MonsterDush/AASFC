@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from fastapi import APIRouter
 
 from app.routers.venue_core import (
@@ -33,6 +35,13 @@ from app.routers.venue_position_support import (
     _load_position_presets_from_setup,
 )
 from app.services.venue_member_names import load_member_display_names, load_owner_notes, owner_display_name
+from app.services.payroll.position_profile_periods import (
+    PositionPayProfilePeriodError,
+    close_position_pay_profile,
+    load_position_profile_periods,
+    serialize_position_profile_period,
+    set_position_pay_profile,
+)
 
 
 router = APIRouter()
@@ -176,6 +185,14 @@ def list_positions(
 
     rows = db.execute(stmt).all()
 
+    periods_by_position: dict[int, list] = {}
+    for period in load_position_profile_periods(
+        db,
+        venue_id=venue_id,
+        position_ids=[int(row.id) for row in rows if row.member_user_id is not None],
+    ):
+        periods_by_position.setdefault(int(period.venue_position_id), []).append(period)
+
     owner_notes = load_owner_notes(
         db,
         venue_id=venue_id,
@@ -192,6 +209,16 @@ def list_positions(
         member_user_id = int(r.member_user_id) if r.member_user_id is not None else None
         owner_note = owner_notes.get(member_user_id) if member_user_id is not None else None
         display_name_override = member_display_names.get(member_user_id) if member_user_id is not None else None
+        profile_periods = periods_by_position.get(int(r.id), [])
+        current_period = next(
+            (
+                period
+                for period in reversed(profile_periods)
+                if (period.valid_from is None or period.valid_from <= date.today())
+                and (period.valid_to is None or period.valid_to >= date.today())
+            ),
+            None,
+        )
         items.append(
             {
                 "id": r.id,
@@ -203,6 +230,19 @@ def list_positions(
                 "pay_profile_id": int(r.pay_profile_id) if r.pay_profile_id is not None else None,
                 "pay_profile_title": r.pay_profile_title,
                 "pay_profile_assignment_id": None,
+                "pay_profile_effective_from": (
+                    current_period.valid_from.isoformat()
+                    if current_period is not None and current_period.valid_from is not None
+                    else None
+                ),
+                "pay_profile_effective_to": (
+                    current_period.valid_to.isoformat()
+                    if current_period is not None and current_period.valid_to is not None
+                    else None
+                ),
+                "pay_profile_periods": [
+                    serialize_position_profile_period(period) for period in reversed(profile_periods)
+                ],
                 "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
                 "is_active": bool(r.is_active),
                 "member": {
@@ -303,6 +343,18 @@ def create_position(
     pos.pay_profile_id = payload.pay_profile_id
     pos.permission_codes = json.dumps(norm_codes) if codes_provided else json.dumps([])
     pos.is_active = payload.is_active
+    db.flush()
+    current_period = None
+    if pos.member_user_id is not None and pos.is_active:
+        try:
+            current_period = set_position_pay_profile(
+                db,
+                position=pos,
+                pay_profile_id=payload.pay_profile_id,
+                effective_from=payload.pay_profile_effective_from,
+            )
+        except PositionPayProfilePeriodError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if pos.member_user_id is not None and pos.is_active:
         catalog = _ensure_catalog_position(
             db,
@@ -331,6 +383,11 @@ def create_position(
         "pay_profile_id": int(profile.id) if profile is not None else None,
         "pay_profile_title": profile.title if profile is not None else None,
         "pay_profile_assignment_id": None,
+        "pay_profile_effective_from": (
+            current_period.valid_from.isoformat()
+            if current_period is not None and current_period.valid_from is not None
+            else None
+        ),
     }
 
 
@@ -356,6 +413,10 @@ def update_position(
         raise HTTPException(status_code=404, detail="Position not found")
 
     fields_set = payload.model_fields_set
+    old_member_user_id = int(pos.member_user_id) if pos.member_user_id is not None else None
+    old_pay_profile_id = int(pos.pay_profile_id) if pos.pay_profile_id is not None else None
+    old_is_active = bool(pos.is_active)
+    cloned_from_catalog = False
 
     # Changing or clearing member assignment is a separate permission.
     if "member_user_id" in fields_set and payload.member_user_id != pos.member_user_id:
@@ -388,6 +449,7 @@ def update_position(
                 is_active=catalog.is_active,
             )
             db.add(pos)
+            cloned_from_catalog = True
         else:
             pos.member_user_id = payload.member_user_id
 
@@ -449,6 +511,57 @@ def update_position(
     elif pos.pay_profile_id is not None:
         profile = db.execute(select(PayProfile).where(PayProfile.id == pos.pay_profile_id)).scalar_one_or_none()
 
+    db.flush()
+    member_changed = old_member_user_id != (
+        int(pos.member_user_id) if pos.member_user_id is not None else None
+    )
+    profile_changed = old_pay_profile_id != (
+        int(pos.pay_profile_id) if pos.pay_profile_id is not None else None
+    )
+    became_active = not old_is_active and bool(pos.is_active)
+    current_period = None
+    if pos.member_user_id is not None and pos.is_active and (
+        cloned_from_catalog or member_changed or profile_changed or became_active
+    ):
+        try:
+            current_period = set_position_pay_profile(
+                db,
+                position=pos,
+                pay_profile_id=pos.pay_profile_id,
+                effective_from=payload.pay_profile_effective_from,
+                previous_member_user_id=(
+                    old_member_user_id if member_changed and not cloned_from_catalog else None
+                ),
+            )
+        except PositionPayProfilePeriodError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif member_changed and pos.member_user_id is None:
+        effective_from = payload.pay_profile_effective_from or date.today()
+        close_position_pay_profile(
+            db,
+            position=pos,
+            valid_to=effective_from - timedelta(days=1),
+        )
+    elif old_is_active and not pos.is_active:
+        close_position_pay_profile(db, position=pos)
+
+    if current_period is None and pos.member_user_id is not None:
+        current_period = next(
+            (
+                period
+                for period in reversed(
+                    load_position_profile_periods(
+                        db,
+                        venue_id=venue_id,
+                        position_ids=[int(pos.id)],
+                    )
+                )
+                if (period.valid_from is None or period.valid_from <= date.today())
+                and (period.valid_to is None or period.valid_to >= date.today())
+            ),
+            None,
+        )
+
     if pos.member_user_id is not None and pos.is_active:
         catalog = _ensure_catalog_position(
             db,
@@ -476,6 +589,16 @@ def update_position(
         "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,
         "pay_profile_title": profile.title if profile is not None else None,
         "pay_profile_assignment_id": None,
+        "pay_profile_effective_from": (
+            current_period.valid_from.isoformat()
+            if current_period is not None and current_period.valid_from is not None
+            else None
+        ),
+        "pay_profile_effective_to": (
+            current_period.valid_to.isoformat()
+            if current_period is not None and current_period.valid_to is not None
+            else None
+        ),
         "permission_codes": _parse_position_permission_codes(getattr(pos, "permission_codes", None)),
         "is_active": bool(pos.is_active),
     }
@@ -497,6 +620,8 @@ def delete_position(
     ).scalar_one_or_none()
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
+
+    close_position_pay_profile(db, position=pos)
 
     mode = "archived"
     if pos.member_user_id is not None:

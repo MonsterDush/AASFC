@@ -53,6 +53,13 @@ from .component_calculations import (
     parse_month_start,
 )
 from .weekday_rates import calculate_weekday_rate_amount_minor, component_weekday_rates, salary_shift_rows
+from .date_scopes import (
+    context_month_dates,
+    enrich_fixed_salary_breakdown,
+    kpi_metrics_for_dates,
+    prorate_fixed_month_amount,
+    revenue_metrics_for_dates,
+)
 from .metric_loaders import (
     _assignment_overlaps_month as _assignment_overlaps_month,
     _load_closed_report_dates as _load_closed_report_dates,
@@ -185,6 +192,15 @@ def calculate_payroll_for_month(
     for context in payroll_contexts:
         profile = context.profile
         metrics = context.metrics
+        month_dates, salary_active_dates = context_month_dates(
+            context,
+            month_start=month_start,
+            month_end_excl=month_end_excl,
+        )
+        effective_revenue_metrics, effective_kpi_metrics = (
+            revenue_metrics_for_dates(revenue_metrics, salary_active_dates),
+            kpi_metrics_for_dates(kpi_metrics, salary_active_dates),
+        )
         components = components_by_profile.get(int(profile.id), [])
         breakdown_items: list[dict] = []
         line_total = 0
@@ -202,10 +218,12 @@ def calculate_payroll_for_month(
             if component_department_ids:
                 base_scope = _component_base_scope(component)
                 department_revenue_by_date = _sum_department_revenue_by_date_minor(
-                    revenue_metrics, component_department_ids
+                    effective_revenue_metrics, component_department_ids
                 )
                 if base_scope == BASE_SCOPE_FULL_PERIOD:
-                    department_base_minor = _sum_department_revenue_minor(revenue_metrics, component_department_ids)
+                    department_base_minor = _sum_department_revenue_minor(
+                        effective_revenue_metrics, component_department_ids
+                    )
                 else:
                     department_base_minor = _sum_department_revenue_for_worked_dates(
                         department_revenue_by_date,
@@ -218,20 +236,22 @@ def calculate_payroll_for_month(
                     KPI_CALCULATION_PER_UNIT,
                 }:
                     kpi_metric_value = _sum_kpi_for_worked_shifts(
-                        kpi_metrics,
+                        effective_kpi_metrics,
                         metric_id=int(component.kpi_metric_id),
                         metrics=metrics,
                     )
                 else:
-                    kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
+                    kpi_metric_value = int(
+                        effective_kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0)
+                    )
 
             percent_decision: PayrollPercentDecision | None = None
             if component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
                 percent_decision = _build_percent_component_decision(
                     component,
                     metrics=metrics,
-                    revenue_metrics=revenue_metrics,
-                    kpi_metrics=kpi_metrics,
+                    revenue_metrics=effective_revenue_metrics,
+                    kpi_metrics=effective_kpi_metrics,
                     venue_plan_metrics=venue_plan_metrics,
                 )
                 amount_minor = int(percent_decision.amount_minor)
@@ -242,9 +262,15 @@ def calculate_payroll_for_month(
                     component,
                     minutes_total=int(metrics.minutes_total),
                     shifts_count=int(metrics.shifts_count),
-                    total_revenue_minor=int(revenue_metrics.total_revenue_minor),
+                    total_revenue_minor=int(effective_revenue_metrics.total_revenue_minor),
                     department_revenue_minor=int(department_base_minor),
                     kpi_metric_value=int(kpi_metric_value),
+                )
+            if component_type == "SALARY_FIXED_MONTH":
+                amount_minor = prorate_fixed_month_amount(
+                    int(component.amount_minor or 0),
+                    month_dates=month_dates,
+                    active_dates=salary_active_dates,
                 )
             breakdown_item = {
                 "component_id": int(component.id),
@@ -259,10 +285,11 @@ def calculate_payroll_for_month(
                 "source_percent_bps": int(component.percent_bps or 0) if component.percent_bps is not None else None,
             }
             if component_type == "SALARY_FIXED_MONTH":
-                breakdown_item["salary_accrual_day"] = (
-                    int(component.salary_accrual_day)
-                    if getattr(component, "salary_accrual_day", None) is not None
-                    else None
+                enrich_fixed_salary_breakdown(
+                    breakdown_item,
+                    component=component,
+                    month_dates=month_dates,
+                    active_dates=salary_active_dates,
                 )
             if component_type in {"SALARY_HOURLY", "SALARY_PER_SHIFT"}:
                 weekday_rates = component_weekday_rates(component)
@@ -390,7 +417,9 @@ def calculate_payroll_for_month(
                 breakdown_item["base_amount_minor"] = kpi_decision.base_amount_minor
                 if kpi_decision.calculation_mode in {KPI_CALCULATION_PERCENT, KPI_CALCULATION_PER_UNIT}:
                     breakdown_item["scope_title"] = "по закрытым сменам сотрудника"
-                    metric_values = kpi_metrics.values_by_metric_date_slot.get(int(component.kpi_metric_id or 0), {})
+                    metric_values = effective_kpi_metrics.values_by_metric_date_slot.get(
+                        int(component.kpi_metric_id or 0), {}
+                    )
                     report_keys = {
                         (shift.shift_date, str(shift.shift_slot or "DAY").strip().upper())
                         for shift in metrics.worked_shifts
@@ -407,9 +436,9 @@ def calculate_payroll_for_month(
                 metrics=metrics,
                 month_start=month_start,
                 month_end_excl=month_end_excl,
-                revenue_metrics=revenue_metrics,
+                revenue_metrics=effective_revenue_metrics,
                 percent_decision=percent_decision,
-                kpi_values_by_metric_date_slot=kpi_metrics.values_by_metric_date_slot,
+                kpi_values_by_metric_date_slot=effective_kpi_metrics.values_by_metric_date_slot,
             )
             for shift_id, shift_amount_minor in shift_allocations.items():
                 earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(
