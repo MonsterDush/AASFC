@@ -18,6 +18,26 @@ export function payrollLineShiftMetrics(line) {
   };
 }
 
+export function payrollLineProfileTitles(line, breakdown = line?.breakdown) {
+  const titles = Array.isArray(breakdown?.pay_profile_titles)
+    ? breakdown.pay_profile_titles
+        .map((title) => String(title || "").trim())
+        .filter(Boolean)
+    : [];
+  if (!titles.length && line?.pay_profile_title) {
+    titles.push(String(line.pay_profile_title).trim());
+  }
+  return [...new Set(titles)];
+}
+
+export function payrollComponentSnapshot(component) {
+  return component &&
+    typeof component.calculation_snapshot === "object" &&
+    component.calculation_snapshot
+    ? component.calculation_snapshot
+    : component || {};
+}
+
 export function buildPayrollTeamAnalytics(lines, { minimumShifts = 3, maxRows = 6 } = {}) {
   const threshold = Math.max(1, finiteCount(minimumShifts) || 1);
   const limit = Math.max(1, finiteCount(maxRows) || 1);

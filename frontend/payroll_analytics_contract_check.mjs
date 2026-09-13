@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { buildPayrollTeamAnalytics, payrollLineShiftMetrics } from "./app/payroll-analytics.js";
+import {
+  buildPayrollTeamAnalytics,
+  payrollComponentSnapshot,
+  payrollLineProfileTitles,
+  payrollLineShiftMetrics,
+} from "./app/payroll-analytics.js";
 
 const lines = [
   { member_user_id: 1, amount_minor: 10_000_000, breakdown: { metrics: { shifts_count: 10 } } },
@@ -13,6 +18,22 @@ assert.deepEqual(payrollLineShiftMetrics(lines[0]), {
   amountMinor: 10_000_000,
   averagePerShiftMinor: 1_000_000,
 });
+assert.deepEqual(
+  payrollLineProfileTitles({
+    pay_profile_title: "fallback",
+    breakdown: { pay_profile_titles: ["Бар", "Зал", "Бар", ""] },
+  }),
+  ["Бар", "Зал"],
+);
+assert.deepEqual(payrollLineProfileTitles({ pay_profile_title: "Оклад" }), [
+  "Оклад",
+]);
+const componentSnapshot = { boost_enabled: true };
+assert.equal(
+  payrollComponentSnapshot({ calculation_snapshot: componentSnapshot }),
+  componentSnapshot,
+);
+assert.deepEqual(payrollComponentSnapshot(null), {});
 
 const analytics = buildPayrollTeamAnalytics(lines, { minimumShifts: 3, maxRows: 6 });
 assert.equal(analytics.totalShifts, 21);

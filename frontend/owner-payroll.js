@@ -29,8 +29,10 @@ import {
 } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
   buildPayrollTeamAnalytics,
+  payrollComponentSnapshot,
+  payrollLineProfileTitles,
   payrollLineShiftMetrics,
-} from "/app/payroll-analytics.js?v=20260802-payrollanalytics1";
+} from "/app/payroll-analytics.js?v=20260913-profiletitles1";
 
 let financialValuesHidden = false;
 
@@ -217,22 +219,8 @@ function breakdownComponentMeta(component) {
   return label;
 }
 
-function componentSnapshot(component) {
-  return component && typeof component.calculation_snapshot === 'object' && component.calculation_snapshot
-    ? component.calculation_snapshot
-    : (component || {});
-}
-
-function payrollLineProfileTitles(line, breakdown) {
-  const titles = Array.isArray(breakdown?.pay_profile_titles)
-    ? breakdown.pay_profile_titles.map((title) => String(title || "").trim()).filter(Boolean)
-    : [];
-  if (!titles.length && line?.pay_profile_title) titles.push(String(line.pay_profile_title).trim());
-  return [...new Set(titles)];
-}
-
 function breakdownBadges(component) {
-  const snap = componentSnapshot(component);
+  const snap = payrollComponentSnapshot(component);
   const badges = [];
   if (component?.pay_profile_title) {
     badges.push(`<span class="payroll-chip payroll-chip--muted">Профиль: ${esc(component.pay_profile_title)}</span>`);
@@ -256,7 +244,7 @@ function breakdownBadges(component) {
 }
 
 function breakdownKv(component) {
-  const snap = componentSnapshot(component);
+  const snap = payrollComponentSnapshot(component);
   if (snap?.calculation_version === 2) return tierBreakdown(snap, { esc, fmtMoneyMinor, fmtPercentBps });
   const rows = [];
   const push = (label, value) => {
@@ -305,7 +293,7 @@ function breakdownKv(component) {
 }
 
 function breakdownExplain(component) {
-  const snap = componentSnapshot(component);
+  const snap = payrollComponentSnapshot(component);
   const type = String(component?.component_type || '').toUpperCase();
   if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     const parts = [];
@@ -334,7 +322,7 @@ function breakdownExplain(component) {
     : 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
   if (type === 'MINIMUM_PAYOUT') {
-    const snap = componentSnapshot(component);
+    const snap = payrollComponentSnapshot(component);
     const scope = String(snap?.minimum_payout_scope || snap?.minimum_guarantee_scope || '').toUpperCase();
     if (component?.minimum_applied && scope === 'SHIFT') return 'Добавлена доплата по отдельным сменам, где начисление было ниже минимума.';
     return component?.minimum_applied ? 'Добавлена доплата до минимальной суммы выплаты.' : 'Минимум уже перекрыт другими компонентами.';
@@ -343,7 +331,7 @@ function breakdownExplain(component) {
 }
 
 function breakdownDayRows(component) {
-  const snap = componentSnapshot(component);
+  const snap = payrollComponentSnapshot(component);
   if (snap?.calculation_version === 2) return tierDayBreakdown(snap, { esc, fmtMoneyMinor, fmtPercentBps, formatDateRu });
   const rows = Array.isArray(snap?.day_rows) ? snap.day_rows : [];
   if (!rows.length) return '';
@@ -360,7 +348,7 @@ function breakdownDayRows(component) {
 }
 
 function breakdownShiftRows(component) {
-  const snap = componentSnapshot(component);
+  const snap = payrollComponentSnapshot(component);
   const rows = Array.isArray(snap?.shift_rows) ? snap.shift_rows : [];
   if (!rows.length) return '';
   return `<div class="payroll-breakdown__dayrows">${rows.map((row) => {
