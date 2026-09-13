@@ -97,27 +97,24 @@ def load_position_payroll_contexts(
             .distinct()
         ).scalars()
     }
-    period_rows = (
-        db.execute(
-            select(PositionPayProfilePeriod, VenuePosition, User)
-            .join(VenuePosition, VenuePosition.id == PositionPayProfilePeriod.venue_position_id)
-            .join(User, User.id == PositionPayProfilePeriod.member_user_id)
-            .where(
-                PositionPayProfilePeriod.venue_id == int(venue_id),
-                PositionPayProfilePeriod.is_active.is_(True),
-                or_(
-                    PositionPayProfilePeriod.valid_from.is_(None),
-                    PositionPayProfilePeriod.valid_from < month_end_excl,
-                ),
-                or_(
-                    PositionPayProfilePeriod.valid_to.is_(None),
-                    PositionPayProfilePeriod.valid_to >= month_start,
-                ),
-            )
-            .order_by(PositionPayProfilePeriod.venue_position_id.asc(), PositionPayProfilePeriod.id.asc())
+    period_rows = db.execute(
+        select(PositionPayProfilePeriod, VenuePosition, User)
+        .join(VenuePosition, VenuePosition.id == PositionPayProfilePeriod.venue_position_id)
+        .join(User, User.id == PositionPayProfilePeriod.member_user_id)
+        .where(
+            PositionPayProfilePeriod.venue_id == int(venue_id),
+            PositionPayProfilePeriod.is_active.is_(True),
+            or_(
+                PositionPayProfilePeriod.valid_from.is_(None),
+                PositionPayProfilePeriod.valid_from < month_end_excl,
+            ),
+            or_(
+                PositionPayProfilePeriod.valid_to.is_(None),
+                PositionPayProfilePeriod.valid_to >= month_start,
+            ),
         )
-        .all()
-    )
+        .order_by(PositionPayProfilePeriod.venue_position_id.asc(), PositionPayProfilePeriod.id.asc())
+    ).all()
     periods_by_position: dict[int, list[PositionPayProfilePeriod]] = {}
     period_member_ids: set[int] = set()
     for period, position, member in period_rows:
@@ -205,8 +202,7 @@ def load_position_payroll_contexts(
     for assignment, profile, member in fallback_assignments:
         member_user_id = int(member.id)
         if (
-            member_user_id not in active_position_member_ids
-            and member_user_id not in period_member_ids
+            member_user_id not in active_position_member_ids and member_user_id not in period_member_ids
         ) or member_user_id in fallback_member_ids:
             context = ensure_context(member_user_id=member_user_id, profile_id=int(profile.id))
             if context is not None:

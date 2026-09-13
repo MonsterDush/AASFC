@@ -101,9 +101,7 @@ class MigrationContractTests(unittest.TestCase):
 
                 inspector = sa.inspect(engine)
                 self.assertIn("position_pay_profile_periods", inspector.get_table_names())
-                index_names = {
-                    index["name"] for index in inspector.get_indexes("position_pay_profile_periods")
-                }
+                index_names = {index["name"] for index in inspector.get_indexes("position_pay_profile_periods")}
                 self.assertIn("uq_position_pay_profile_periods_open_position", index_names)
                 with engine.connect() as connection:
                     rows = connection.exec_driver_sql(

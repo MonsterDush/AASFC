@@ -328,9 +328,7 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         if existing is None:
             row.member_user_id = int(target_user.id)
             for period in db.execute(
-                select(PositionPayProfilePeriod).where(
-                    PositionPayProfilePeriod.venue_position_id == int(row.id)
-                )
+                select(PositionPayProfilePeriod).where(PositionPayProfilePeriod.venue_position_id == int(row.id))
             ).scalars():
                 period.member_user_id = int(target_user.id)
             target_by_key[key] = row
@@ -338,9 +336,7 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
             continue
         source_periods = (
             db.execute(
-                select(PositionPayProfilePeriod).where(
-                    PositionPayProfilePeriod.venue_position_id == int(row.id)
-                )
+                select(PositionPayProfilePeriod).where(PositionPayProfilePeriod.venue_position_id == int(row.id))
             )
             .scalars()
             .all()
@@ -348,15 +344,11 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         target_period_keys = {
             _position_pay_profile_period_key(period)
             for period in db.execute(
-                select(PositionPayProfilePeriod).where(
-                    PositionPayProfilePeriod.venue_position_id == int(existing.id)
-                )
+                select(PositionPayProfilePeriod).where(PositionPayProfilePeriod.venue_position_id == int(existing.id))
             ).scalars()
         }
         unmatched_periods = [
-            period
-            for period in source_periods
-            if _position_pay_profile_period_key(period) not in target_period_keys
+            period for period in source_periods if _position_pay_profile_period_key(period) not in target_period_keys
         ]
         if unmatched_periods:
             # Two accounts may have the same current role but different salary

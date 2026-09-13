@@ -32,10 +32,7 @@ def prorate_fixed_month_amount(
     if not month_dates or not active_dates:
         return 0
     quotient, remainder = divmod(int(full_amount_minor), len(month_dates))
-    amounts = {
-        day: quotient + (1 if index < remainder else 0)
-        for index, day in enumerate(month_dates)
-    }
+    amounts = {day: quotient + (1 if index < remainder else 0) for index, day in enumerate(month_dates)}
     return sum(amounts.get(day, 0) for day in active_dates)
 
 
@@ -66,16 +63,10 @@ def revenue_metrics_for_dates(
     allowed_dates: set[date],
 ) -> PayrollRevenueMetrics:
     total_by_date = {
-        day: int(amount or 0)
-        for day, amount in metrics.total_revenue_by_date_minor.items()
-        if day in allowed_dates
+        day: int(amount or 0) for day, amount in metrics.total_revenue_by_date_minor.items() if day in allowed_dates
     }
     department_by_date = {
-        int(department_id): {
-            day: int(amount or 0)
-            for day, amount in amounts.items()
-            if day in allowed_dates
-        }
+        int(department_id): {day: int(amount or 0) for day, amount in amounts.items() if day in allowed_dates}
         for department_id, amounts in metrics.department_revenue_by_date_minor.items()
     }
     return PayrollRevenueMetrics(
@@ -91,9 +82,7 @@ def revenue_metrics_for_dates(
 def kpi_metrics_for_dates(metrics: PayrollKpiMetrics, allowed_dates: set[date]) -> PayrollKpiMetrics:
     values = {
         int(metric_id): {
-            (day, slot): int(amount or 0)
-            for (day, slot), amount in by_date_slot.items()
-            if day in allowed_dates
+            (day, slot): int(amount or 0) for (day, slot), amount in by_date_slot.items() if day in allowed_dates
         }
         for metric_id, by_date_slot in metrics.values_by_metric_date_slot.items()
     }

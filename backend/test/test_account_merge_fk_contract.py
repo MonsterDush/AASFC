@@ -384,12 +384,14 @@ class AccountMergeUserForeignKeyContractTests(unittest.TestCase):
             db.commit()
             db.expire_all()
 
-            positions = db.execute(
-                select(VenuePosition).where(VenuePosition.member_user_id == target.id)
-            ).scalars().all()
-            periods = db.execute(
-                select(PositionPayProfilePeriod).order_by(PositionPayProfilePeriod.valid_from)
-            ).scalars().all()
+            positions = (
+                db.execute(select(VenuePosition).where(VenuePosition.member_user_id == target.id)).scalars().all()
+            )
+            periods = (
+                db.execute(select(PositionPayProfilePeriod).order_by(PositionPayProfilePeriod.valid_from))
+                .scalars()
+                .all()
+            )
             self.assertEqual({row.id for row in positions}, {30, 31})
             self.assertEqual([row.member_user_id for row in periods], [target.id, target.id])
             self.assertEqual([row.pay_profile_id for row in periods], [old_profile.id, current_profile.id])

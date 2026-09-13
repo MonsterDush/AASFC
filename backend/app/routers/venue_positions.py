@@ -512,16 +512,14 @@ def update_position(
         profile = db.execute(select(PayProfile).where(PayProfile.id == pos.pay_profile_id)).scalar_one_or_none()
 
     db.flush()
-    member_changed = old_member_user_id != (
-        int(pos.member_user_id) if pos.member_user_id is not None else None
-    )
-    profile_changed = old_pay_profile_id != (
-        int(pos.pay_profile_id) if pos.pay_profile_id is not None else None
-    )
+    member_changed = old_member_user_id != (int(pos.member_user_id) if pos.member_user_id is not None else None)
+    profile_changed = old_pay_profile_id != (int(pos.pay_profile_id) if pos.pay_profile_id is not None else None)
     became_active = not old_is_active and bool(pos.is_active)
     current_period = None
-    if pos.member_user_id is not None and pos.is_active and (
-        cloned_from_catalog or member_changed or profile_changed or became_active
+    if (
+        pos.member_user_id is not None
+        and pos.is_active
+        and (cloned_from_catalog or member_changed or profile_changed or became_active)
     ):
         try:
             current_period = set_position_pay_profile(
@@ -529,9 +527,7 @@ def update_position(
                 position=pos,
                 pay_profile_id=pos.pay_profile_id,
                 effective_from=payload.pay_profile_effective_from,
-                previous_member_user_id=(
-                    old_member_user_id if member_changed and not cloned_from_catalog else None
-                ),
+                previous_member_user_id=(old_member_user_id if member_changed and not cloned_from_catalog else None),
             )
         except PositionPayProfilePeriodError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
