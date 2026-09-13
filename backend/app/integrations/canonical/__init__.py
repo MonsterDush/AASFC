@@ -1,0 +1,1 @@
+"""Canonical ACDM persistence namespace."""

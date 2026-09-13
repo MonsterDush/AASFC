@@ -10,6 +10,9 @@ class Venue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="Europe/Moscow", server_default="Europe/Moscow"
+    )
 
     # NEW: archive flags
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

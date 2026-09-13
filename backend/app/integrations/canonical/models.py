@@ -1,0 +1,41 @@
+"""Canonical model exports kept separate from provider implementations."""
+
+from app.models.pos_canonical import (
+    POSBusinessShift,
+    POSEmployee,
+    POSOrder,
+    POSOrderDiscount,
+    POSOrderEvent,
+    POSOrderItem,
+    POSOrganization,
+    POSPayment,
+    POSPaymentType,
+    POSProduct,
+    POSProductGroup,
+    POSProductPrice,
+    POSRefund,
+    POSSupplier,
+    POSTerminal,
+    POSVenue,
+    POSWarehouse,
+)
+
+__all__ = [
+    "POSBusinessShift",
+    "POSEmployee",
+    "POSOrder",
+    "POSOrderDiscount",
+    "POSOrderEvent",
+    "POSOrderItem",
+    "POSOrganization",
+    "POSPayment",
+    "POSPaymentType",
+    "POSProduct",
+    "POSProductGroup",
+    "POSProductPrice",
+    "POSRefund",
+    "POSSupplier",
+    "POSTerminal",
+    "POSVenue",
+    "POSWarehouse",
+]

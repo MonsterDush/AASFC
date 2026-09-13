@@ -22,7 +22,7 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_quickresto_multi_venue_scope_extends_the_single_current_head(self):
+    def test_current_schema_extends_the_single_current_head(self):
         config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
@@ -39,8 +39,10 @@ class MigrationContractTests(unittest.TestCase):
         kpi_product_mappings = scripts.get_revision("c7e9a1b3d5f8")
         import_batches = scripts.get_revision("d8f0a2c4e6b9")
         position_profile_periods = scripts.get_revision("e9a3c5f7b1d4")
+        pos_foundation = scripts.get_revision("f3b7c1d9e5a2")
 
-        self.assertEqual(heads, ["e9a3c5f7b1d4"])
+        self.assertEqual(heads, ["f3b7c1d9e5a2"])
+        self.assertEqual(pos_foundation.down_revision, "e9a3c5f7b1d4")
         self.assertEqual(position_profile_periods.down_revision, "d8f0a2c4e6b9")
         self.assertEqual(kpi_product_mappings.down_revision, "b6d8f0a2c4e7")
         self.assertEqual(import_batches.down_revision, "c7e9a1b3d5f8")
@@ -69,6 +71,57 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(catalog_backfill)
         self.assertEqual(catalog_backfill.down_revision, "f6b4d2a8c1e0")
+
+    def test_pos_integration_foundation_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "e9a3c5f7b1d4")
+                command.upgrade(config, "f3b7c1d9e5a2")
+
+                inspector = sa.inspect(engine)
+                tables = set(inspector.get_table_names())
+                self.assertTrue(
+                    {
+                        "integration_connections",
+                        "integration_capability_states",
+                        "integration_raw_objects",
+                        "integration_sync_cursors",
+                        "integration_sync_jobs",
+                        "integration_quarantine",
+                        "integration_reconciliation_runs",
+                        "pos_business_shifts",
+                        "pos_orders",
+                        "pos_order_items",
+                        "pos_payments",
+                        "pos_refunds",
+                        "pos_order_discounts",
+                    }.issubset(tables)
+                )
+                venue_columns = {column["name"] for column in inspector.get_columns("venues")}
+                self.assertIn("timezone", venue_columns)
+                raw_columns = {column["name"] for column in inspector.get_columns("integration_raw_objects")}
+                self.assertIn("encrypted_payload", raw_columns)
+                self.assertNotIn("payload_json", raw_columns)
+                raw_unique_constraints = {
+                    tuple(constraint["column_names"])
+                    for constraint in inspector.get_unique_constraints("integration_raw_objects")
+                }
+                self.assertIn(
+                    ("integration_connection_id", "entity_type", "external_id"),
+                    raw_unique_constraints,
+                )
+
+                command.downgrade(config, "e9a3c5f7b1d4")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("integration_connections", inspector.get_table_names())
+            self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
 
     def test_position_pay_profile_periods_backfill_and_round_trip_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
