@@ -1026,6 +1026,11 @@ function breakdownMetaHtml(c) {
 function breakdownBadgesHtml(c) {
   const snap = componentSnapshot(c);
   const badges = [];
+  if (c?.pay_profile_title) badges.push(`<span class="payroll-chip payroll-chip--muted">Профиль: ${esc(c.pay_profile_title)}</span>`);
+  const positionTitles = Array.isArray(c?.position_titles)
+    ? c.position_titles.map((title) => String(title || '').trim()).filter(Boolean)
+    : [];
+  if (positionTitles.length) badges.push(`<span class="payroll-chip payroll-chip--muted">Должность: ${esc(positionTitles.join(' + '))}</span>`);
   if (snap?.boost_enabled && snap?.boost_percent_bps != null) badges.push(`<span class="payroll-chip ${snap?.boost_applied ? 'payroll-chip--ok' : 'payroll-chip--muted'}">boost ${esc(((Number(snap.boost_percent_bps || 0) / 100).toFixed(2)) + '%' )}</span>`);
   if (snap?.boost_source_title) badges.push(`<span class="payroll-chip payroll-chip--muted">${esc(snap.boost_source_title)}</span>`);
   if (snap?.minimum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">мин. гарантия</span>`);
@@ -1154,6 +1159,10 @@ function openPayrollBreakdown() {
   const metrics = breakdown.metrics || {};
   const components = Array.isArray(breakdown.components) ? breakdown.components : [];
   const dates = Array.isArray(metrics.worked_dates) ? metrics.worked_dates : [];
+  const profileTitles = Array.isArray(breakdown.pay_profile_titles)
+    ? breakdown.pay_profile_titles.map((title) => String(title || '').trim()).filter(Boolean)
+    : [];
+  if (!profileTitles.length && breakdown.pay_profile_title) profileTitles.push(String(breakdown.pay_profile_title));
   const componentsHtml = components.length ? components.map((c) => `
     <div class="payroll-breakdown__row">
       <div class="payroll-breakdown__meta">
@@ -1175,7 +1184,7 @@ function openPayrollBreakdown() {
 
   openModal(
     `Начисление за ${ym(curMonth)}`,
-    breakdown.pay_profile_title ? `Профиль: ${breakdown.pay_profile_title}` : "",
+    profileTitles.length ? `Профили: ${[...new Set(profileTitles)].join(" · ")}` : "",
     `<div class="itemcard mt-12">
       <div class="row row--between ai-center gap-12">
         <div class="muted">Итого начислено</div>

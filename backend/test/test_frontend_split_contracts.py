@@ -151,6 +151,8 @@ class QuickRestoIntegrationContractTests(TestCase):
         kpi_html = (FRONTEND / "owner-quickresto-kpi.html").read_text(encoding="utf-8")
         kpi_script = (FRONTEND / "owner-quickresto-kpi.js").read_text(encoding="utf-8")
         kpi_styles = (FRONTEND / "styles" / "pages" / "owner-quickresto-kpi.css").read_text(encoding="utf-8")
+        history_script = (FRONTEND / "owner-quickresto-import-history.js").read_text(encoding="utf-8")
+        router = (PROJECT_ROOT / "backend" / "app" / "routers" / "venue_quickresto.py").read_text(encoding="utf-8")
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
@@ -178,7 +180,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260911-monthlyqueue1", html)
+        self.assertIn("20260913-monthlyqueue2", html)
         self.assertIn('id="scopeSection"', html)
         self.assertIn('id="externalVenue"', html)
         self.assertIn('id="salePlaceOptions"', html)
@@ -221,6 +223,12 @@ class QuickRestoIntegrationContractTests(TestCase):
             "/integrations/quickresto/import-batches?limit=1`",
         ):
             self.assertIn(endpoint, script)
+        self.assertIn("state.importBatch = result.batches?.[0] || null", script)
+        self.assertNotIn("result.items?.[0]", script)
+        self.assertGreaterEqual(script.count("result.import_batch"), 4)
+        self.assertIn("state.batches = result.batches || result.items || []", history_script)
+        self.assertIn('return {"batches": [_serialize_import_batch(db, item) for item in rows]}', router)
+        self.assertGreaterEqual(router.count('"import_batch": _serialize_import_batch'), 2)
         self.assertIn('el.apiPassword.value = ""', script)
         self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
         self.assertIn("/owner-integration-issues.js", issues_html)
@@ -455,7 +463,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             ),
             "positions.html": (
                 "styles/pages/positions.css",
-                "20260725-polish3",
+                "20260913-effectivepay1",
                 ("positions-hero", "position-state", "position-member-row__actions"),
             ),
             "invites.html": (
@@ -552,13 +560,18 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260823-kpiperunit1",
+            "staff-salary.html": "/staff-salary.js?v=20260913-multiprofile1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
             "staff-report.html": "/staff-report.js?v=20260910-unallocated1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             self.assertIn(entrypoint, html)
+
+        staff_salary_script = (FRONTEND / "staff-salary.js").read_text(encoding="utf-8")
+        self.assertIn("breakdown.pay_profile_titles", staff_salary_script)
+        self.assertIn("Профиль: ${esc(c.pay_profile_title)}", staff_salary_script)
+        self.assertIn("Должность: ${esc(positionTitles.join(' + '))}", staff_salary_script)
 
         salary_summary = (FRONTEND / "staff-salary-summary.html").read_text(encoding="utf-8")
         self.assertIn("redirectToUnifiedSalary", salary_summary)
@@ -664,7 +677,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260906-tiers1", html)
+        self.assertIn("/owner-payroll.js?v=20260913-multiprofile1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -691,6 +704,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
             "payroll-state--empty",
             "payroll-state--error",
             'setAttribute("aria-busy", "false")',
+            "payrollLineProfileTitles",
+            "Профиль: ${esc(component.pay_profile_title)}",
+            "Должность: ${esc(positionTitles.join(' + '))}",
         ):
             self.assertIn(contract, script)
 
@@ -1145,13 +1161,13 @@ class PositionsSplitContractTests(TestCase):
         modules = {
             "permission-controller.js": ("createPositionPermissionController", 320),
             "position-domain.js": ("createPositionDomain", 240),
-            "position-editor.js": ("createPositionEditor", 520),
+            "position-editor.js": ("createPositionEditor", 540),
             "position-list.js": ("createPositionList", 220),
             "invite-controller.js": ("createPositionInviteController", 150),
         }
 
         self.assertLess(len(main.splitlines()), 420)
-        self.assertIn("positions.js?v=20260726-navmore1", html)
+        self.assertIn("positions.js?v=20260913-effectivepay1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
@@ -1162,7 +1178,7 @@ class PositionsSplitContractTests(TestCase):
                 if filename == "invite-controller.js"
                 else "20260725-polish3"
                 if filename == "position-list.js"
-                else "20260723-functional1"
+                else "20260913-effectivepay1"
                 if filename == "position-editor.js"
                 else "20260720-unified6"
             )

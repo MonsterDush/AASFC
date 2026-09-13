@@ -9,6 +9,7 @@ from .permission import Permission
 from .role_permission_default import RolePermissionDefault
 from .venue_invite import VenueInvite
 from .venue_position import VenuePosition
+from .position_pay_profile_period import PositionPayProfilePeriod
 from .shift_interval import ShiftInterval
 from .shift import Shift
 from .shift_assignment import ShiftAssignment
@@ -97,6 +98,7 @@ __all__ = [
     "RolePermissionDefault",
     "VenueInvite",
     "VenuePosition",
+    "PositionPayProfilePeriod",
     "ShiftInterval",
     "Shift",
     "ShiftAssignment",

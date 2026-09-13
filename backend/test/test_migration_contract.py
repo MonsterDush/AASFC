@@ -38,8 +38,10 @@ class MigrationContractTests(unittest.TestCase):
         department_allocations = scripts.get_revision("b6d8f0a2c4e7")
         kpi_product_mappings = scripts.get_revision("c7e9a1b3d5f8")
         import_batches = scripts.get_revision("d8f0a2c4e6b9")
+        position_profile_periods = scripts.get_revision("e9a3c5f7b1d4")
 
-        self.assertEqual(heads, ["d8f0a2c4e6b9"])
+        self.assertEqual(heads, ["e9a3c5f7b1d4"])
+        self.assertEqual(position_profile_periods.down_revision, "d8f0a2c4e6b9")
         self.assertEqual(kpi_product_mappings.down_revision, "b6d8f0a2c4e7")
         self.assertEqual(import_batches.down_revision, "c7e9a1b3d5f8")
         self.assertEqual(department_allocations.down_revision, "a4c6e8f0b2d1")
@@ -67,6 +69,50 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(catalog_backfill)
         self.assertEqual(catalog_backfill.down_revision, "f6b4d2a8c1e0")
+
+    def test_position_pay_profile_periods_backfill_and_round_trip_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql(
+                    "CREATE TABLE pay_profiles (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE venue_positions ("
+                    "id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, member_user_id INTEGER, "
+                    "pay_profile_id INTEGER, is_active BOOLEAN NOT NULL DEFAULT true)"
+                )
+                connection.exec_driver_sql("INSERT INTO venues (id) VALUES (1)")
+                connection.exec_driver_sql("INSERT INTO users (id) VALUES (7)")
+                connection.exec_driver_sql("INSERT INTO pay_profiles (id, venue_id) VALUES (11, 1)")
+                connection.exec_driver_sql(
+                    "INSERT INTO venue_positions "
+                    "(id, venue_id, member_user_id, pay_profile_id, is_active) VALUES "
+                    "(21, 1, 7, 11, true), (22, 1, NULL, 11, true), (23, 1, 7, 11, false)"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "d8f0a2c4e6b9")
+                command.upgrade(config, "e9a3c5f7b1d4")
+
+                inspector = sa.inspect(engine)
+                self.assertIn("position_pay_profile_periods", inspector.get_table_names())
+                index_names = {index["name"] for index in inspector.get_indexes("position_pay_profile_periods")}
+                self.assertIn("uq_position_pay_profile_periods_open_position", index_names)
+                with engine.connect() as connection:
+                    rows = connection.exec_driver_sql(
+                        "SELECT venue_position_id, member_user_id, pay_profile_id, valid_from, valid_to "
+                        "FROM position_pay_profile_periods ORDER BY venue_position_id"
+                    ).all()
+                self.assertEqual([tuple(row) for row in rows], [(21, 7, 11, None, None)])
+
+                command.downgrade(config, "d8f0a2c4e6b9")
+
+            self.assertNotIn("position_pay_profile_periods", sa.inspect(engine).get_table_names())
 
     def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

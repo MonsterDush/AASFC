@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     DailyReport,
+    PositionPayProfilePeriod,
     Shift,
     ShiftAssignment,
     ShiftAvailability,
@@ -36,6 +37,7 @@ class ShiftSwapWorkflowTests(TestCase):
             User.__table__,
             VenueMember.__table__,
             VenuePosition.__table__,
+            PositionPayProfilePeriod.__table__,
             ShiftInterval.__table__,
             Shift.__table__,
             ShiftAssignment.__table__,

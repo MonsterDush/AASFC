@@ -10,7 +10,16 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models import User, VenueMember, VenuePosition, ShiftInterval, Shift, ShiftAssignment, PayProfile
+from app.models import (
+    PayProfile,
+    PositionPayProfilePeriod,
+    Shift,
+    ShiftAssignment,
+    ShiftInterval,
+    User,
+    VenueMember,
+    VenuePosition,
+)
 from app.models.shift_interval import ShiftIntervalPosition
 from app.routers import venue_shifts, venue_shift_intervals, venue_positions
 from app.schemas.venue_shifts import ShiftCreateIn, ShiftUpdateIn, ShiftIntervalCreateIn, ShiftIntervalUpdateIn
@@ -35,6 +44,7 @@ class NamesAndIntervalScopesTests(TestCase):
             VenueMember,
             PayProfile,
             VenuePosition,
+            PositionPayProfilePeriod,
             ShiftInterval,
             ShiftIntervalPosition,
             Shift,

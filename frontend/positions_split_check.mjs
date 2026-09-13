@@ -60,15 +60,15 @@ const uniqueListenerTypes = Array.from(new Set(Array.from(
 
 assert.equal(apiCallManifest.length, 20);
 assert.equal(manifestHash(apiCallManifest), "b861a78fdff7f0e52e6fd27d9ab810987def1f881d161d797ab911089cd3fdb4");
-assert.equal(uniqueDomBindings.length, 24);
-assert.equal(manifestHash(uniqueDomBindings), "89418c6feadceb6630a4459fe539d97e8cbfc5b21284a7378cb9eb471b3d9f4b");
+assert.equal(uniqueDomBindings.length, 25);
+assert.equal(manifestHash(uniqueDomBindings), "584e3f8f55b77b9cc0cbacbfc68ec922ac8299cd79b8c3f9ef20b524a04f0390");
 assert.deepEqual(uniqueListenerTypes, ["change", "click"]);
 
 assert.ok(mainSource.split("\n").length < 420, "positions.js should remain an orchestration module");
 const moduleContracts = {
   "permission-controller.js": ["createPositionPermissionController", 320],
   "position-domain.js": ["createPositionDomain", 240],
-  "position-editor.js": ["createPositionEditor", 520],
+  "position-editor.js": ["createPositionEditor", 540],
   "position-list.js": ["createPositionList", 220],
   "invite-controller.js": ["createPositionInviteController", 150],
 };
@@ -79,10 +79,10 @@ for (const [fileName, [factoryName, lineLimit]] of Object.entries(moduleContract
     ? "20260726-navmore1"
     : (["position-list.js", "invite-controller.js"].includes(fileName)
       ? (fileName === "invite-controller.js" ? "20260725-polish4" : "20260725-polish3")
-      : (fileName === "position-editor.js" ? "20260723-functional1" : "20260720-unified6"));
+      : (fileName === "position-editor.js" ? "20260913-effectivepay1" : "20260720-unified6"));
   assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /positions\.js\?v=20260726-navmore1/);
+assert.match(htmlSource, /positions\.js\?v=20260913-effectivepay1/);
 assert.match(moduleSources["permission-controller.js"], /position-template-ui\.js\?v=20260726-navmore1/);
 
 const state = {

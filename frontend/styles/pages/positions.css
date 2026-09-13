@@ -26,6 +26,15 @@
 .position-permission-actions{gap:6px;flex:0 0 auto}
 .position-pay-summary,.position-template-summary{padding:10px 12px}
 .position-pay-summary{min-height:44px;display:flex;align-items:center}
+.position-grid-wide,.position-pay-history{grid-column:1/-1}
+.position-pay-history{display:grid;gap:6px;padding:10px 12px}
+.position-effective-date{box-sizing:border-box;width:100%;min-width:0;max-width:100%;overflow:hidden}
+.position-effective-date::-webkit-date-and-time-value{min-width:0;text-align:left}
+@media(max-width:600px){
+  .position-effective-date{padding-inline:0}
+  .position-effective-date::-webkit-date-and-time-value{box-sizing:border-box;width:100%;min-width:0;padding-inline:12px}
+  .position-effective-date::-webkit-datetime-edit{max-width:100%;min-width:0}
+}
 .position-form-tail{margin-left:auto}
 .position-invite-row{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(240px,1.2fr);gap:16px;border:1px solid var(--border);border-radius:14px;padding:12px;align-items:start;background:var(--card)}
 .position-invite-person{min-width:0;overflow-wrap:anywhere}
