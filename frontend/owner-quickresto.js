@@ -232,7 +232,7 @@ async function refreshBatchProgress() {
     const result = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches?limit=1`,
     );
-    state.importBatch = result.items?.[0] || null;
+    state.importBatch = result.batches?.[0] || null;
     if (state.connection && state.importBatch) {
       state.connection.last_sync_status = state.importBatch.status;
       state.connection.last_sync_error = state.importBatch.error || null;
@@ -1162,13 +1162,13 @@ async function runImport({ full = false, button = el.runSync } = {}) {
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync${suffix}`,
       { method: "POST" },
     );
-    if (result.queued && result.batch) {
-      state.importBatch = result.batch;
+    if (result.queued && result.import_batch) {
+      state.importBatch = result.import_batch;
       if (state.connection) state.connection.last_sync_status = "QUEUED";
       renderBatchProgress();
       applyPermissions();
       startBatchPolling();
-      el.importHint.textContent = `Создано месячных запусков: ${Number(result.batch.total_periods || 1)}. Обработка начнётся фоновым worker и продолжится без открытой страницы.`;
+      el.importHint.textContent = `Создано месячных запусков: ${Number(result.import_batch.total_periods || 1)}. Обработка начнётся фоновым worker и продолжится без открытой страницы.`;
       toast(
         full
           ? "Полная сверка поставлена в очередь"
@@ -1213,7 +1213,7 @@ el.retryBatch?.addEventListener("click", async () => {
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/import-batches/${encodeURIComponent(batchId)}/retry`,
       { method: "POST" },
     );
-    state.importBatch = result.batch || state.importBatch;
+    state.importBatch = result.import_batch || state.importBatch;
     renderBatchProgress();
     applyPermissions();
     startBatchPolling();

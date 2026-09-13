@@ -506,7 +506,9 @@ def _component_shift_allocations(
     if component_type == "SALARY_FIXED_MONTH":
         # Месячную ставку в суточной детализации делим по календарным дням месяца,
         # затем долю конкретных суток делим между сменами этого дня.
-        dates = _month_dates(month_start, month_end_excl)
+        month_dates = _month_dates(month_start, month_end_excl)
+        active_dates = getattr(metrics, "_salary_active_dates", None)
+        dates = [day for day in month_dates if day in active_dates] if active_dates is not None else month_dates
         date_amounts = _allocate_minor_by_keys(int(amount_minor), dates, {day: 1 for day in dates})
         return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
 

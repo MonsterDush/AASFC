@@ -5008,5 +5008,16 @@
   "В этом импорте не осталось необработанных месяцев": "This import has no unprocessed months left",
   "Другой помесячный импорт QuickResto уже выполняется": "Another monthly QuickResto import is already running",
   "Помесячный импорт: обработано": "Monthly import: processed",
-  "периодов": "periods"
+  "периодов": "periods",
+  "Должность:": "Position:",
+  "История профилей зарплаты": "Pay profile history",
+  "с": "from",
+  "начало не задано": "start date not set",
+  "· действует сейчас": "· active now",
+  "Профиль действует с": "Profile active from",
+  "При замене профиля старый завершится предыдущим днём. Уже рассчитанная зарплата не изменится до ручного перерасчёта.": "When the profile changes, the previous one ends the day before. Existing payroll results remain unchanged until a manual recalculation.",
+  "Укажите дату начала нового профиля зарплаты": "Set the new pay profile start date",
+  "Дата начала профиля не может быть в будущем": "The pay profile start date cannot be in the future",
+  "Профили:": "Profiles:",
+  "дней действия профиля": "profile-active days"
 }

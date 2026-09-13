@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import json
 import re
@@ -19,6 +19,7 @@ from app.models.venue_position import VenuePosition
 from app.models.pay_profile import PayProfile
 from app.models.pay_profile_assignment import PayProfileAssignment
 from app.services.venue_member_names import normalize_owner_note
+from app.services.payroll.position_profile_periods import set_position_pay_profile
 
 
 def _norm_code(x) -> str:
@@ -251,6 +252,12 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     existing_pos.catalog_position_id = catalog_position.id
     existing_pos.pay_profile_id = pay_profile_id
     existing_pos.is_active = True
+    set_position_pay_profile(
+        db,
+        position=existing_pos,
+        pay_profile_id=pay_profile_id,
+        effective_from=date.today(),
+    )
 
     _sync_default_pay_profile_assignment(
         db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id

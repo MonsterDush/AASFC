@@ -47,6 +47,27 @@ function renderTitleDatalist() {
   `;
 }
 
+function localTodayIso() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function renderPayProfileHistory(position) {
+  const periods = Array.isArray(position?.pay_profile_periods) ? position.pay_profile_periods : [];
+  if (!periods.length) return "";
+  return `
+    <div class="itemcard position-pay-history">
+      <div class="muted mb-6">История профилей зарплаты</div>
+      ${periods.map((period) => {
+        const from = period?.valid_from ? `с ${esc(period.valid_from)}` : "начало не задано";
+        const to = period?.valid_to ? ` по ${esc(period.valid_to)}` : " · действует сейчас";
+        return `<div class="small"><b>${esc(period?.pay_profile_title || `Профиль #${period?.pay_profile_id || "—"}`)}</b> · ${from}${to}</div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderPositionForm({ mode, position }) {
   const p = position || {};
   const titles = uniqueTitles();
@@ -55,6 +76,7 @@ function renderPositionForm({ mode, position }) {
   const canEditMain = auth.canManage && !permsOnly;
   const canEditPerms = auth.canManagePerms;
   const canChangeMember = auth.canAssign && mode === "edit";
+  const effectiveFrom = mode === "create" ? localTodayIso() : String(p.pay_profile_effective_from || "");
 
   const membersOptions = ['<option value="">— без сотрудника —</option>', ...state.members
     .map((m) => `<option value="${esc(String(m.user_id))}">${esc(memberLabel(m))}</option>`)
@@ -138,16 +160,24 @@ function renderPositionForm({ mode, position }) {
 
       <div>
         <div class="muted mb-6">Профиль зарплаты</div>
-        <select id="f_pay_profile" ${canEditMain ? "" : "disabled"}>${renderPayProfileOptions(p.pay_profile_id ?? "")}</select>
+        <select id="f_pay_profile" data-initial-value="${esc(p.pay_profile_id ?? "")}" ${canEditMain ? "" : "disabled"}>${renderPayProfileOptions(p.pay_profile_id ?? "")}</select>
         <div class="muted small mt-6">Можно оставить без профиля, а затем назначить его позже.</div>
       </div>
 
       <div>
+        <div class="muted mb-6">Профиль действует с</div>
+        <input id="f_pay_profile_effective_from" class="position-effective-date" type="date" max="${localTodayIso()}" value="${esc(effectiveFrom)}" ${canEditMain ? "" : "disabled"} />
+        <div class="muted small mt-6">При замене профиля старый завершится предыдущим днём. Уже рассчитанная зарплата не изменится до ручного перерасчёта.</div>
+      </div>
+
+      <div class="position-grid-wide">
         <div class="muted mb-6">Начисление</div>
         <div class="itemcard position-pay-summary">
           <span class="muted" id="f_pay_profile_hint">${esc(p.pay_profile_title || "Без назначенного профиля")}</span>
         </div>
       </div>
+
+      ${renderPayProfileHistory(p)}
 
       <div>
         <div class="muted mb-6">Шаблон прав</div>
@@ -180,15 +210,30 @@ function collectPayload(base = {}) {
   const titleEl = document.getElementById("f_title");
   const memberEl = document.getElementById("f_member");
   const payProfileEl = document.getElementById("f_pay_profile");
+  const effectiveFromEl = document.getElementById("f_pay_profile_effective_from");
 
   const title = (titleEl && !titleEl.disabled) ? (titleEl.value || "").trim() : String(base.title || "").trim();
   const memberValue = (memberEl && !memberEl.disabled) ? memberEl.value : (base.member_user_id ?? "");
   const member_user_id = memberValue ? Number(memberValue) : null;
   const pay_profile_id = (payProfileEl && !payProfileEl.disabled) ? (payProfileEl.value ? Number(payProfileEl.value) : null) : (base.pay_profile_id ? Number(base.pay_profile_id) : null);
+  const pay_profile_effective_from = (
+    effectiveFromEl && !effectiveFromEl.disabled && member_user_id !== null
+      ? String(effectiveFromEl.value || "").trim() || null
+      : null
+  );
 
   if (!title) throw new Error("Укажите название должности");
   if (member_user_id !== null && (!Number.isFinite(member_user_id) || member_user_id <= 0)) throw new Error("Выберите сотрудника");
   if (pay_profile_id !== null && (!Number.isFinite(pay_profile_id) || pay_profile_id <= 0)) throw new Error("Выберите корректный профиль зарплаты");
+  const profileOrMemberChanged =
+    String(pay_profile_id ?? "") !== String(base.pay_profile_id ?? "")
+    || String(member_user_id ?? "") !== String(base.member_user_id ?? "");
+  if (profileOrMemberChanged && member_user_id !== null && !pay_profile_effective_from) {
+    throw new Error("Укажите дату начала нового профиля зарплаты");
+  }
+  if (pay_profile_effective_from && pay_profile_effective_from > localTodayIso()) {
+    throw new Error("Дата начала профиля не может быть в будущем");
+  }
 
   // New permissions list (permission codes)
   const modal = document.getElementById("posModal");
@@ -210,6 +255,7 @@ function collectPayload(base = {}) {
     rate: 0,
     percent: 0,
     pay_profile_id,
+    pay_profile_effective_from,
     // keep active by default for create; on update backend accepts bool|None
     is_active: (base.is_active === false) ? false : true,
     // permission codes (source of truth)
@@ -300,14 +346,27 @@ function wirePositionFormUx() {
   setupPermUX();
 
   const payProfileSelect = document.getElementById("f_pay_profile");
+  const memberSelect = document.getElementById("f_member");
+  const effectiveFromInput = document.getElementById("f_pay_profile_effective_from");
   const payProfileHint = document.getElementById("f_pay_profile_hint");
   const syncPayProfileHint = () => {
     if (!payProfileHint) return;
     const selected = (state.payProfiles || []).find((item) => String(item?.id || "") === String(payProfileSelect?.value || ""));
     payProfileHint.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
   };
-  payProfileSelect?.addEventListener("change", syncPayProfileHint);
+  const syncEffectiveDate = ({ reset = false } = {}) => {
+    if (!effectiveFromInput) return;
+    const hasMember = !!String(memberSelect?.value || "");
+    effectiveFromInput.disabled = !!payProfileSelect?.disabled || !hasMember;
+    if (reset && hasMember) effectiveFromInput.value = localTodayIso();
+  };
+  payProfileSelect?.addEventListener("change", () => {
+    syncPayProfileHint();
+    syncEffectiveDate({ reset: true });
+  });
+  memberSelect?.addEventListener("change", () => syncEffectiveDate({ reset: true }));
   syncPayProfileHint();
+  syncEffectiveDate();
 
   const templateSelect = document.getElementById("f_perm_template");
   templateSelect?.addEventListener("change", () => {

@@ -11,6 +11,7 @@ class PositionCreateIn(BaseModel):
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
     pay_profile_id: int | None = Field(default=None, gt=0)
+    pay_profile_effective_from: date | None = None
     is_active: bool = True
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
@@ -22,6 +23,7 @@ class PositionUpdateIn(BaseModel):
     rate: int | None = Field(default=None, ge=0)
     percent: int | None = Field(default=None, ge=0, le=100)
     pay_profile_id: int | None = Field(default=None, gt=0)
+    pay_profile_effective_from: date | None = None
     is_active: bool | None = None
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None

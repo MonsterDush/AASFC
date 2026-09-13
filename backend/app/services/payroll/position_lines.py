@@ -20,6 +20,8 @@ def add_position_context_to_aggregate(
     metrics = context.metrics
     position_ids = sorted(int(value) for value in context.position_ids)
     position_titles = sorted((value for value in context.position_titles if value), key=str.casefold)
+    profile_active_dates = sorted(getattr(context, "profile_active_dates", set()) or set())
+    profile_period_ids = sorted(int(value) for value in getattr(context, "profile_period_ids", set()) or set())
     for item in breakdown_items:
         item["pay_profile_id"] = int(profile.id)
         item["pay_profile_title"] = profile.title
@@ -55,6 +57,10 @@ def add_position_context_to_aggregate(
             "pay_profile_title": profile.title,
             "position_ids": position_ids,
             "position_titles": position_titles,
+            "profile_period_ids": profile_period_ids,
+            "profile_active_from": profile_active_dates[0].isoformat() if profile_active_dates else None,
+            "profile_active_to": profile_active_dates[-1].isoformat() if profile_active_dates else None,
+            "profile_active_dates_count": len(profile_active_dates),
             "amount_minor": int(line_total),
             "metrics": {
                 "minutes_total": int(metrics.minutes_total),

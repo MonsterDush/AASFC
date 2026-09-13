@@ -6,7 +6,16 @@ from datetime import date, timedelta
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.models import Adjustment, DailyReport, PayrollRecalculationLog, Shift, ShiftAssignment, Venue
+from app.models import (
+    Adjustment,
+    DailyReport,
+    PayrollLine,
+    PayrollRecalculationLog,
+    PayrollRun,
+    Shift,
+    ShiftAssignment,
+    Venue,
+)
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 
 
@@ -150,6 +159,52 @@ def _collect_member_candidate_dates(
     return candidates
 
 
+def _collect_member_payroll_calendar_dates(
+    db: Session,
+    *,
+    member_user_id: int,
+    period_start: date,
+    period_end: date,
+    venue_id: int | None = None,
+) -> dict[int, set[date]]:
+    """Return requested calendar dates covered by stored monthly payroll lines.
+
+    Fixed monthly components are allocated over every calendar day of their
+    month.  Shift/adjustment dates alone therefore cannot reconstruct a full
+    monthly total for the employee salary view.
+    """
+
+    months = _month_starts_between(period_start, period_end)
+    if not months:
+        return {}
+
+    rows = db.execute(
+        select(PayrollLine.venue_id, PayrollRun.period_month)
+        .join(PayrollRun, PayrollRun.id == PayrollLine.payroll_run_id)
+        .where(
+            PayrollLine.member_user_id == int(member_user_id),
+            PayrollRun.period_month.in_(months),
+            *([PayrollLine.venue_id == int(venue_id)] if venue_id is not None else []),
+        )
+        .distinct()
+    ).all()
+
+    dates_by_venue: dict[int, set[date]] = defaultdict(set)
+    for row in rows:
+        payroll_month = row.period_month
+        month_end = (
+            date(payroll_month.year + 1, 1, 1) - timedelta(days=1)
+            if payroll_month.month == 12
+            else date(payroll_month.year, payroll_month.month + 1, 1) - timedelta(days=1)
+        )
+        cursor = max(period_start, payroll_month)
+        last_date = min(period_end, month_end)
+        while cursor <= last_date:
+            dates_by_venue[int(row.venue_id)].add(cursor)
+            cursor += timedelta(days=1)
+    return dates_by_venue
+
+
 def build_member_period_summary(
     db: Session,
     *,
@@ -158,7 +213,14 @@ def build_member_period_summary(
     period_end: date,
     venue_id: int | None = None,
 ) -> dict:
-    candidates = _collect_member_candidate_dates(
+    activity_dates = _collect_member_candidate_dates(
+        db,
+        member_user_id=int(member_user_id),
+        period_start=period_start,
+        period_end=period_end,
+        venue_id=int(venue_id) if venue_id is not None else None,
+    )
+    payroll_dates = _collect_member_payroll_calendar_dates(
         db,
         member_user_id=int(member_user_id),
         period_start=period_start,
@@ -166,7 +228,7 @@ def build_member_period_summary(
         venue_id=int(venue_id) if venue_id is not None else None,
     )
 
-    venue_ids = sorted(candidates.keys())
+    venue_ids = sorted(set(activity_dates) | set(payroll_dates))
     venue_names: dict[int, str] = {}
     if venue_ids:
         venue_rows = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(venue_ids))).all()
@@ -183,7 +245,10 @@ def build_member_period_summary(
     totals_minor = {"earned_minor": 0, "tips_minor": 0, "bonuses_minor": 0, "penalties_minor": 0, "net_minor": 0}
 
     for vid in venue_ids:
-        dates = sorted(day for day in candidates.get(vid, set()) if period_start <= day <= period_end)
+        venue_activity_dates = {day for day in activity_dates.get(vid, set()) if period_start <= day <= period_end}
+        dates = sorted(
+            day for day in venue_activity_dates | payroll_dates.get(vid, set()) if period_start <= day <= period_end
+        )
         earned_minor = 0
         tips_minor = 0
         bonuses_minor = 0
@@ -243,7 +308,7 @@ def build_member_period_summary(
             "source": source,
             "calculated": bool(payroll_present),
             "period_state": period_state,
-            "days_count": len(dates),
+            "days_count": len(venue_activity_dates),
             "latest_recalculation": latest_recalc.get(int(vid)),
         }
         items.append(item)

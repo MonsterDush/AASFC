@@ -19,6 +19,8 @@ from app.models import (
     BillingPromoCode,
     BillingReconciliationIssue,
     DemoEvent,
+    PayProfile,
+    PositionPayProfilePeriod,
     PositionPermissionTemplate,
     Shift,
     ShiftComment,
@@ -30,6 +32,7 @@ from app.models import (
     VenueBillingEvent,
     VenueBillingTransaction,
     VenueSetupState,
+    VenuePosition,
 )
 
 
@@ -48,6 +51,7 @@ SPECIALIZED_MERGE_USER_FKS = {
     "daily_report_tip_allocations.user_id",
     "pay_profile_assignments.member_user_id",
     "payroll_lines.member_user_id",
+    "position_pay_profile_periods.member_user_id",
     "shift_assignments.member_user_id",
     "shift_availabilities.member_user_id",
     "shift_comment_mentions.mentioned_user_id",
@@ -327,6 +331,70 @@ class AccountMergeUserForeignKeyContractTests(unittest.TestCase):
             self.assertEqual(db.get(VenueBillingEvent, billing_event.id).created_by_user_id, target.id)
             self.assertEqual(db.get(VenueBillingTransaction, billing_transaction.id).created_by_user_id, target.id)
             self.assertEqual(db.get(VenueSetupState, setup_state.id).last_seen_by_user_id, target.id)
+
+    def test_position_profile_history_survives_merge_when_duplicate_roles_have_different_periods(self):
+        with Session(self.engine) as db:
+            target, source = self._add_users(db)
+            venue = Venue(id=10, name="Payroll history merge")
+            current_profile = PayProfile(id=20, venue_id=venue.id, title="Current", is_active=True)
+            old_profile = PayProfile(id=21, venue_id=venue.id, title="Old", is_active=True)
+            db.add_all([venue, current_profile, old_profile])
+            db.flush()
+            target_position = VenuePosition(
+                id=30,
+                venue_id=venue.id,
+                member_user_id=target.id,
+                title="Администратор",
+                pay_profile_id=current_profile.id,
+                is_active=True,
+            )
+            source_position = VenuePosition(
+                id=31,
+                venue_id=venue.id,
+                member_user_id=source.id,
+                title="Администратор",
+                pay_profile_id=current_profile.id,
+                is_active=True,
+            )
+            db.add_all([target_position, source_position])
+            db.flush()
+            db.add_all(
+                [
+                    PositionPayProfilePeriod(
+                        venue_id=venue.id,
+                        venue_position_id=target_position.id,
+                        member_user_id=target.id,
+                        pay_profile_id=old_profile.id,
+                        valid_from=date(2026, 1, 1),
+                        valid_to=date(2026, 6, 30),
+                    ),
+                    PositionPayProfilePeriod(
+                        venue_id=venue.id,
+                        venue_position_id=source_position.id,
+                        member_user_id=source.id,
+                        pay_profile_id=current_profile.id,
+                        valid_from=date(2026, 7, 1),
+                        valid_to=None,
+                    ),
+                ]
+            )
+            db.commit()
+
+            merge_user_accounts(db, target_user=target, source_user=source)
+            db.commit()
+            db.expire_all()
+
+            positions = (
+                db.execute(select(VenuePosition).where(VenuePosition.member_user_id == target.id)).scalars().all()
+            )
+            periods = (
+                db.execute(select(PositionPayProfilePeriod).order_by(PositionPayProfilePeriod.valid_from))
+                .scalars()
+                .all()
+            )
+            self.assertEqual({row.id for row in positions}, {30, 31})
+            self.assertEqual([row.member_user_id for row in periods], [target.id, target.id])
+            self.assertEqual([row.pay_profile_id for row in periods], [old_profile.id, current_profile.id])
 
     def test_telegram_browser_auth_session_is_invalidated_by_database_policy(self):
         with Session(self.engine) as db:

@@ -84,6 +84,33 @@ class PayrollDayBreakdownHelpersTests(TestCase):
         self.assertEqual(item["amount_minor"], 5_000)
         self.assertIn("начисление 15-го числа", item["formula_text"])
 
+    def test_prorated_fixed_month_is_visible_only_on_profile_active_dates(self):
+        d1, d2, d3 = date(2026, 3, 1), date(2026, 3, 2), date(2026, 3, 3)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2, d3],
+            worked_dates=[],
+            minutes_by_date={},
+            shifts_by_date={},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "SALARY_FIXED_MONTH",
+            "title": "Новый оклад",
+            "amount_minor": 20_000,
+            "source_amount_minor": 30_000,
+            "profile_active_dates": [d2.isoformat(), d3.isoformat()],
+            "month_dates_count": 3,
+        }
+
+        self.assertIsNone(_component_allocation_for_day(component=component, target_date=d1, context=ctx))
+        active_day = _component_allocation_for_day(component=component, target_date=d2, context=ctx)
+        self.assertEqual(active_day["amount_minor"], 10_000)
+        self.assertIn("2 дней действия профиля", active_day["base_text"])
+        self.assertIn("/ 3 дней месяца", active_day["formula_text"])
+
     def test_account_merge_worked_dates_keep_component_on_its_origin_dates(self):
         d1 = date(2026, 3, 5)
         d2 = date(2026, 3, 7)

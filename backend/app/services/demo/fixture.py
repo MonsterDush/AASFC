@@ -44,6 +44,7 @@ from app.models import (
     PayrollPaymentSettings,
     PayrollRecalculationLog,
     PayrollRun,
+    PositionPayProfilePeriod,
     RecurringExpenseAccrual,
     RecurringExpenseRule,
     RecurringExpenseRulePaymentMethod,
@@ -534,6 +535,12 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
         FixtureTablePlan(
             "pay_profiles",
             PayProfile,
+            lambda c, t: t.c.venue_id == c["venue_id"],
+            lambda c, t: t.c.venue_id == c["venue_id"],
+        ),
+        FixtureTablePlan(
+            "position_pay_profile_periods",
+            PositionPayProfilePeriod,
             lambda c, t: t.c.venue_id == c["venue_id"],
             lambda c, t: t.c.venue_id == c["venue_id"],
         ),
