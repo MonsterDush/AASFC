@@ -22,7 +22,7 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_quickresto_multi_venue_scope_extends_the_single_current_head(self):
+    def test_current_schema_extends_the_single_current_head(self):
         config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
@@ -39,8 +39,12 @@ class MigrationContractTests(unittest.TestCase):
         kpi_product_mappings = scripts.get_revision("c7e9a1b3d5f8")
         import_batches = scripts.get_revision("d8f0a2c4e6b9")
         position_profile_periods = scripts.get_revision("e9a3c5f7b1d4")
+        pos_foundation = scripts.get_revision("f3b7c1d9e5a2")
+        quickresto_acdm_shadow = scripts.get_revision("f5d9a2c7e4b1")
 
-        self.assertEqual(heads, ["e9a3c5f7b1d4"])
+        self.assertEqual(heads, ["f5d9a2c7e4b1"])
+        self.assertEqual(quickresto_acdm_shadow.down_revision, "f3b7c1d9e5a2")
+        self.assertEqual(pos_foundation.down_revision, "e9a3c5f7b1d4")
         self.assertEqual(position_profile_periods.down_revision, "d8f0a2c4e6b9")
         self.assertEqual(kpi_product_mappings.down_revision, "b6d8f0a2c4e7")
         self.assertEqual(import_batches.down_revision, "c7e9a1b3d5f8")
@@ -69,6 +73,198 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(catalog_backfill)
         self.assertEqual(catalog_backfill.down_revision, "f6b4d2a8c1e0")
+
+    def test_pos_integration_foundation_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "e9a3c5f7b1d4")
+                command.upgrade(config, "f3b7c1d9e5a2")
+
+                inspector = sa.inspect(engine)
+                tables = set(inspector.get_table_names())
+                self.assertTrue(
+                    {
+                        "integration_connections",
+                        "integration_capability_states",
+                        "integration_raw_objects",
+                        "integration_sync_cursors",
+                        "integration_sync_jobs",
+                        "integration_quarantine",
+                        "integration_reconciliation_runs",
+                        "pos_business_shifts",
+                        "pos_orders",
+                        "pos_order_items",
+                        "pos_payments",
+                        "pos_refunds",
+                        "pos_order_discounts",
+                    }.issubset(tables)
+                )
+                venue_columns = {column["name"] for column in inspector.get_columns("venues")}
+                self.assertIn("timezone", venue_columns)
+                raw_columns = {column["name"] for column in inspector.get_columns("integration_raw_objects")}
+                self.assertIn("encrypted_payload", raw_columns)
+                self.assertNotIn("payload_json", raw_columns)
+                raw_unique_constraints = {
+                    tuple(constraint["column_names"])
+                    for constraint in inspector.get_unique_constraints("integration_raw_objects")
+                }
+                self.assertIn(
+                    ("integration_connection_id", "entity_type", "external_id"),
+                    raw_unique_constraints,
+                )
+
+                command.downgrade(config, "e9a3c5f7b1d4")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("integration_connections", inspector.get_table_names())
+            self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
+
+    def test_quickresto_acdm_shadow_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE departments (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE daily_reports (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_sync_runs (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql(
+                    "CREATE TABLE quickresto_import_batches ("
+                    "id INTEGER PRIMARY KEY, status VARCHAR(24) NOT NULL, "
+                    "CONSTRAINT ck_quickresto_import_batches_status "
+                    "CHECK (status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED')))"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "e9a3c5f7b1d4")
+                command.upgrade(config, "f5d9a2c7e4b1")
+
+                inspector = sa.inspect(engine)
+                tables = set(inspector.get_table_names())
+                self.assertTrue(
+                    {
+                        "pos_payment_type_mappings",
+                        "pos_group_department_mappings",
+                        "pos_group_department_allocations",
+                        "pos_product_kpi_mappings",
+                        "pos_employee_mappings",
+                        "integration_import_batches",
+                        "integration_import_chunks",
+                        "pos_report_projections",
+                        "report_value_contributions",
+                    }.issubset(tables)
+                )
+                self.assertIn(
+                    "integration_connection_id",
+                    {column["name"] for column in inspector.get_columns("quickresto_connections")},
+                )
+                self.assertIn(
+                    "integration_import_batch_id",
+                    {column["name"] for column in inspector.get_columns("quickresto_import_batches")},
+                )
+                self.assertIn(
+                    "integration_sync_job_id",
+                    {column["name"] for column in inspector.get_columns("quickresto_import_batches")},
+                )
+                self.assertIn(
+                    "integration_sync_run_id",
+                    {column["name"] for column in inspector.get_columns("quickresto_sync_runs")},
+                )
+                employee_mapping_columns = {column["name"] for column in inspector.get_columns("pos_employee_mappings")}
+                self.assertTrue(
+                    {
+                        "pos_employee_id",
+                        "venue_member_id",
+                        "match_type",
+                        "confidence",
+                        "confirmed",
+                        "confirmed_by_user_id",
+                        "confirmed_at",
+                    }.issubset(employee_mapping_columns)
+                )
+                raw_unique_constraints = {
+                    tuple(constraint["column_names"])
+                    for constraint in inspector.get_unique_constraints("integration_raw_objects")
+                }
+                self.assertIn(
+                    (
+                        "integration_connection_id",
+                        "entity_type",
+                        "external_id",
+                        "source_version",
+                        "payload_hash",
+                    ),
+                    raw_unique_constraints,
+                )
+
+                command.downgrade(config, "f3b7c1d9e5a2")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("pos_report_projections", inspector.get_table_names())
+            self.assertNotIn("integration_import_batches", inspector.get_table_names())
+            self.assertNotIn("integration_import_chunks", inspector.get_table_names())
+            self.assertNotIn(
+                "integration_import_batch_id",
+                {column["name"] for column in inspector.get_columns("quickresto_import_batches")},
+            )
+            self.assertNotIn(
+                "integration_sync_job_id",
+                {column["name"] for column in inspector.get_columns("quickresto_import_batches")},
+            )
+            raw_unique_constraints = {
+                tuple(constraint["column_names"])
+                for constraint in inspector.get_unique_constraints("integration_raw_objects")
+            }
+            self.assertIn(
+                ("integration_connection_id", "entity_type", "external_id"),
+                raw_unique_constraints,
+            )
+
+    def test_quickresto_acdm_shadow_downgrade_blocks_before_schema_changes_when_raw_versions_exist(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE departments (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE daily_reports (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_sync_runs (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql(
+                    "CREATE TABLE quickresto_import_batches ("
+                    "id INTEGER PRIMARY KEY, status VARCHAR(24) NOT NULL, "
+                    "CONSTRAINT ck_quickresto_import_batches_status "
+                    "CHECK (status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED')))"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "e9a3c5f7b1d4")
+                command.upgrade(config, "f5d9a2c7e4b1")
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "INSERT INTO integration_raw_objects ("
+                        "id, integration_connection_id, entity_type, external_id, source_version, "
+                        "payload_hash, encrypted_payload, encryption_key_version, received_at"
+                        ") VALUES "
+                        "(1, 1, 'ORDER', 'same-order', '1', 'hash-1', 'cipher-1', 'v1', CURRENT_TIMESTAMP), "
+                        "(2, 1, 'ORDER', 'same-order', '2', 'hash-2', 'cipher-2', 'v1', CURRENT_TIMESTAMP)"
+                    )
+
+                with self.assertRaisesRegex(RuntimeError, "Cannot downgrade while versioned"):
+                    command.downgrade(config, "f3b7c1d9e5a2")
+
+            self.assertIn("report_value_contributions", sa.inspect(engine).get_table_names())
 
     def test_position_pay_profile_periods_backfill_and_round_trip_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

@@ -22,6 +22,7 @@ from app.models import (
     DemoEvent,
     Expense,
     ExpenseAttachment,
+    IntegrationImportBatch,
     NotificationDeliveryLog,
     PayProfileAssignment,
     PaymentMethodTransfer,
@@ -30,6 +31,10 @@ from app.models import (
     PayrollRun,
     PositionPermissionTemplate,
     PositionPayProfilePeriod,
+    POSEmployeeMapping,
+    POSGroupDepartmentMapping,
+    POSPaymentTypeMapping,
+    POSProductKpiMapping,
     QuickRestoConnection,
     QuickRestoImportIssue,
     QuickRestoImportIssueAudit,
@@ -84,6 +89,7 @@ _DIRECT_USER_REF_REASSIGNMENTS = (
     (DemoEvent, "user_id"),
     (Expense, "created_by_user_id"),
     (ExpenseAttachment, "uploaded_by_user_id"),
+    (IntegrationImportBatch, "requested_by_user_id"),
     (NotificationDeliveryLog, "user_id"),
     (PaymentMethodTransfer, "created_by_user_id"),
     (PayrollRecalculationLog, "triggered_by_user_id"),
@@ -92,6 +98,10 @@ _DIRECT_USER_REF_REASSIGNMENTS = (
     (Penalty, "created_by_user_id"),
     (PositionPermissionTemplate, "created_by_user_id"),
     (PositionPermissionTemplate, "updated_by_user_id"),
+    (POSEmployeeMapping, "confirmed_by_user_id"),
+    (POSGroupDepartmentMapping, "updated_by_user_id"),
+    (POSPaymentTypeMapping, "updated_by_user_id"),
+    (POSProductKpiMapping, "updated_by_user_id"),
     (QuickRestoConnection, "created_by_user_id"),
     (QuickRestoConnection, "pending_scope_requested_by_user_id"),
     (QuickRestoConnection, "scope_confirmed_by_user_id"),
@@ -294,6 +304,10 @@ def _merge_venue_members(db: Session, *, target_user: User, source_user: User) -
         existing.is_active = bool(existing.is_active or row.is_active)
         existing.venue_role = _prefer_venue_role(existing.venue_role, row.venue_role)
         existing.owner_note = _merge_owner_notes(existing.owner_note, row.owner_note)
+        db.query(POSEmployeeMapping).filter(POSEmployeeMapping.venue_member_id == int(row.id)).update(
+            {POSEmployeeMapping.venue_member_id: int(existing.id)},
+            synchronize_session=False,
+        )
         db.delete(row)
 
     db.flush()

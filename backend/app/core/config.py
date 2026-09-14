@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # domain-separated key derivation when an explicit key is not configured.
     INTEGRATION_ENCRYPTION_KEY: str = ""
 
+    # Provider-neutral POS layer. These defaults deliberately preserve the
+    # current develop behaviour until a later rollout stage enables a path.
+    POS_INTEGRATION_SHADOW_WRITE_ENABLED: bool = False
+    POS_INTEGRATION_CANONICAL_READ_ENABLED: bool = False
+    POS_INTEGRATION_PROVIDER_ROLLOUT: str = ""
+
     # Cookie
     COOKIE_DOMAIN: str = ".axelio.ru"
 

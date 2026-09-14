@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import json
 from typing import Any, Iterable
+
+from app.integrations.normalization.reporting_policy import VenueReportingPolicy
 
 
 class QuickRestoDataError(RuntimeError):
@@ -85,14 +87,8 @@ def _parse_local_datetime(value: Any, *, field: str) -> datetime:
 
 
 def business_date_for_shift(shift: dict[str, Any], *, cutoff_hour: int) -> date:
-    cutoff = int(cutoff_hour)
-    if not 0 <= cutoff <= 23:
-        raise ValueError("business day cutoff hour must be between 0 and 23")
     local_opened_at = _parse_local_datetime(shift.get("localOpenedTime"), field="localOpenedTime")
-    target = local_opened_at.date()
-    if local_opened_at.hour < cutoff:
-        target -= timedelta(days=1)
-    return target
+    return VenueReportingPolicy(business_day_cutoff_hour=int(cutoff_hour)).business_date(local_opened_at)
 
 
 def shift_slot_for_shift(
@@ -102,19 +98,12 @@ def shift_slot_for_shift(
     night_shift_split_enabled: bool = False,
     night_shift_start_hour: int = 22,
 ) -> str:
-    cutoff = int(cutoff_hour)
-    night_start = int(night_shift_start_hour)
-    if not 0 <= cutoff <= 23:
-        raise ValueError("business day cutoff hour must be between 0 and 23")
-    if not 0 <= night_start <= 23:
-        raise ValueError("night shift start hour must be between 0 and 23")
-    if not night_shift_split_enabled:
-        return "DAY"
-    if night_start <= cutoff:
-        raise ValueError("night shift start hour must be greater than business day cutoff hour")
-
     local_opened_at = _parse_local_datetime(shift.get("localOpenedTime"), field="localOpenedTime")
-    return "NIGHT" if local_opened_at.hour >= night_start or local_opened_at.hour < cutoff else "DAY"
+    return VenueReportingPolicy(
+        business_day_cutoff_hour=int(cutoff_hour),
+        night_shift_split_enabled=bool(night_shift_split_enabled),
+        night_shift_start_hour=int(night_shift_start_hour),
+    ).shift_slot(local_opened_at)
 
 
 def stable_payload_hash(payload: dict[str, Any]) -> str:

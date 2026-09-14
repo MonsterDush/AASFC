@@ -84,6 +84,44 @@ from .quickresto_import_issue_shift import QuickRestoImportIssueShift
 from .quickresto_import_issue_audit import QuickRestoImportIssueAudit
 from .quickresto_scope_audit import QuickRestoScopeAudit
 from .venue_pos_integration_selection import VenuePOSIntegrationSelection
+from .integration_connection import IntegrationConnection
+from .integration_capability_state import IntegrationCapabilityState
+from .integration_sync_run import IntegrationSyncRun
+from .integration_raw_object import IntegrationRawObject
+from .integration_sync_cursor import IntegrationSyncCursor
+from .integration_sync_job import IntegrationSyncJob
+from .integration_import_batch import IntegrationImportBatch
+from .integration_import_chunk import IntegrationImportChunk
+from .integration_quarantine import IntegrationQuarantine
+from .integration_reconciliation_run import IntegrationReconciliationRun
+from .pos_mapping import (
+    POSEmployeeMapping,
+    POSGroupDepartmentAllocation,
+    POSGroupDepartmentMapping,
+    POSPaymentTypeMapping,
+    POSProductKpiMapping,
+)
+from .pos_report_projection import POSReportProjection
+from .report_value_contribution import ReportValueContribution
+from .pos_canonical import (
+    POSBusinessShift,
+    POSEmployee,
+    POSOrder,
+    POSOrderDiscount,
+    POSOrderEvent,
+    POSOrderItem,
+    POSOrganization,
+    POSPayment,
+    POSPaymentType,
+    POSProduct,
+    POSProductGroup,
+    POSProductPrice,
+    POSRefund,
+    POSSupplier,
+    POSTerminal,
+    POSVenue,
+    POSWarehouse,
+)
 
 __all__ = [
     "SystemRole",
@@ -175,4 +213,38 @@ __all__ = [
     "QuickRestoImportIssueAudit",
     "QuickRestoScopeAudit",
     "VenuePOSIntegrationSelection",
+    "IntegrationConnection",
+    "IntegrationCapabilityState",
+    "IntegrationSyncRun",
+    "IntegrationRawObject",
+    "IntegrationSyncCursor",
+    "IntegrationSyncJob",
+    "IntegrationImportBatch",
+    "IntegrationImportChunk",
+    "IntegrationQuarantine",
+    "IntegrationReconciliationRun",
+    "POSPaymentTypeMapping",
+    "POSGroupDepartmentMapping",
+    "POSGroupDepartmentAllocation",
+    "POSProductKpiMapping",
+    "POSEmployeeMapping",
+    "POSReportProjection",
+    "ReportValueContribution",
+    "POSOrganization",
+    "POSVenue",
+    "POSTerminal",
+    "POSPaymentType",
+    "POSProductGroup",
+    "POSProduct",
+    "POSProductPrice",
+    "POSEmployee",
+    "POSWarehouse",
+    "POSSupplier",
+    "POSBusinessShift",
+    "POSOrder",
+    "POSOrderItem",
+    "POSOrderEvent",
+    "POSPayment",
+    "POSRefund",
+    "POSOrderDiscount",
 ]

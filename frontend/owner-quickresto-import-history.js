@@ -39,6 +39,7 @@ const STATUS_LABELS = {
   SUCCEEDED: "Успешно",
   PARTIAL: "Нужна проверка",
   FAILED: "Ошибка",
+  CANCELLED: "Отменён",
 };
 const state = { batches: [], pollTimer: null, loading: false };
 
@@ -131,6 +132,11 @@ function batchCard(batch) {
   const batchTotals = totals(batch);
   const issues = issueIds(batch);
   const canRetry = normalized === "FAILED";
+  const canonical = batch?.canonical && typeof batch.canonical === "object" ? batch.canonical : {};
+  const qualityIssueIds = Array.isArray(canonical.quarantine_ids) ? canonical.quarantine_ids : [];
+  const reconciliationIds = Array.isArray(canonical.reconciliation_ids) ? canonical.reconciliation_ids : [];
+  const canonicalConnectionId = Number(canonical.connection_id || 0);
+  const fallbackCount = Array.isArray(batch?.fallback_diagnostics) ? batch.fallback_diagnostics.length : 0;
   const completed = Number(batch.completed_periods || 0);
   const total = Number(batch.total_periods || 0);
   const actions = [
@@ -139,6 +145,12 @@ function batchCard(batch) {
       : "",
     canRetry
       ? `<button class="btn inline" type="button" data-retry-batch="${Number(batch.id)}">Повторить с упавшего месяца</button>`
+      : "",
+    canonicalConnectionId && qualityIssueIds.length
+      ? `<button class="btn subtle inline" type="button" data-canonical-kind="quality" data-canonical-connection="${canonicalConnectionId}" data-canonical-id="${Number(qualityIssueIds[0])}">Открыть проблему качества</button>`
+      : "",
+    canonicalConnectionId && reconciliationIds.length
+      ? `<button class="btn subtle inline" type="button" data-canonical-kind="reconciliation" data-canonical-connection="${canonicalConnectionId}" data-canonical-id="${Number(reconciliationIds[0])}">Открыть сверку ACDM</button>`
       : "",
   ].join("");
   return `
@@ -158,8 +170,11 @@ function batchCard(batch) {
         <span>Отчётов создано: <b>${Number(batchTotals.reports_created || 0)}</b></span>
         <span>Обновлено: <b>${Number(batchTotals.reports_updated || 0)}</b></span>
         <span>Проблем: <b>${Number(batchTotals.issue_count || issues.length || 0)}</b></span>
+        ${canonical.enabled ? `<span>ACDM совпало: <b>${Number(canonical.matched_groups || 0)}</b></span><span>ACDM требует проверки: <b>${Number(canonical.problem_groups || 0)}</b></span>` : ""}
+        ${fallbackCount ? `<span>Локальный fallback: <b>${fallbackCount}</b></span>` : ""}
       </div>
       ${batch.error ? `<div class="quickresto-history-error mt-8">${esc(batch.error)}</div>` : ""}
+      ${fallbackCount ? `<div class="muted small mt-8">QuickResto не применил серверный фильтр; Axelio ограничил данные локально по времени закрытия и business date. Результат записан в диагностике запуска.</div>` : ""}
       <div class="quickresto-history-periods mt-12">${periodRows(batch)}</div>
       ${actions ? `<div class="quickresto-history-card__actions mt-12">${actions}</div>` : ""}
     </article>`;
@@ -238,6 +253,14 @@ el.refreshHistory?.addEventListener("click", () => loadHistory());
 el.statusFilter?.addEventListener("change", () => loadHistory());
 
 el.historyList?.addEventListener("click", async (event) => {
+  const canonicalButton = event.target.closest("[data-canonical-kind]");
+  if (canonicalButton) {
+    const diagnosticParam = canonicalButton.dataset.canonicalKind === "quality"
+      ? "quality_issue_id"
+      : "reconciliation_id";
+    location.href = `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}&provider=quickresto&integration_connection_id=${encodeURIComponent(canonicalButton.dataset.canonicalConnection)}&${diagnosticParam}=${encodeURIComponent(canonicalButton.dataset.canonicalId)}`;
+    return;
+  }
   const issueButton = event.target.closest("[data-open-issue]");
   if (issueButton) {
     const issueId = issueButton.dataset.openIssue;
