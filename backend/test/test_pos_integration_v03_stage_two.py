@@ -35,9 +35,17 @@ from app.models.integration_raw_object import IntegrationRawObject
 from app.models.integration_sync_job import IntegrationSyncJob
 from app.models.integration_sync_run import IntegrationSyncRun
 from app.models.payment_method import PaymentMethod
-from app.models.pos_canonical import POSBusinessShift, POSOrder, POSOrderItem, POSPayment
+from app.models.pos_canonical import (
+    POSBusinessShift,
+    POSOrder,
+    POSOrderItem,
+    POSPayment,
+    POSProduct,
+    POSProductGroup,
+)
 from app.models.pos_report_projection import POSReportProjection
 from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_dish_category_path import QuickRestoDishCategoryPath
 from app.models.quickresto_import_batch import QuickRestoImportBatch
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
@@ -112,6 +120,10 @@ class FixtureQuickRestoClient:
     def read_object(self, *, module_name, class_name, object_id):
         del module_name
         if class_name.endswith("DishCategory"):
+            category_details = self.fixture.get("dish_category_details") or {}
+            detail = category_details.get(str(object_id)) or category_details.get(int(object_id))
+            if detail is not None:
+                return deepcopy(detail)
             return next(row for row in self.fixture["dish_categories"] if int(row["id"]) == int(object_id))
         return deepcopy(self.orders_by_id[int(object_id)])
 
@@ -538,6 +550,116 @@ class POSIntegrationStageTwoTests(unittest.TestCase):
         self.assertFalse(settings.POS_INTEGRATION_CANONICAL_READ_ENABLED)
         self.assertIsNotNone(self.db.scalar(select(DailyReport).where(DailyReport.date == TARGET_DATE)))
         self.assertEqual(self.db.scalar(select(func.count(IntegrationSyncRun.id))), 2)
+
+    def test_shadow_write_maps_unnamed_nested_category_through_root(self):
+        nested_category_id = 542
+        self.fixture["dish_category_details"] = {
+            str(nested_category_id): {
+                "id": nested_category_id,
+                "parentItem": {
+                    "id": 6,
+                    "name": "Кальянный бар",
+                    "itemTitle": "Кальянный бар",
+                    "parentItem": None,
+                },
+            }
+        }
+        for order in self.fixture["orders"]:
+            for item in order["orderItemList"]:
+                if int(item["product"]["id"]) == 5:
+                    item["product"]["parentId"] = nested_category_id
+
+        flag_patches = self._flags()
+        with flag_patches[0], flag_patches[1], flag_patches[2], flag_patches[3]:
+            result = sync_quickresto_connection(
+                self.db,
+                connection=self.connection,
+                requested_by_user_id=1,
+                trigger="TEST",
+                client=FixtureQuickRestoClient(self.fixture),
+                force_full=True,
+                period_start=TARGET_DATE,
+                period_end_exclusive=date(2031, 2, 16),
+            )
+
+        category_path = self.db.scalar(
+            select(QuickRestoDishCategoryPath).where(
+                QuickRestoDishCategoryPath.connection_id == int(self.connection.id),
+                QuickRestoDishCategoryPath.external_id == nested_category_id,
+            )
+        )
+        canonical_connection = self.db.scalar(select(IntegrationConnection))
+        canonical_group = self.db.scalar(
+            select(POSProductGroup).where(
+                POSProductGroup.connection_id == int(canonical_connection.id),
+                POSProductGroup.external_id == str(nested_category_id),
+            )
+        )
+        product = self.db.scalar(
+            select(POSProduct).where(
+                POSProduct.connection_id == int(canonical_connection.id),
+                POSProduct.external_id == "5",
+            )
+        )
+
+        self.assertEqual(result.status, "SUCCEEDED", result.summary_json)
+        self.assertEqual(result.summary_json["canonical"]["groups"][0]["status"], "MATCHED")
+        self.assertIsNone(category_path.external_name)
+        self.assertEqual(category_path.root_external_id, 6)
+        self.assertIsNotNone(canonical_group)
+        self.assertEqual(canonical_group.name, f"Категория QuickResto #{nested_category_id}")
+        self.assertEqual(product.category_id, canonical_group.id)
+
+    def test_shadow_write_omits_zero_payment_entries(self):
+        self.fixture["shift"].update(
+            {
+                "ordersCount": 1,
+                "totalCash": 0.0,
+                "totalCard": 0.0,
+                "totalBonuses": 0.0,
+            }
+        )
+        self.fixture["orders"] = [
+            {
+                "id": 1,
+                "version": 1,
+                "shiftId": "fixture-closed-shift-1",
+                "returned": False,
+                "frontTotalPrice": 0.0,
+                "payments": [
+                    {
+                        "id": 1,
+                        "amount": 0.0,
+                        "paymentType": {
+                            "id": 1,
+                            "name": "Наличные",
+                            "operationType": "fiscal",
+                            "paymentMechanismWeb": "cash",
+                        },
+                    }
+                ],
+                "orderItemList": [],
+            }
+        ]
+
+        flag_patches = self._flags()
+        with flag_patches[0], flag_patches[1], flag_patches[2], flag_patches[3]:
+            result = sync_quickresto_connection(
+                self.db,
+                connection=self.connection,
+                requested_by_user_id=1,
+                trigger="TEST",
+                client=FixtureQuickRestoClient(self.fixture),
+                force_full=True,
+                period_start=TARGET_DATE,
+                period_end_exclusive=date(2031, 2, 16),
+            )
+
+        projection = self.db.scalar(select(POSReportProjection))
+        self.assertEqual(result.status, "SUCCEEDED", result.summary_json)
+        self.assertEqual(result.summary_json["canonical"]["groups"][0]["status"], "MATCHED")
+        self.assertEqual(projection.summary_json["legacy"]["payments_internal"], {})
+        self.assertEqual(projection.summary_json["canonical"]["payments_internal"], {})
 
     def test_monthly_worker_persists_canonical_chunk_progress_and_provenance(self):
         batch = QuickRestoImportBatch(
