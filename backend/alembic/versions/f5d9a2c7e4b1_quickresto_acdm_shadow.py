@@ -18,6 +18,23 @@ depends_on = None
 JSON_TYPE = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 MAPPING_STATUS = "status IN ('MAPPED', 'EXCLUDED', 'UNMAPPED', 'STALE')"
 
+RAW_IDENTITY_LEGACY_NAME = "uq_integration_raw_objects_external_identity"
+RAW_IDENTITY_VERSIONED_NAME = "uq_integration_raw_objects_version_payload"
+
+RAW_IDENTITY_LEGACY_COLUMNS = [
+    "integration_connection_id",
+    "entity_type",
+    "external_id",
+]
+
+RAW_IDENTITY_VERSIONED_COLUMNS = [
+    "integration_connection_id",
+    "entity_type",
+    "external_id",
+    "source_version",
+    "payload_hash",
+]
+
 
 def _mapping_columns(source_table: str) -> list[sa.Column]:
     return [
@@ -55,19 +72,36 @@ def _mapping_indexes(table_name: str) -> None:
         op.create_index(f"ix_{table_name}_{column_name}", table_name, [column_name])
 
 
+def _replace_raw_identity_constraint(*, versioned: bool) -> None:
+    if versioned:
+        old_name = RAW_IDENTITY_LEGACY_NAME
+        new_name = RAW_IDENTITY_VERSIONED_NAME
+        new_columns = RAW_IDENTITY_VERSIONED_COLUMNS
+    else:
+        old_name = RAW_IDENTITY_VERSIONED_NAME
+        new_name = RAW_IDENTITY_LEGACY_NAME
+        new_columns = RAW_IDENTITY_LEGACY_COLUMNS
+
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("integration_raw_objects", recreate="always") as batch_op:
+            batch_op.drop_constraint(old_name, type_="unique")
+            batch_op.create_unique_constraint(new_name, new_columns)
+        return
+
+    op.drop_constraint(
+        old_name,
+        "integration_raw_objects",
+        type_="unique",
+    )
+    op.create_unique_constraint(
+        new_name,
+        "integration_raw_objects",
+        new_columns,
+    )
+
+
 def upgrade() -> None:
-    with op.batch_alter_table("integration_raw_objects", recreate="always") as batch_op:
-        batch_op.drop_constraint("uq_integration_raw_objects_external_identity", type_="unique")
-        batch_op.create_unique_constraint(
-            "uq_integration_raw_objects_version_payload",
-            [
-                "integration_connection_id",
-                "entity_type",
-                "external_id",
-                "source_version",
-                "payload_hash",
-            ],
-        )
+    _replace_raw_identity_constraint(versioned=True)
 
     with op.batch_alter_table("quickresto_connections") as batch_op:
         batch_op.add_column(sa.Column("integration_connection_id", sa.Integer(), nullable=True))
@@ -518,9 +552,4 @@ def downgrade() -> None:
         batch_op.drop_constraint("fk_quickresto_connections_integration_connection_id", type_="foreignkey")
         batch_op.drop_column("integration_connection_id")
 
-    with op.batch_alter_table("integration_raw_objects", recreate="always") as batch_op:
-        batch_op.drop_constraint("uq_integration_raw_objects_version_payload", type_="unique")
-        batch_op.create_unique_constraint(
-            "uq_integration_raw_objects_external_identity",
-            ["integration_connection_id", "entity_type", "external_id"],
-        )
+    _replace_raw_identity_constraint(versioned=False)

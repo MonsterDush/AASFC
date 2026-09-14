@@ -18,6 +18,7 @@ from app.core.db import Base
 from app.integrations.base.capabilities import Capability, CapabilityState
 from app.integrations.base.dto import ProviderRecord
 from app.integrations.base.errors import ProviderAuthenticationError, ProviderValidationError
+from app.integrations.canonical.report_projector import ReportProjector, ShadowProjectionCandidate
 from app.integrations.providers.quickresto.canonical_sync import (
     ensure_quickresto_import_job,
     ensure_quickresto_integration_connection,
@@ -242,6 +243,129 @@ class POSIntegrationStageTwoTests(unittest.TestCase):
             patch.object(settings, "POS_INTEGRATION_CANONICAL_READ_ENABLED", False),
             patch.object(settings, "INTEGRATION_ENCRYPTION_KEY", "s" * 48),
         )
+
+    def _shadow_candidate(
+        self,
+        *,
+        report_id: int,
+        connection_id: int,
+        sync_run_id: int,
+        status: str,
+        aggregate_hash: str,
+    ) -> ShadowProjectionCandidate:
+        return ShadowProjectionCandidate(
+            daily_report_id=report_id,
+            connection_id=connection_id,
+            business_date=TARGET_DATE,
+            shift_slot="DAY",
+            sync_run_id=sync_run_id,
+            status=status,
+            aggregate_hash=aggregate_hash,
+            canonical_coverage_hash="c" * 64,
+            shift_count=1,
+            mapping_version=1,
+            policy_version=1,
+            summary_json={"state": status.lower()},
+            facts={
+                "revenue_total": 100,
+                "unallocated_revenue_total": 0,
+                "writeoff_total": 0,
+                "refund_total": 0,
+                "discount_total": 0,
+                "payments_internal": {1: 100},
+                "departments_internal": {6: 100},
+                "kpis_internal": {},
+            },
+        )
+
+    def _shadow_projection_setup(self):
+        canonical_connection = ensure_quickresto_integration_connection(
+            self.db,
+            connection=self.connection,
+        )
+        report = DailyReport(
+            venue_id=1,
+            date=TARGET_DATE,
+            shift_slot="DAY",
+            status="DRAFT",
+            created_by_user_id=1,
+        )
+        sync_run = IntegrationSyncRun(
+            connection_id=int(canonical_connection.id),
+            capability="REPORT_FACTS",
+            trigger="TEST",
+            status="RUNNING",
+        )
+        self.db.add_all([report, sync_run])
+        self.db.flush()
+        return canonical_connection, report, sync_run
+
+    def test_shadow_projection_updates_matched_to_mismatch(self):
+        canonical_connection, report, sync_run = self._shadow_projection_setup()
+        projector = ReportProjector()
+
+        first = projector.persist_shadow(
+            self.db,
+            candidate=self._shadow_candidate(
+                report_id=int(report.id),
+                connection_id=int(canonical_connection.id),
+                sync_run_id=int(sync_run.id),
+                status="MATCHED",
+                aggregate_hash="a" * 64,
+            ),
+        )
+        self.assertTrue(first.updated)
+        self.assertEqual(first.projection.status, "MATCHED")
+        self.assertEqual(first.projection.aggregate_hash, "a" * 64)
+
+        second = projector.persist_shadow(
+            self.db,
+            candidate=self._shadow_candidate(
+                report_id=int(report.id),
+                connection_id=int(canonical_connection.id),
+                sync_run_id=int(sync_run.id),
+                status="MISMATCH",
+                aggregate_hash="b" * 64,
+            ),
+        )
+
+        self.assertTrue(second.updated)
+        self.assertEqual(second.projection.status, "MISMATCH")
+        self.assertEqual(second.projection.aggregate_hash, "b" * 64)
+        self.assertEqual(second.projection.summary_json, {"state": "mismatch"})
+
+    def test_shadow_projection_preserves_matched_on_failed_candidate(self):
+        canonical_connection, report, sync_run = self._shadow_projection_setup()
+        projector = ReportProjector()
+
+        first = projector.persist_shadow(
+            self.db,
+            candidate=self._shadow_candidate(
+                report_id=int(report.id),
+                connection_id=int(canonical_connection.id),
+                sync_run_id=int(sync_run.id),
+                status="MATCHED",
+                aggregate_hash="a" * 64,
+            ),
+        )
+        self.assertTrue(first.updated)
+        self.assertEqual(first.projection.status, "MATCHED")
+
+        second = projector.persist_shadow(
+            self.db,
+            candidate=self._shadow_candidate(
+                report_id=int(report.id),
+                connection_id=int(canonical_connection.id),
+                sync_run_id=int(sync_run.id),
+                status="FAILED",
+                aggregate_hash="f" * 64,
+            ),
+        )
+
+        self.assertFalse(second.updated)
+        self.assertEqual(second.projection.status, "MATCHED")
+        self.assertEqual(second.projection.aggregate_hash, "a" * 64)
+        self.assertEqual(second.projection.summary_json, {"state": "matched"})
 
     def test_adapter_marks_supported_only_after_real_list_probe(self):
         self.assertIn("QUICKRESTO", provider_registry.registered_providers())
