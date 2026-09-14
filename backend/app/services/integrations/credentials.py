@@ -37,6 +37,12 @@ def _payload_fernet():
     return _fernet_for_domain(b"axelio:integration-source-snapshots:v1")
 
 
+def _raw_payload_fernet():
+    # Canonical raw objects have their own cryptographic domain. Rotating or
+    # invalidating source-snapshot storage must not affect credentials or raw.
+    return _fernet_for_domain(b"axelio:integration-raw-payloads:v1")
+
+
 def encrypt_credential(value: str) -> str:
     plaintext = str(value or "")
     if not plaintext:
@@ -73,3 +79,22 @@ def decrypt_integration_payload(value: str) -> str:
         return plaintext.decode("utf-8")
     except Exception as exc:
         raise IntegrationCredentialError("Integration source snapshot could not be decrypted") from exc
+
+
+def encrypt_raw_integration_payload(value: str) -> str:
+    plaintext = str(value or "")
+    if not plaintext:
+        raise IntegrationCredentialError("Integration raw payload cannot be empty")
+    token = _raw_payload_fernet().encrypt(plaintext.encode("utf-8")).decode("ascii")
+    return f"v1:{token}"
+
+
+def decrypt_raw_integration_payload(value: str) -> str:
+    stored = str(value or "")
+    if not stored.startswith("v1:"):
+        raise IntegrationCredentialError("Integration raw payload has an unsupported format")
+    try:
+        plaintext = _raw_payload_fernet().decrypt(stored[3:].encode("ascii"))
+        return plaintext.decode("utf-8")
+    except Exception as exc:
+        raise IntegrationCredentialError("Integration raw payload could not be decrypted") from exc

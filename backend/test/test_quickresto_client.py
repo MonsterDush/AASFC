@@ -239,6 +239,25 @@ class QuickRestoClientTests(unittest.TestCase):
         self.assertEqual(listing.call_count, 2)
         self.assertIn("filters", listing.call_args_list[0].kwargs)
         self.assertNotIn("filters", listing.call_args_list[1].kwargs)
+        self.assertEqual(
+            client.fallback_diagnostics(),
+            (
+                {
+                    "entity_type": "BUSINESS_SHIFTS",
+                    "mode": "LOCAL_CLOSE_TIME",
+                    "reason": "FILTER_IGNORED",
+                    "source_rows": 3,
+                    "result_rows": 2,
+                },
+            ),
+        )
+        client.record_business_date_filter_result(
+            rows_before=2,
+            rows_after=1,
+            period_start="2026-08-29",
+            period_end_exclusive="2026-08-30",
+        )
+        self.assertEqual(client.fallback_diagnostics()[-1]["mode"], "LOCAL_BUSINESS_DATE")
 
     def test_closed_shift_filter_applies_an_exclusive_upper_bound(self):
         session = Mock()
@@ -273,6 +292,8 @@ class QuickRestoClientTests(unittest.TestCase):
 
         self.assertEqual(rows, [target])
         self.assertEqual(listing.call_count, 2)
+        self.assertEqual(client.fallback_diagnostics()[0]["mode"], "LOCAL_SHIFT_ID")
+        self.assertEqual(client.fallback_diagnostics()[0]["requested_shift_count"], 1)
 
 
 class QuickRestoFixtureContractTests(unittest.TestCase):

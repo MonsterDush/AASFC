@@ -16,7 +16,7 @@ class QuickRestoImportBatch(Base):
     __tablename__ = "quickresto_import_batches"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED')",
+            "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED')",
             name="ck_quickresto_import_batches_status",
         ),
         CheckConstraint(
@@ -36,6 +36,12 @@ class QuickRestoImportBatch(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    integration_import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("integration_import_batches.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
+    integration_sync_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("integration_sync_jobs.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     connection_id: Mapped[int] = mapped_column(
         ForeignKey("quickresto_connections.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -68,3 +74,5 @@ class QuickRestoImportBatch(Base):
 
     connection = relationship("QuickRestoConnection", back_populates="import_batches")
     last_sync_run = relationship("QuickRestoSyncRun", foreign_keys=[last_sync_run_id])
+    integration_sync_job = relationship("IntegrationSyncJob")
+    integration_import_batch = relationship("IntegrationImportBatch")

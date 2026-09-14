@@ -21,6 +21,7 @@ from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
+from app.models.quickresto_import_batch import QuickRestoImportBatch
 from app.models.quickresto_kpi_product_mapping import QuickRestoKpiProductMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
@@ -75,6 +76,17 @@ from app.services.integrations.quickresto_snapshot import (
     QuickRestoSnapshotError,
     seal_quickresto_source_snapshot,
 )
+from app.integrations.providers.quickresto.canonical_sync import (
+    QuickRestoCanonicalContext,
+    fail_quickresto_canonical_run,
+    finish_quickresto_canonical_run,
+    mirror_quickresto_catalog_and_mappings,
+    record_observed_capabilities,
+    shadow_compare_snapshot_group,
+    shadow_write_snapshot_group,
+    start_quickresto_canonical_run,
+)
+from app.integrations.providers.quickresto.provider import QuickRestoProviderAdapter
 from app.services.integrations.quickresto_scope import (
     QuickRestoLocationScopeError,
     QuickRestoScopeError,
@@ -1447,6 +1459,7 @@ def _stage_quickresto_sources(
     period_end_exclusive: date | None = None,
     include_undated_sources: bool = True,
     finalize_full_reconciliation: bool = True,
+    provider_adapter: QuickRestoProviderAdapter | None = None,
 ) -> tuple[list[QuickRestoSourceSnapshot], bool, dict[str, Any], list[dict[str, Any]]]:
     now = _utcnow()
     if (period_start is None) != (period_end_exclusive is None):
@@ -1472,12 +1485,22 @@ def _stage_quickresto_sources(
         )
     elif not full_reconciliation and connection.incremental_cursor_closed_at is not None:
         closed_since = _ensure_utc(connection.incremental_cursor_closed_at) - timedelta(hours=48)
-    closed_shifts = _list_closed_shift_rows(
-        client,
-        closed_since=closed_since,
-        closed_before=closed_before,
-    )
+    if provider_adapter is not None and period_start is not None and period_end_exclusive is not None:
+        closed_shifts = [
+            dict(record.payload)
+            for record in provider_adapter.iter_business_shifts(
+                period_start=period_start,
+                period_end_exclusive=period_end_exclusive,
+            )
+        ]
+    else:
+        closed_shifts = _list_closed_shift_rows(
+            client,
+            closed_since=closed_since,
+            closed_before=closed_before,
+        )
     cloud_closed_shifts_seen = len(closed_shifts)
+    rows_before_business_date_filter = len(closed_shifts)
     if connection.sync_from_date is not None or period_start is not None:
         filtered: list[dict[str, Any]] = []
         for shift in closed_shifts:
@@ -1506,6 +1529,14 @@ def _stage_quickresto_sources(
             if target_date is not None:
                 filtered.append(shift)
         closed_shifts = filtered
+    record_business_date_filter = getattr(client, "record_business_date_filter_result", None)
+    if provider_adapter is None and callable(record_business_date_filter):
+        record_business_date_filter(
+            rows_before=rows_before_business_date_filter,
+            rows_after=len(closed_shifts),
+            period_start=period_start.isoformat() if period_start is not None else None,
+            period_end_exclusive=period_end_exclusive.isoformat() if period_end_exclusive is not None else None,
+        )
 
     scope_index = load_quickresto_scope_index(db, connection=connection)
     historical_scope_index = (
@@ -1616,7 +1647,17 @@ def _stage_quickresto_sources(
         for row in closed_shifts
         if str(row.get("frontId") or row.get("_id") or "").strip()
     }
-    order_rows = _list_order_rows_for_shifts(client, shift_ids=shift_ids)
+    if provider_adapter is not None and period_start is not None and period_end_exclusive is not None:
+        order_rows = [
+            dict(record.payload)
+            for record in provider_adapter.iter_orders(
+                business_shift_ids=shift_ids,
+                period_start=period_start,
+                period_end_exclusive=period_end_exclusive,
+            )
+        ]
+    else:
+        order_rows = _list_order_rows_for_shifts(client, shift_ids=shift_ids)
     order_details_by_shift: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in order_rows:
         object_id = int(row.get("id") or 0)
@@ -2041,7 +2082,11 @@ def _perform_sync(
     include_undated_sources: bool = True,
     finalize_full_reconciliation: bool = True,
     refresh_catalog: bool = True,
+    canonical_context: QuickRestoCanonicalContext | None = None,
 ) -> dict[str, Any]:
+    clear_fallback_diagnostics = getattr(client, "clear_fallback_diagnostics", None)
+    if callable(clear_fallback_diagnostics):
+        clear_fallback_diagnostics()
     catalog_summary = refresh_quickresto_catalog(db, connection=connection, client=client) if refresh_catalog else {}
     ensure_quickresto_scope_ready(connection)
     mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client) if refresh_catalog else {}
@@ -2059,6 +2104,14 @@ def _perform_sync(
         period_end_exclusive=period_end_exclusive,
         include_undated_sources=include_undated_sources,
         finalize_full_reconciliation=finalize_full_reconciliation,
+        provider_adapter=(
+            QuickRestoProviderAdapter(
+                client,
+                business_day_cutoff_hour=int(connection.business_day_cutoff_hour),
+            )
+            if canonical_context is not None
+            else None
+        ),
     )
     category_summary = _refresh_snapshot_category_paths(
         db,
@@ -2066,6 +2119,16 @@ def _perform_sync(
         snapshots=snapshots,
         client=client,
     ).as_summary()
+    canonical_catalog_summary = (
+        mirror_quickresto_catalog_and_mappings(
+            db,
+            context=canonical_context,
+            connection=connection,
+            venue=venue,
+        )
+        if canonical_context is not None
+        else {}
+    )
     grouped: dict[tuple[date | None, str | None, str], list[QuickRestoSourceSnapshot]] = defaultdict(list)
     for snapshot in snapshots:
         discriminator = (
@@ -2093,6 +2156,8 @@ def _perform_sync(
                 }
             )
     ignored_groups = 0
+    canonical_groups: list[dict[str, Any]] = []
+    canonical_totals = {"records_seen": 0, "records_persisted": 0, "records_quarantined": 0}
     for _key, group_snapshots in sorted(
         grouped.items(),
         key=lambda item: (item[0][0] or date.min, item[0][1] or "", item[0][2]),
@@ -2105,6 +2170,19 @@ def _perform_sync(
         ):
             ignored_groups += 1
             continue
+        canonical_write = (
+            shadow_write_snapshot_group(
+                db,
+                context=canonical_context,
+                connection=connection,
+                venue=venue,
+                snapshots=group_snapshots,
+            )
+            if canonical_context is not None
+            else {"enabled": False, "status": "SKIPPED"}
+        )
+        for field in canonical_totals:
+            canonical_totals[field] += int(canonical_write.get(field) or 0)
         result = _process_snapshot_group(
             db,
             connection=connection,
@@ -2119,6 +2197,43 @@ def _perform_sync(
         report_ids.extend(result["report_ids"])
         if result["conflict"] is not None:
             conflicts.append(result["conflict"])
+        canonical_compare = (
+            shadow_compare_snapshot_group(
+                db,
+                context=canonical_context,
+                connection=connection,
+                business_date=_key[0],
+                shift_slot=_key[1],
+            )
+            if canonical_context is not None and result["conflict"] is None
+            else {
+                "enabled": bool(canonical_context and canonical_context.enabled),
+                "status": "INCOMPLETE" if canonical_context and canonical_context.enabled else "SKIPPED",
+                "reason": "legacy_group_conflict" if result["conflict"] is not None else None,
+            }
+        )
+        canonical_groups.append(
+            {
+                "business_date": _key[0].isoformat() if _key[0] is not None else None,
+                "shift_slot": _key[1],
+                "status": (
+                    canonical_compare.get("status")
+                    if canonical_write.get("status") == "SUCCEEDED"
+                    else canonical_write.get("status")
+                ),
+                "write": canonical_write,
+                "compare": canonical_compare,
+            }
+        )
+
+    fallback_reader = getattr(client, "fallback_diagnostics", None)
+    fallback_diagnostics = [dict(item) for item in fallback_reader()] if callable(fallback_reader) else []
+    if canonical_context is not None:
+        record_observed_capabilities(
+            db,
+            context=canonical_context,
+            fallback_diagnostics=fallback_diagnostics,
+        )
 
     return {
         **catalog_summary,
@@ -2139,6 +2254,14 @@ def _perform_sync(
         "ignored_groups": ignored_groups,
         "period_start": period_start.isoformat() if period_start is not None else None,
         "period_end_exclusive": period_end_exclusive.isoformat() if period_end_exclusive is not None else None,
+        "fallback_diagnostics": fallback_diagnostics,
+        "canonical": {
+            "connection_id": int(canonical_context.connection.id) if canonical_context is not None else None,
+            "enabled": bool(canonical_context and canonical_context.enabled),
+            "catalog": canonical_catalog_summary,
+            "groups": canonical_groups,
+            **canonical_totals,
+        },
     }
 
 
@@ -2532,6 +2655,19 @@ def sync_quickresto_connection(
     db.refresh(run)
     db.refresh(connection)
 
+    batch = db.get(QuickRestoImportBatch, int(batch_id)) if batch_id is not None else None
+    canonical_context = start_quickresto_canonical_run(
+        db,
+        connection=connection,
+        legacy_run=run,
+        period_start=period_start,
+        period_end_exclusive=period_end_exclusive,
+        batch=batch,
+    )
+    db.commit()
+    db.refresh(run)
+    db.refresh(connection)
+
     try:
         managed_client = client is None
         active_client = client or build_quickresto_client(connection)
@@ -2549,6 +2685,7 @@ def sync_quickresto_connection(
                 include_undated_sources=include_undated_sources,
                 finalize_full_reconciliation=finalize_full_reconciliation,
                 refresh_catalog=refresh_catalog,
+                canonical_context=canonical_context,
             )
         if batch_id is not None:
             summary["batch_id"] = int(batch_id)
@@ -2566,6 +2703,13 @@ def sync_quickresto_connection(
         connection.last_sync_completed_at = finished_at
         connection.last_sync_status = run.status
         connection.last_sync_error = None if run.status == "SUCCEEDED" else "Some report dates need attention"
+        if canonical_context is not None:
+            finish_quickresto_canonical_run(
+                db,
+                context=canonical_context,
+                legacy_run=run,
+                summary=summary,
+            )
         db.commit()
         diagnostic_issue = None
         if summary["conflicts"]:
@@ -2595,6 +2739,11 @@ def sync_quickresto_connection(
             run_id=run.id,
             connection_id=connection.id,
             message=failure.user_summary,
+        )
+        fail_quickresto_canonical_run(
+            db,
+            integration_sync_run_id=run.integration_sync_run_id,
+            error=failure.user_summary,
         )
         issue = upsert_import_issue(
             db,
@@ -2634,6 +2783,11 @@ def sync_quickresto_connection(
             run_id=run.id,
             connection_id=connection.id,
             message=failure.user_summary,
+        )
+        fail_quickresto_canonical_run(
+            db,
+            integration_sync_run_id=run.integration_sync_run_id,
+            error=failure.user_summary,
         )
         issue = upsert_import_issue(
             db,

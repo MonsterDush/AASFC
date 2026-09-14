@@ -11,6 +11,10 @@ from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_import_batch import QuickRestoImportBatch
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.services.integrations.quickresto import QuickRestoClient
+from app.integrations.providers.quickresto.canonical_sync import (
+    ensure_quickresto_import_job,
+    mirror_quickresto_import_job,
+)
 from app.services.integrations.quickresto_notifications import enqueue_quickresto_import_notification
 from app.services.integrations.quickresto_scope import QuickRestoScopeError, ensure_quickresto_scope_ready
 from app.services.integrations.quickresto_sync import (
@@ -82,8 +86,14 @@ def serialize_quickresto_import_batch(batch: QuickRestoImportBatch) -> dict[str,
         "partial_periods": int(batch.partial_periods),
         "retry_count": int(batch.retry_count),
         "last_sync_run_id": batch.last_sync_run_id,
+        "integration_import_batch_id": batch.integration_import_batch_id,
+        "integration_sync_job_id": batch.integration_sync_job_id,
         "error": batch.error_message,
         "summary": batch.summary_json,
+        "fallback_diagnostics": (
+            (batch.summary_json or {}).get("fallback_diagnostics", []) if isinstance(batch.summary_json, dict) else []
+        ),
+        "canonical": ((batch.summary_json or {}).get("canonical", {}) if isinstance(batch.summary_json, dict) else {}),
         "created_at": batch.created_at.isoformat(),
         "started_at": batch.started_at.isoformat() if batch.started_at else None,
         "finished_at": batch.finished_at.isoformat() if batch.finished_at else None,
@@ -190,6 +200,8 @@ def create_quickresto_import_batch(
     connection.last_sync_error = None
     db.add(batch)
     db.add(connection)
+    db.flush()
+    ensure_quickresto_import_job(db, connection=connection, batch=batch)
     db.commit()
     db.refresh(batch)
     return batch
@@ -231,6 +243,10 @@ def retry_quickresto_import_batch(
         connection.last_sync_status = "QUEUED"
         connection.last_sync_error = None
         db.add(connection)
+        job = mirror_quickresto_import_job(db, batch=locked, connection=connection)
+        if job is not None:
+            job.attempts = int(job.attempts) + 1
+            db.add(job)
     db.add(locked)
     db.commit()
     db.refresh(locked)
@@ -286,6 +302,11 @@ def _merge_run_into_batch_summary(
             "run_id": int(run.id),
             "status": str(run.status),
             "error": run.error_message,
+            "integration_sync_run_id": run.integration_sync_run_id,
+            "fallback_diagnostics": (
+                (run.summary_json or {}).get("fallback_diagnostics", []) if isinstance(run.summary_json, dict) else []
+            ),
+            "canonical": ((run.summary_json or {}).get("canonical", {}) if isinstance(run.summary_json, dict) else {}),
             **counts,
         }
     )
@@ -301,6 +322,49 @@ def _merge_run_into_batch_summary(
             "totals": totals,
             "periods": periods,
             "issue_ids": sorted(issue_id for issue_id in issue_ids if issue_id > 0),
+            "fallback_diagnostics": [
+                diagnostic for period in periods for diagnostic in (period.get("fallback_diagnostics") or [])
+            ],
+            "canonical": {
+                "connection_id": next(
+                    (
+                        int((period.get("canonical") or {}).get("connection_id"))
+                        for period in periods
+                        if (period.get("canonical") or {}).get("connection_id")
+                    ),
+                    None,
+                ),
+                "enabled": any(bool((period.get("canonical") or {}).get("enabled")) for period in periods),
+                "matched_groups": sum(
+                    1
+                    for period in periods
+                    for group in ((period.get("canonical") or {}).get("groups") or [])
+                    if str(group.get("status")) == "MATCHED"
+                ),
+                "problem_groups": sum(
+                    1
+                    for period in periods
+                    for group in ((period.get("canonical") or {}).get("groups") or [])
+                    if str(group.get("status")) in {"MISMATCH", "INCOMPLETE", "FAILED", "PARTIAL"}
+                ),
+                "quarantine_ids": sorted(
+                    {
+                        int(issue_id)
+                        for period in periods
+                        for group in ((period.get("canonical") or {}).get("groups") or [])
+                        for issue_id in ((group.get("write") or {}).get("quarantine_ids") or [])
+                    }
+                ),
+                "reconciliation_ids": sorted(
+                    {
+                        int(reconciliation_id)
+                        for period in periods
+                        for group in ((period.get("canonical") or {}).get("groups") or [])
+                        for reconciliation_id in [(group.get("compare") or {}).get("reconciliation_id")]
+                        if reconciliation_id
+                    }
+                ),
+            },
         }
     )
     batch.summary_json = summary
@@ -338,6 +402,7 @@ def _mark_batch_failed(
         connection.last_sync_status = "FAILED"
         connection.last_sync_error = batch.error_message
         db.add(connection)
+        mirror_quickresto_import_job(db, batch=batch, connection=connection, error=batch.error_message)
     db.add(batch)
     db.commit()
     db.refresh(batch)
@@ -407,6 +472,7 @@ def process_quickresto_import_batch(
     batch.started_at = batch.started_at or now
     batch.updated_at = now
     db.add(batch)
+    mirror_quickresto_import_job(db, batch=batch, connection=connection)
     db.commit()
     db.refresh(batch)
 
@@ -419,6 +485,7 @@ def process_quickresto_import_batch(
         batch.current_period_end_exclusive = period_end_exclusive
         batch.updated_at = _utcnow()
         db.add(batch)
+        mirror_quickresto_import_job(db, batch=batch, connection=connection)
         db.commit()
 
         try:
@@ -470,6 +537,7 @@ def process_quickresto_import_batch(
         connection.last_sync_error = None
         db.add(batch)
         db.add(connection)
+        mirror_quickresto_import_job(db, batch=batch, connection=connection)
         db.commit()
 
     batch = db.get(QuickRestoImportBatch, int(batch.id))
@@ -488,6 +556,7 @@ def process_quickresto_import_batch(
     _enqueue_batch_notification(db, batch=batch, connection=connection)
     db.add(batch)
     db.add(connection)
+    mirror_quickresto_import_job(db, batch=batch, connection=connection)
     db.commit()
     db.refresh(batch)
     return batch
@@ -526,6 +595,7 @@ def reclaim_stale_quickresto_import_batches(
             connection.last_sync_status = "QUEUED"
             connection.last_sync_error = None
             db.add(connection)
+            mirror_quickresto_import_job(db, batch=batch, connection=connection)
         db.add(batch)
         reclaimed += 1
     return reclaimed
