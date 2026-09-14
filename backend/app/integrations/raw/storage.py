@@ -75,6 +75,8 @@ def record_raw_object(
             IntegrationRawObject.integration_connection_id == int(connection_id),
             IntegrationRawObject.entity_type == normalized_entity_type,
             IntegrationRawObject.external_id == record.external_id,
+            IntegrationRawObject.source_version == record.source_version,
+            IntegrationRawObject.payload_hash == payload_hash,
         )
     ).scalar_one_or_none()
     if row is None:
@@ -94,14 +96,6 @@ def record_raw_object(
         row.received_at = utc_now()
         row.import_run_id = import_run_id
         row.expires_at = expires_at
-        if row.payload_hash != payload_hash or row.source_version != record.source_version:
-            row.source_version = record.source_version
-            row.payload_hash = payload_hash
-            row.encrypted_payload = encrypt_raw_integration_payload(serialized)
-            row.source_updated_at = record.source_updated_at
-            row.normalization_version = None
-            row.normalized_at = None
-            row.canonical_identity = None
     db.commit()
     db.refresh(row)
     return row

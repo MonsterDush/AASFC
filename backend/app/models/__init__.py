@@ -90,8 +90,19 @@ from .integration_sync_run import IntegrationSyncRun
 from .integration_raw_object import IntegrationRawObject
 from .integration_sync_cursor import IntegrationSyncCursor
 from .integration_sync_job import IntegrationSyncJob
+from .integration_import_batch import IntegrationImportBatch
+from .integration_import_chunk import IntegrationImportChunk
 from .integration_quarantine import IntegrationQuarantine
 from .integration_reconciliation_run import IntegrationReconciliationRun
+from .pos_mapping import (
+    POSEmployeeMapping,
+    POSGroupDepartmentAllocation,
+    POSGroupDepartmentMapping,
+    POSPaymentTypeMapping,
+    POSProductKpiMapping,
+)
+from .pos_report_projection import POSReportProjection
+from .report_value_contribution import ReportValueContribution
 from .pos_canonical import (
     POSBusinessShift,
     POSEmployee,
@@ -208,8 +219,17 @@ __all__ = [
     "IntegrationRawObject",
     "IntegrationSyncCursor",
     "IntegrationSyncJob",
+    "IntegrationImportBatch",
+    "IntegrationImportChunk",
     "IntegrationQuarantine",
     "IntegrationReconciliationRun",
+    "POSPaymentTypeMapping",
+    "POSGroupDepartmentMapping",
+    "POSGroupDepartmentAllocation",
+    "POSProductKpiMapping",
+    "POSEmployeeMapping",
+    "POSReportProjection",
+    "ReportValueContribution",
     "POSOrganization",
     "POSVenue",
     "POSTerminal",

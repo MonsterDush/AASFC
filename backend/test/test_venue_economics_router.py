@@ -87,6 +87,9 @@ class VenueEconomicsRouterContractTests(TestCase):
             "post_quickresto_import_batch_retry",
             "list_pos_integrations",
             "list_pos_integration_capabilities",
+            "list_pos_integration_quality_issues",
+            "get_pos_integration_quality_issue",
+            "get_pos_integration_reconciliation",
         }
         base_manifest = [row for row in manifest if row[2] not in new_route_names]
         base_digest = hashlib.sha256(
@@ -176,9 +179,24 @@ class VenueEconomicsRouterContractTests(TestCase):
                 "/pos-integrations/{connection_id}/capabilities",
                 "list_pos_integration_capabilities",
             ),
+            (
+                ("GET",),
+                "/pos-integrations/{connection_id}/quality-issues",
+                "list_pos_integration_quality_issues",
+            ),
+            (
+                ("GET",),
+                "/pos-integrations/{connection_id}/quality-issues/{issue_id}",
+                "get_pos_integration_quality_issue",
+            ),
+            (
+                ("GET",),
+                "/pos-integrations/{connection_id}/reconciliations/{reconciliation_id}",
+                "get_pos_integration_reconciliation",
+            ),
         }
 
-        self.assertEqual(len(manifest), 191)
+        self.assertEqual(len(manifest), 194)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 

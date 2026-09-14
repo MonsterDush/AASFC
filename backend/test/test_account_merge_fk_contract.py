@@ -19,7 +19,10 @@ from app.models import (
     BillingPromoCode,
     BillingReconciliationIssue,
     DemoEvent,
+    IntegrationConnection,
     PayProfile,
+    POSEmployee,
+    POSEmployeeMapping,
     PositionPayProfilePeriod,
     PositionPermissionTemplate,
     Shift,
@@ -32,6 +35,7 @@ from app.models import (
     VenueBillingEvent,
     VenueBillingTransaction,
     VenueSetupState,
+    VenueMember,
     VenuePosition,
 )
 
@@ -81,6 +85,7 @@ DIRECT_REASSIGN_USER_FKS = {
     "demo_events.user_id",
     "expense_attachments.uploaded_by_user_id",
     "expenses.created_by_user_id",
+    "integration_import_batches.requested_by_user_id",
     "notification_delivery_logs.user_id",
     "payment_method_transfers.created_by_user_id",
     "payroll_recalculation_logs.triggered_by_user_id",
@@ -89,6 +94,10 @@ DIRECT_REASSIGN_USER_FKS = {
     "penalties.member_user_id",
     "position_permission_templates.created_by_user_id",
     "position_permission_templates.updated_by_user_id",
+    "pos_employee_mappings.confirmed_by_user_id",
+    "pos_group_department_mappings.updated_by_user_id",
+    "pos_payment_type_mappings.updated_by_user_id",
+    "pos_product_kpi_mappings.updated_by_user_id",
     "quickresto_connections.created_by_user_id",
     "quickresto_connections.pending_scope_requested_by_user_id",
     "quickresto_connections.scope_confirmed_by_user_id",
@@ -413,6 +422,50 @@ class AccountMergeUserForeignKeyContractTests(unittest.TestCase):
             db.expire_all()
 
             self.assertIsNone(db.get(TelegramBrowserAuthSession, session.id).user_id)
+
+    def test_confirmed_pos_employee_mapping_survives_duplicate_member_merge(self):
+        with Session(self.engine) as db:
+            target, source = self._add_users(db)
+            venue = Venue(id=10, name="POS mapping merge")
+            target_member = VenueMember(id=20, venue_id=10, user_id=target.id, venue_role="STAFF")
+            source_member = VenueMember(id=21, venue_id=10, user_id=source.id, venue_role="STAFF")
+            db.add_all([venue, target_member, source_member])
+            db.flush()
+            connection = IntegrationConnection(id=30, venue_id=10, provider="QUICKRESTO", status="ACTIVE")
+            db.add(connection)
+            db.flush()
+            employee = POSEmployee(
+                id=40,
+                connection_id=30,
+                external_id="employee-1",
+                name="Иван Иванов",
+                is_active=True,
+            )
+            db.add(employee)
+            db.flush()
+            mapping = POSEmployeeMapping(
+                id=50,
+                connection_id=30,
+                pos_employee_id=40,
+                venue_member_id=source_member.id,
+                match_type="MANUAL_CONFIRMED",
+                confidence=1,
+                confirmed=True,
+                confirmed_by_user_id=source.id,
+                confirmed_at=datetime.now(timezone.utc),
+                source_name_snapshot="Иван Иванов",
+            )
+            db.add(mapping)
+            db.commit()
+
+            merge_user_accounts(db, target_user=target, source_user=source)
+            db.commit()
+            db.expire_all()
+
+            preserved = db.get(POSEmployeeMapping, mapping.id)
+            self.assertEqual(preserved.venue_member_id, target_member.id)
+            self.assertEqual(preserved.confirmed_by_user_id, target.id)
+            self.assertTrue(preserved.confirmed)
 
     @staticmethod
     def _add_users(db: Session) -> tuple[User, User]:

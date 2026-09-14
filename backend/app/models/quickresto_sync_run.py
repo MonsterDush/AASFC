@@ -13,6 +13,9 @@ class QuickRestoSyncRun(Base):
     __tablename__ = "quickresto_sync_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    integration_sync_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("integration_sync_runs.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     connection_id: Mapped[int] = mapped_column(
         ForeignKey("quickresto_connections.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -30,3 +33,4 @@ class QuickRestoSyncRun(Base):
     summary_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     connection = relationship("QuickRestoConnection")
+    integration_sync_run = relationship("IntegrationSyncRun")

@@ -120,6 +120,7 @@ class QuickRestoClient:
         self._jitter = jitter
         self._closed_shift_fallback_cache: list[dict[str, Any]] | None = None
         self._order_fallback_cache: list[dict[str, Any]] | None = None
+        self._fallback_diagnostics: list[dict[str, Any]] = []
         self._session.auth = (config.login, config.password)
         self._session.headers.update(
             {
@@ -132,6 +133,34 @@ class QuickRestoClient:
 
     def close(self) -> None:
         self._session.close()
+
+    def clear_fallback_diagnostics(self) -> None:
+        self._fallback_diagnostics.clear()
+
+    def fallback_diagnostics(self) -> tuple[dict[str, Any], ...]:
+        return tuple(dict(item) for item in self._fallback_diagnostics)
+
+    def record_business_date_filter_result(
+        self,
+        *,
+        rows_before: int,
+        rows_after: int,
+        period_start: str | None,
+        period_end_exclusive: str | None,
+    ) -> None:
+        if not any(item.get("entity_type") == "BUSINESS_SHIFTS" for item in self._fallback_diagnostics):
+            return
+        self._fallback_diagnostics.append(
+            {
+                "entity_type": "BUSINESS_SHIFTS",
+                "mode": "LOCAL_BUSINESS_DATE",
+                "reason": "SERVER_FILTER_FALLBACK",
+                "rows_before": max(int(rows_before), 0),
+                "rows_after": max(int(rows_after), 0),
+                "period_start": period_start,
+                "period_end_exclusive": period_end_exclusive,
+            }
+        )
 
     def __enter__(self) -> QuickRestoClient:
         return self
@@ -252,6 +281,7 @@ class QuickRestoClient:
                 }
             )
 
+        fallback_reason = "FILTER_IGNORED"
         try:
             rows = self.list_all_objects(
                 module_name=QUICKRESTO_OBJECT_TYPES["shifts"][0],
@@ -275,6 +305,7 @@ class QuickRestoClient:
         except QuickRestoHTTPError as exc:
             if exc.status_code not in _FILTER_FALLBACK_STATUS_CODES:
                 raise
+            fallback_reason = f"HTTP_{exc.status_code}"
 
         if self._closed_shift_fallback_cache is None:
             self._closed_shift_fallback_cache = self.list_all_objects(
@@ -283,7 +314,7 @@ class QuickRestoClient:
                 page_size=page_size,
                 max_pages=max_pages,
             )
-        return [
+        filtered_rows = [
             row
             for row in self._closed_shift_fallback_cache
             if self._closed_shift_matches(
@@ -293,6 +324,16 @@ class QuickRestoClient:
                 unknown_matches=True,
             )
         ]
+        self._fallback_diagnostics.append(
+            {
+                "entity_type": "BUSINESS_SHIFTS",
+                "mode": "LOCAL_CLOSE_TIME",
+                "reason": fallback_reason,
+                "source_rows": len(self._closed_shift_fallback_cache),
+                "result_rows": len(filtered_rows),
+            }
+        )
+        return filtered_rows
 
     def list_orders_for_shift_ids(
         self,
@@ -307,6 +348,7 @@ class QuickRestoClient:
         if not targets:
             return []
         rows: list[dict[str, Any]] = []
+        fallback_reason = "FILTER_IGNORED"
         try:
             for shift_id in targets:
                 batch = self.list_all_objects(
@@ -327,6 +369,7 @@ class QuickRestoClient:
         except QuickRestoHTTPError as exc:
             if exc.status_code not in _FILTER_FALLBACK_STATUS_CODES:
                 raise
+            fallback_reason = f"HTTP_{exc.status_code}"
 
         if self._order_fallback_cache is None:
             self._order_fallback_cache = self.list_all_objects(
@@ -336,9 +379,20 @@ class QuickRestoClient:
                 max_pages=max_pages,
             )
         target_set = set(targets)
-        return self._deduplicate_rows(
+        filtered_rows = self._deduplicate_rows(
             [row for row in self._order_fallback_cache if str(row.get("shiftId") or "") in target_set]
         )
+        self._fallback_diagnostics.append(
+            {
+                "entity_type": "ORDERS",
+                "mode": "LOCAL_SHIFT_ID",
+                "reason": fallback_reason,
+                "source_rows": len(self._order_fallback_cache),
+                "result_rows": len(filtered_rows),
+                "requested_shift_count": len(targets),
+            }
+        )
+        return filtered_rows
 
     @staticmethod
     def _normalize_filters(filters: Iterable[dict[str, Any]] | None) -> list[dict[str, Any]]:

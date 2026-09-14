@@ -16,7 +16,9 @@ class IntegrationRawObject(Base):
             "integration_connection_id",
             "entity_type",
             "external_id",
-            name="uq_integration_raw_objects_external_identity",
+            "source_version",
+            "payload_hash",
+            name="uq_integration_raw_objects_version_payload",
         ),
     )
 

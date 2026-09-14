@@ -59,6 +59,9 @@ class QuickRestoConnection(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    integration_connection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("integration_connections.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
     cloud: Mapped[str] = mapped_column(String(63), nullable=False)
     api_login_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
@@ -107,6 +110,7 @@ class QuickRestoConnection(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     venue = relationship("Venue")
+    integration_connection = relationship("IntegrationConnection")
     payment_mappings = relationship(
         "QuickRestoPaymentMapping", back_populates="connection", cascade="all, delete-orphan"
     )

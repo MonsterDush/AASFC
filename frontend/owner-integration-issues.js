@@ -134,6 +134,9 @@ function statusLabel(value) {
   if (status === "PROCESSING") return "Обрабатывается";
   if (status === "RESOLVED") return "Исправлено";
   if (status === "IGNORED") return "Игнорируется";
+  if (status === "SUCCEEDED" || status === "MATCHED") return "Совпадает";
+  if (status === "WARNING" || status === "MISMATCH") return "Есть расхождения";
+  if (status === "INCOMPLETE") return "Недостаточно данных";
   return status || "—";
 }
 
@@ -730,6 +733,40 @@ async function loadDetail(issueId) {
 async function openIssue(issueId) {
   showDrawer(issueId);
   await loadDetail(issueId);
+}
+
+function renderCanonicalDiagnostic(payload, kind) {
+  state.selectedIssue = payload;
+  const status = String(payload?.status || "—").toUpperCase();
+  const isReconciliation = kind === "reconciliation";
+  el.issueDrawerTitle.textContent = isReconciliation ? "Сверка ACDM" : "Проблема качества ACDM";
+  const details = isReconciliation ? payload?.discrepancies : {
+    entity_type: payload?.entity_type,
+    external_id: payload?.external_id,
+    error_code: payload?.error_code,
+    raw_object_id: payload?.raw_object_id,
+    sync_run_id: payload?.sync_run_id,
+  };
+  el.issueDrawerBody.innerHTML = `<div class="integration-issue-detail">
+    <div class="integration-issue-status" data-status="${esc(status)}">${esc(statusLabel(status))}</div>
+    <h3>${esc(payload?.summary || payload?.user_summary || "Диагностика канонического контура")}</h3>
+    <p class="muted">Эта запись относится к теневой ACDM-проекции. Рабочий отчёт продолжает читать текущий источник и не переключён автоматически.</p>
+    ${isReconciliation ? `<div class="integration-issue-row__meta"><span>Источник: ${esc(payload?.source_amount ?? "—")}</span><span>ACDM: ${esc(payload?.canonical_amount ?? "—")}</span><span>Разница: ${esc(payload?.amount_delta ?? "—")}</span></div>` : ""}
+    <pre class="integration-issue-readonly">${esc(JSON.stringify(details || {}, null, 2))}</pre>
+  </div>`;
+}
+
+async function openCanonicalDiagnostic({ connectionId, id, kind }) {
+  showDrawer(`${kind}:${id}`);
+  try {
+    const path = kind === "reconciliation"
+      ? `/pos-integrations/${encodeURIComponent(connectionId)}/reconciliations/${encodeURIComponent(id)}`
+      : `/pos-integrations/${encodeURIComponent(connectionId)}/quality-issues/${encodeURIComponent(id)}`;
+    const payload = await api(path);
+    if (state.selectedIssueId === `${kind}:${id}`) renderCanonicalDiagnostic(payload, kind);
+  } catch (error) {
+    el.issueDrawerBody.innerHTML = `<div class="integration-issues-empty" data-status="error">${esc(errorMessage(error))}</div>`;
+  }
 }
 
 async function loadIssues({ append = false } = {}) {
@@ -1343,6 +1380,14 @@ async function loadPage() {
   await loadIssues();
   const requestedIssueId = params.get("issue_id");
   if (requestedIssueId) await openIssue(requestedIssueId);
+  const integrationConnectionId = params.get("integration_connection_id");
+  const qualityIssueId = params.get("quality_issue_id");
+  const reconciliationId = params.get("reconciliation_id");
+  if (integrationConnectionId && qualityIssueId) {
+    await openCanonicalDiagnostic({ connectionId: integrationConnectionId, id: qualityIssueId, kind: "quality" });
+  } else if (integrationConnectionId && reconciliationId) {
+    await openCanonicalDiagnostic({ connectionId: integrationConnectionId, id: reconciliationId, kind: "reconciliation" });
+  }
 }
 
 el.activeIssues?.addEventListener("click", async () => {

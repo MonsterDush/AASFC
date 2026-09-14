@@ -245,6 +245,7 @@ def _serialize_connection(
 def _serialize_run(run: QuickRestoSyncRun) -> dict:
     return {
         "id": int(run.id),
+        "integration_sync_run_id": run.integration_sync_run_id,
         "trigger": run.trigger,
         "status": run.status,
         "started_at": run.started_at.isoformat(),
@@ -1518,7 +1519,7 @@ def list_quickresto_import_batches(
     statement = select(QuickRestoImportBatch).where(QuickRestoImportBatch.connection_id == int(connection.id))
     if status:
         normalized = str(status).strip().upper()
-        if normalized not in {"PENDING", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"}:
+        if normalized not in {"PENDING", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"}:
             raise HTTPException(status_code=422, detail="Unknown QuickResto import batch status")
         statement = statement.where(QuickRestoImportBatch.status == normalized)
     rows = list(
