@@ -97,6 +97,11 @@ def _json_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _category_title(value: Any, external_id: int) -> str:
+    title = str(value or "").strip()
+    return title or f"Категория QuickResto #{int(external_id)}"
+
+
 def _money(value: Any) -> Decimal:
     return (Decimal(str(value or 0))).quantize(Decimal("0.0001"))
 
@@ -789,8 +794,8 @@ def mirror_quickresto_catalog_and_mappings(
     for source in db.execute(
         select(QuickRestoDishCategoryPath).where(QuickRestoDishCategoryPath.connection_id == int(connection.id))
     ).scalars():
-        if source.external_name:
-            group_sources[int(source.external_id)] = (str(source.external_name), source.parent_external_id)
+        external_id = int(source.external_id)
+        group_sources[external_id] = (_category_title(source.external_name, external_id), source.parent_external_id)
     legacy_groups = list(
         db.execute(
             select(QuickRestoDepartmentMapping)
@@ -799,7 +804,8 @@ def mirror_quickresto_catalog_and_mappings(
         ).scalars()
     )
     for source in legacy_groups:
-        group_sources.setdefault(int(source.external_id), (str(source.external_name), None))
+        external_id = int(source.external_id)
+        group_sources.setdefault(external_id, (_category_title(source.external_name, external_id), None))
     groups: dict[int, POSProductGroup] = {}
     for external_id, (name, _parent_id) in sorted(group_sources.items()):
         groups[external_id] = _upsert_external(
@@ -1582,7 +1588,9 @@ def _canonical_aggregate(
         "discount_total": _allocate_minor_to_rubles(
             {"total": sum(_money_to_minor(row.amount) for row in discounts if int(row.order_id) in report_order_ids)}
         ).get("total", 0),
-        "payments_internal": dict(sorted((int(key), int(value)) for key, value in payments_internal.items())),
+        "payments_internal": dict(
+            sorted((int(key), int(value)) for key, value in payments_internal.items() if int(value))
+        ),
         "departments_internal": dict(sorted(departments_internal.items())),
         "kpis_internal": dict(sorted(kpis_internal.items())),
         "unallocated_revenue_total": sum(value for key, value in combined_rubles.items() if key.startswith("K:")),
