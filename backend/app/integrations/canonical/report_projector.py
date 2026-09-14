@@ -58,9 +58,7 @@ class ReportProjector:
             )
         ).scalar_one_or_none()
         preserve_confirmed_projection = (
-            projection is not None
-            and str(projection.status) == "MATCHED"
-            and str(candidate.status) == "FAILED"
+            projection is not None and str(projection.status) == "MATCHED" and str(candidate.status) == "FAILED"
         )
         updated = projection is None or not preserve_confirmed_projection
         if projection is None:
