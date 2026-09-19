@@ -26,6 +26,7 @@ from app.core.i18n import user_locale
 from app.models import Shift, ShiftInterval, ShiftAssignment, User, Venue
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     lock_notification_idempotency_key,
     log_notification_attempt,
     notification_delivery_exists,
@@ -221,6 +222,8 @@ def main() -> int:
 
             result = tg_notify.notify_result(chat_id=chat_id, text=text)
             ok = bool(result.get("ok"))
+            if not FORCE_CHAT_ID:
+                disable_unreachable_telegram_recipient(db, recipient=user, result=result)
             sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
             pending_log.status = "sent" if ok else "failed"
             pending_log.sent_at = sent_at

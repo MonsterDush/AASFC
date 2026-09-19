@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     log_notification_attempt,
     lock_notification_idempotency_key,
     notification_delivery_exists,
@@ -208,6 +209,7 @@ def _deliver_user_notification(
     )
     ok = bool(result.get("ok"))
     retryable = bool(result.get("retryable"))
+    recipient_unreachable = disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
     try:
         pending_log.status = "sent" if ok else "failed"
         pending_log.sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
@@ -218,4 +220,6 @@ def _deliver_user_notification(
         db.rollback()
         raise
 
-    return ok, (retryable and not ok)
+    # A permanently unreachable recipient is a completed terminal outcome, not
+    # an operational queue failure. The delivery log remains failed for audit.
+    return ok or recipient_unreachable, (retryable and not ok)

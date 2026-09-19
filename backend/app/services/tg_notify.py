@@ -11,6 +11,13 @@ from typing import Any
 
 log = logging.getLogger("axelio.tg_notify")
 
+_UNREACHABLE_RECIPIENT_ERRORS = (
+    "bot was blocked by the user",
+    "user is deactivated",
+    "bot was kicked from the group chat",
+    "chat not found",
+)
+
 
 def _bot_service_url() -> str | None:
     return os.getenv("BOT_SERVICE_URL")
@@ -41,6 +48,14 @@ def _normalize_error_message(body_text: str | None) -> str | None:
         pass
     body_text = str(body_text).strip()
     return body_text[:300] if body_text else None
+
+
+def recipient_is_unreachable(result: dict | None) -> bool:
+    """Return whether Telegram permanently rejects this specific recipient."""
+    if not isinstance(result, dict) or result.get("ok") or result.get("retryable"):
+        return False
+    error_text = str(result.get("error") or "").strip().lower()
+    return any(marker in error_text for marker in _UNREACHABLE_RECIPIENT_ERRORS)
 
 
 def _reply_markup(*, url: str | None, button_text: str | None) -> dict[str, Any] | None:
