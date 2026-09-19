@@ -163,6 +163,169 @@ class PayrollDayBreakdownHelpersTests(TestCase):
         self.assertEqual(d1_item["amount_minor"], 30_000)
         self.assertEqual(d2_item["amount_minor"], 60_000)
 
+    def test_shift_component_with_explicit_rows_does_not_leak_to_another_profile_date(self):
+        waiter_day = date(2026, 3, 5)
+        hookah_day = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[waiter_day, hookah_day],
+            worked_dates=[waiter_day, hookah_day],
+            minutes_by_date={waiter_day: 300, hookah_day: 600},
+            shifts_by_date={waiter_day: 1, hookah_day: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "SALARY_PER_SHIFT",
+            "title": "Ставка официанта",
+            "pay_profile_title": "Официант",
+            "amount_minor": 65_000,
+            "shift_rows": [
+                {
+                    "date": waiter_day.isoformat(),
+                    "amount_minor": 65_000,
+                    "applied_rate_minor": 65_000,
+                }
+            ],
+        }
+
+        waiter_item = _component_allocation_for_day(component=component, target_date=waiter_day, context=ctx)
+        hookah_item = _component_allocation_for_day(component=component, target_date=hookah_day, context=ctx)
+
+        self.assertEqual(waiter_item["amount_minor"], 65_000)
+        self.assertIsNone(hookah_item)
+
+    def test_hourly_component_with_explicit_rows_does_not_leak_to_another_profile_date(self):
+        waiter_day = date(2026, 3, 5)
+        hookah_day = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[waiter_day, hookah_day],
+            worked_dates=[waiter_day, hookah_day],
+            minutes_by_date={waiter_day: 300, hookah_day: 600},
+            shifts_by_date={waiter_day: 1, hookah_day: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "SALARY_HOURLY",
+            "title": "Почасовая ставка официанта",
+            "pay_profile_title": "Официант",
+            "amount_minor": 90_000,
+            "shift_rows": [
+                {
+                    "date": waiter_day.isoformat(),
+                    "amount_minor": 90_000,
+                    "applied_rate_minor": 18_000,
+                }
+            ],
+        }
+
+        waiter_item = _component_allocation_for_day(component=component, target_date=waiter_day, context=ctx)
+        hookah_item = _component_allocation_for_day(component=component, target_date=hookah_day, context=ctx)
+
+        self.assertEqual(waiter_item["amount_minor"], 90_000)
+        self.assertIsNone(hookah_item)
+
+    def test_percent_component_with_explicit_rows_does_not_leak_to_another_profile_date(self):
+        waiter_day = date(2026, 3, 5)
+        hookah_day = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[waiter_day, hookah_day],
+            worked_dates=[waiter_day, hookah_day],
+            minutes_by_date={waiter_day: 300, hookah_day: 600},
+            shifts_by_date={waiter_day: 1, hookah_day: 1},
+            revenue_by_date_minor={waiter_day: 1_000_000, hookah_day: 2_000_000},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "PERCENT_TOTAL_REVENUE",
+            "title": "Процент официанта",
+            "pay_profile_title": "Официант",
+            "amount_minor": 50_000,
+            "percent_bps": 500,
+            "day_rows": [
+                {
+                    "date": waiter_day.isoformat(),
+                    "base_amount_minor": 1_000_000,
+                    "amount_minor": 50_000,
+                    "percent_bps": 500,
+                }
+            ],
+        }
+
+        waiter_item = _component_allocation_for_day(component=component, target_date=waiter_day, context=ctx)
+        hookah_item = _component_allocation_for_day(component=component, target_date=hookah_day, context=ctx)
+
+        self.assertEqual(waiter_item["amount_minor"], 50_000)
+        self.assertIsNone(hookah_item)
+
+    def test_department_percent_with_explicit_rows_does_not_leak_to_another_profile_date(self):
+        waiter_day = date(2026, 3, 5)
+        hookah_day = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[waiter_day, hookah_day],
+            worked_dates=[waiter_day, hookah_day],
+            minutes_by_date={waiter_day: 300, hookah_day: 600},
+            shifts_by_date={waiter_day: 1, hookah_day: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={7: {waiter_day: 1_000_000, hookah_day: 2_000_000}},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "PERCENT_DEPARTMENT_REVENUE",
+            "title": "Процент официанта от зала",
+            "pay_profile_title": "Официант",
+            "amount_minor": 50_000,
+            "percent_bps": 500,
+            "department_id": 7,
+            "department_title": "Зал",
+            "day_rows": [
+                {
+                    "date": waiter_day.isoformat(),
+                    "base_amount_minor": 1_000_000,
+                    "amount_minor": 50_000,
+                    "percent_bps": 500,
+                }
+            ],
+        }
+
+        waiter_item = _component_allocation_for_day(component=component, target_date=waiter_day, context=ctx)
+        hookah_item = _component_allocation_for_day(component=component, target_date=hookah_day, context=ctx)
+
+        self.assertEqual(waiter_item["amount_minor"], 50_000)
+        self.assertIsNone(hookah_item)
+
+    def test_percent_component_without_day_rows_keeps_legacy_allocation(self):
+        d1 = date(2026, 3, 5)
+        d2 = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2],
+            worked_dates=[d1, d2],
+            minutes_by_date={d1: 300, d2: 600},
+            shifts_by_date={d1: 1, d2: 1},
+            revenue_by_date_minor={d1: 1_000_000, d2: 3_000_000},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "PERCENT_TOTAL_REVENUE",
+            "title": "Legacy процент",
+            "amount_minor": 40_000,
+        }
+
+        d1_item = _component_allocation_for_day(component=component, target_date=d1, context=ctx)
+        d2_item = _component_allocation_for_day(component=component, target_date=d2, context=ctx)
+
+        self.assertEqual(d1_item["amount_minor"], 10_000)
+        self.assertEqual(d2_item["amount_minor"], 30_000)
+
     def test_explicit_empty_account_merge_scope_does_not_use_other_line_dates(self):
         target_day = date(2026, 3, 5)
         ctx = DayAllocationContext(
