@@ -10,6 +10,7 @@ from app.core.db import SessionLocal
 from app.core.i18n import localized, user_locale
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     log_notification_attempt,
     lock_notification_idempotency_key,
     notification_delivery_exists,
@@ -722,6 +723,7 @@ def _send_salary_day_breakdown_notifications(
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))
+        recipient_unreachable = disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
         error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
         try:
             pending_log.status = "sent" if ok else "failed"
@@ -733,7 +735,7 @@ def _send_salary_day_breakdown_notifications(
             db.rollback()
             raise
 
-        had_delivery_failure = had_delivery_failure or not ok
+        had_delivery_failure = had_delivery_failure or (not ok and not recipient_unreachable)
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
@@ -907,6 +909,7 @@ def _send_soft_alert_notifications(
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))
+        recipient_unreachable = disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
         error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
         try:
             pending_log.status = "sent" if ok else "failed"
@@ -918,7 +921,7 @@ def _send_soft_alert_notifications(
             db.rollback()
             raise
 
-        had_delivery_failure = had_delivery_failure or not ok
+        had_delivery_failure = had_delivery_failure or (not ok and not recipient_unreachable)
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
@@ -1242,6 +1245,7 @@ def _send_day_economics_summary_notifications(
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))
+        recipient_unreachable = disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
         error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
         try:
             pending_log.status = "sent" if ok else "failed"
@@ -1253,7 +1257,7 @@ def _send_day_economics_summary_notifications(
             db.rollback()
             raise
 
-        had_delivery_failure = had_delivery_failure or not ok
+        had_delivery_failure = had_delivery_failure or (not ok and not recipient_unreachable)
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()

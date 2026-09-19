@@ -412,11 +412,11 @@
     }
 
     function notificationCapabilityBanner(state) {
-      if (state?.telegram_linked) {
+      if (state?.can_receive_bot_notifications) {
         const handle = state?.tg_username ? ` @${esc(state.tg_username)}` : "";
         return `<div class="notif-state-banner notif-state-banner--ok">Telegram привязан${handle}. Бот может отправлять уведомления.</div>`;
       }
-      return `<div class="notif-state-banner notif-state-banner--warn">${esc(state?.disabled_reason || "Привяжите Telegram в профиле, чтобы получать уведомления от бота.")}</div>`;
+      return `<div class="notif-state-banner notif-state-banner--warn">${esc(state?.disabled_reason || "Включите уведомления и проверьте связь с Telegram-ботом.")}</div>`;
     }
 
     function renderNotifModal(state) {
@@ -634,7 +634,7 @@
       });
       const html = `
         <div class="itemcard mt-8 notif-modal-card">
-          ${canReceive ? `<div class="notif-state-banner notif-state-banner--ok">Показаны последние уведомления и попытки доставки.</div>` : `<div class="notif-state-banner notif-state-banner--warn">Telegram пока не привязан — история будет пустой, пока бот не сможет отправлять сообщения.</div>`}
+          ${canReceive ? `<div class="notif-state-banner notif-state-banner--ok">Показаны последние уведомления и попытки доставки.</div>` : `<div class="notif-state-banner notif-state-banner--warn">${esc(payload?.disabled_reason || "Бот сейчас не может отправлять уведомления. Проверьте привязку и настройки Telegram.")}</div>`}
           <div class="row gap-8 mt-10 wrap">
             <button class="btn ${filter === "all" ? "primary" : ""}" data-history-filter="all">Все</button>
             <button class="btn ${filter === "errors" ? "primary" : ""}" data-history-filter="errors">Ошибки</button>

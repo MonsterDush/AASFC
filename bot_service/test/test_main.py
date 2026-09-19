@@ -53,6 +53,17 @@ class TelegramHelpersTests(TestCase):
         self.assertTrue(failure["retryable"])
         self.assertIn("sendMessage", failure["error"])
 
+    def test_parse_api_response_classifies_unreachable_recipient(self):
+        failure = main._parse_telegram_api_response(
+            "sendMessage",
+            200,
+            '{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}',
+        )
+
+        self.assertFalse(failure["ok"])
+        self.assertFalse(failure["retryable"])
+        self.assertEqual(failure["failure_reason"], "recipient_unreachable")
+
     def test_transport_uses_curl_fallback_after_urllib_failure(self):
         urllib_result = {"ok": False, "retryable": True, "error": "timeout"}
         curl_result = {"ok": True, "retryable": False}
@@ -186,6 +197,30 @@ class BotServiceEndpointTests(TestCase):
 
         self.assertIs(result, expected)
         telegram_post.assert_called_once_with("token", "sendMessage", {"chat_id": 7})
+
+    def test_proxy_preserves_safe_failure_reason_without_exposing_telegram_error(self):
+        request = SimpleNamespace(headers={"X-Bot-Secret": "expected"})
+        payload = main.TelegramApiIn(method="sendMessage", payload={"chat_id": 7})
+        telegram_result = {
+            "ok": False,
+            "retryable": False,
+            "status_code": 200,
+            "error": "Forbidden: bot was blocked by the user",
+            "failure_reason": "recipient_unreachable",
+            "result": {"ok": False, "error_code": 403},
+        }
+
+        with (
+            patch.object(main, "BOT_SERVICE_SECRET", "expected"),
+            patch.object(main, "TG_BOT_TOKEN", "token"),
+            patch.object(main, "_telegram_api_post", return_value=telegram_result),
+        ):
+            result = main.telegram_api_proxy(payload, request)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "Telegram request failed")
+        self.assertEqual(result["failure_reason"], "recipient_unreachable")
+        self.assertIsNone(result["result"])
 
     def test_proxy_rejects_unapproved_method(self):
         request = SimpleNamespace(headers={"X-Bot-Secret": "expected"})
