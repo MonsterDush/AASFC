@@ -18,7 +18,6 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services import tg_notify
 from app.services.notification_logs import (
-    disable_unreachable_telegram_recipient,
     lock_notification_idempotency_key,
     log_notification_attempt,
     notification_delivery_exists,
@@ -456,8 +455,6 @@ def _deliver_once(
 
     ok = bool(result.get("ok"))
     retryable = bool(result.get("retryable")) and not ok
-    recipient = db.get(User, int(user_id)) if user_id is not None else None
-    recipient_unreachable = disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
     entry.status = "sent" if ok else "failed"
     entry.sent_at = datetime.now(timezone.utc) if ok else None
     entry.error_text = (
@@ -465,7 +462,7 @@ def _deliver_once(
     )
     db.add(entry)
     db.commit()
-    return ok, not ok and not recipient_unreachable, retryable
+    return ok, not ok, retryable
 
 
 def send_quickresto_import_notifications(db: Session, *, payload: Mapping[str, Any]) -> dict[str, int]:

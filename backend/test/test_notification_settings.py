@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest import TestCase
 
-from app.routers.me import NotificationSettingsIn, _notification_settings_meta
+from app.routers.me import NotificationSettingsIn
 from app.scripts.send_shift_reminders import _normalize_lead_hours
 
 
@@ -33,20 +33,3 @@ class NotificationSettingsTests(TestCase):
         self.assertEqual(_normalize_lead_hours(None), 18)
         self.assertEqual(_normalize_lead_hours(0), 18)
         self.assertEqual(_normalize_lead_hours(24), 24)
-
-    def test_linked_user_with_disabled_notifications_gets_recovery_guidance(self):
-        user = type(
-            "UserStub",
-            (),
-            {
-                "tg_user_id": 416573580,
-                "tg_username": "employee",
-                "notify_enabled": False,
-            },
-        )()
-
-        payload = _notification_settings_meta(user)
-
-        self.assertTrue(payload["telegram_linked"])
-        self.assertFalse(payload["can_receive_bot_notifications"])
-        self.assertIn("разблокируйте", payload["disabled_reason"])

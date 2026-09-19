@@ -33,38 +33,6 @@ class OutboundUrlSecurityTests(TestCase):
         self.assertFalse(result["retryable"])
         urlopen.assert_not_called()
 
-    def test_blocked_telegram_recipient_is_classified_as_unreachable(self):
-        self.assertTrue(
-            tg_notify.recipient_is_unreachable(
-                {
-                    "ok": False,
-                    "retryable": False,
-                    "status_code": 403,
-                    "error": "Forbidden: bot was blocked by the user",
-                }
-            )
-        )
-        self.assertFalse(
-            tg_notify.recipient_is_unreachable(
-                {
-                    "ok": False,
-                    "retryable": False,
-                    "status_code": 400,
-                    "error": "Bad Request: message is too long",
-                }
-            )
-        )
-        self.assertFalse(
-            tg_notify.recipient_is_unreachable(
-                {
-                    "ok": False,
-                    "retryable": True,
-                    "status_code": 503,
-                    "error": "Bad Gateway",
-                }
-            )
-        )
-
 
 class RefundXmlSecurityTests(TestCase):
     def test_operation_info_rejects_external_entities(self):

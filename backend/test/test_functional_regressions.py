@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.routers import venue_economics_notifications, venue_notification_common, venue_pay_profile_support
 from app.services import tg_notify
@@ -134,67 +134,6 @@ class TelegramNotificationRegressionTests(TestCase):
                 text="test",
             )
         self.assertEqual(result, (True, False))
-
-    def test_blocked_recipient_is_disabled_without_failing_the_queue_job(self):
-        recipient = SimpleNamespace(id=11, tg_user_id=416573580, notify_enabled=True)
-        pending_log = SimpleNamespace(status="pending", sent_at=None, error_text=None)
-        db = MagicMock()
-        blocked_result = {
-            "ok": False,
-            "retryable": False,
-            "status_code": 403,
-            "error": "Forbidden: bot was blocked by the user",
-        }
-
-        with (
-            patch.object(venue_notification_common, "lock_notification_idempotency_key"),
-            patch.object(venue_notification_common, "notification_delivery_exists", return_value=False),
-            patch.object(venue_notification_common, "log_notification_attempt", return_value=pending_log),
-            patch.object(venue_notification_common.tg_notify, "notify_result", return_value=blocked_result),
-        ):
-            result = venue_notification_common._deliver_user_notification(
-                db,
-                notification_type="shift_swap_approved",
-                recipient=recipient,
-                venue_id=1,
-                idempotency_key="delivery:blocked",
-                text="test",
-            )
-
-        self.assertEqual(result, (True, False))
-        self.assertFalse(recipient.notify_enabled)
-        self.assertEqual(pending_log.status, "failed")
-        self.assertIn("blocked by the user", pending_log.error_text)
-        db.add.assert_any_call(recipient)
-
-    def test_other_terminal_delivery_error_still_fails_the_queue_job(self):
-        recipient = SimpleNamespace(id=12, tg_user_id=416573581, notify_enabled=True)
-        pending_log = SimpleNamespace(status="pending", sent_at=None, error_text=None)
-        db = MagicMock()
-        rejected_result = {
-            "ok": False,
-            "retryable": False,
-            "status_code": 400,
-            "error": "Bad Request: message is too long",
-        }
-
-        with (
-            patch.object(venue_notification_common, "lock_notification_idempotency_key"),
-            patch.object(venue_notification_common, "notification_delivery_exists", return_value=False),
-            patch.object(venue_notification_common, "log_notification_attempt", return_value=pending_log),
-            patch.object(venue_notification_common.tg_notify, "notify_result", return_value=rejected_result),
-        ):
-            result = venue_notification_common._deliver_user_notification(
-                db,
-                notification_type="shift_swap_approved",
-                recipient=recipient,
-                venue_id=1,
-                idempotency_key="delivery:bad-payload",
-                text="test",
-            )
-
-        self.assertEqual(result, (False, False))
-        self.assertTrue(recipient.notify_enabled)
 
     def test_master_and_category_notification_preferences_are_respected(self):
         user = SimpleNamespace(

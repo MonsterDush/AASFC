@@ -111,20 +111,14 @@ class ManualTipCreateIn(BaseModel):
 
 def _notification_settings_meta(user: User) -> dict:
     telegram_linked = bool(getattr(user, "tg_user_id", None))
-    notifications_enabled = bool(getattr(user, "notify_enabled", True))
     disabled_reason = None
     if not telegram_linked:
         disabled_reason = "Привяжите Telegram в профиле, чтобы бот мог отправлять уведомления."
-    elif not notifications_enabled:
-        disabled_reason = (
-            "Уведомления выключены. Если вы блокировали бота, разблокируйте его, нажмите Start "
-            "и снова включите уведомления."
-        )
     return {
         "telegram_linked": telegram_linked,
         "tg_user_id": getattr(user, "tg_user_id", None),
         "tg_username": getattr(user, "tg_username", None),
-        "can_receive_bot_notifications": telegram_linked and notifications_enabled,
+        "can_receive_bot_notifications": telegram_linked,
         "settings_locked": not telegram_linked,
         "disabled_reason": disabled_reason,
     }
