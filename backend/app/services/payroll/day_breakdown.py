@@ -844,9 +844,11 @@ def build_member_day_breakdown(
         if not isinstance(component, dict):
             continue
         component_type = str(component.get("component_type") or "").strip().upper()
-        minimum_scope = str(
-            component.get("minimum_payout_scope") or component.get("minimum_guarantee_scope") or "MONTH"
-        ).strip().upper()
+        minimum_scope = (
+            str(component.get("minimum_payout_scope") or component.get("minimum_guarantee_scope") or "MONTH")
+            .strip()
+            .upper()
+        )
         slot_compatible = component_type in {"SALARY_HOURLY", "SALARY_PER_SHIFT"} or (
             component_type == "MINIMUM_PAYOUT" and minimum_scope == "SHIFT"
         )

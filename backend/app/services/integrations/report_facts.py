@@ -91,10 +91,10 @@ def sync_manual_report_contributions(
         return
     if report.id is None:
         db.flush()
-    value_rows = list(values) if values is not None else list(
-        db.execute(
-            select(DailyReportValue).where(DailyReportValue.report_id == int(report.id))
-        ).scalars()
+    value_rows = (
+        list(values)
+        if values is not None
+        else list(db.execute(select(DailyReportValue).where(DailyReportValue.report_id == int(report.id))).scalars())
     )
     aggregated: dict[tuple[str, int], int] = defaultdict(int)
     aggregated[("REVENUE", 0)] = int(report.revenue_total or 0)

@@ -59,11 +59,14 @@ def build_report_revenue_plan(
             }
             for v in dept_values
         ]
-        unallocated_total_minor = int(
-            getattr(report, "unallocated_revenue_total", 0)
-            if unallocated_revenue_total is None
-            else unallocated_revenue_total
-        ) * 100
+        unallocated_total_minor = (
+            int(
+                getattr(report, "unallocated_revenue_total", 0)
+                if unallocated_revenue_total is None
+                else unallocated_revenue_total
+            )
+            * 100
+        )
         if unallocated_total_minor > 0:
             plan.append(
                 {
@@ -215,9 +218,7 @@ def compute_revenue_summary(
     amounts_by_ref: dict[int, int] = {}
     for fact in facts:
         for value in fact.values_for(kind):
-            amounts_by_ref[int(value.ref_id)] = int(amounts_by_ref.get(int(value.ref_id), 0)) + int(
-                value.value_numeric
-            )
+            amounts_by_ref[int(value.ref_id)] = int(amounts_by_ref.get(int(value.ref_id), 0)) + int(value.value_numeric)
     rows = sorted(amounts_by_ref.items())
 
     catalog_rows = db.execute(

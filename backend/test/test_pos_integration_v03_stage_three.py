@@ -189,14 +189,10 @@ class POSIntegrationStageThreeTests(unittest.TestCase):
         self.report.revenue_total = 1_050
         sync_manual_report_contributions(self.db, report=self.report)
         rows = list(
-            self.db.execute(
-                select(ReportValueContribution).where(ReportValueContribution.report_id == 1)
-            ).scalars()
+            self.db.execute(select(ReportValueContribution).where(ReportValueContribution.report_id == 1)).scalars()
         )
         self.assertTrue(any(row.source_type == "POS" for row in rows))
-        manual_revenue = next(
-            row for row in rows if row.source_type == "MANUAL" and row.kind == "REVENUE"
-        )
+        manual_revenue = next(row for row in rows if row.source_type == "MANUAL" and row.kind == "REVENUE")
         self.assertEqual(int(manual_revenue.value_numeric), 1_050)
 
     def test_composite_item_attribution_never_double_counts_parent_charge(self):

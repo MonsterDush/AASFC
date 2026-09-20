@@ -685,9 +685,7 @@ class MigrationContractTests(unittest.TestCase):
                     "value_numeric NUMERIC(20, 4) NOT NULL, source_hash VARCHAR(64) NOT NULL, "
                     "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)"
                 )
-                connection.exec_driver_sql(
-                    "CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)"
-                )
+                connection.exec_driver_sql("CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)")
                 connection.exec_driver_sql(
                     "INSERT INTO daily_reports (id, revenue_total, unallocated_revenue_total) VALUES (1, 1000, 100)"
                 )

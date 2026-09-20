@@ -1472,9 +1472,7 @@ def _canonical_aggregate(
         else []
     )
     compound_parent_ids = {
-        int(row.parent_item_id)
-        for row in items
-        if row.parent_item_id is not None and not bool(row.is_deleted)
+        int(row.parent_item_id) for row in items if row.parent_item_id is not None and not bool(row.is_deleted)
     }
     payments = (
         list(
