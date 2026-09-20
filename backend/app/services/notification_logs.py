@@ -6,6 +6,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import NotificationDeliveryLog
+from app.services import tg_notify
 
 
 def normalize_notification_idempotency_key(value: str | None) -> str | None:
@@ -27,6 +28,21 @@ def notification_dedupe_scope(user) -> str:
             return f"tg:{str(tg_user_id).strip()}"
     user_id = getattr(user, "id", None)
     return f"user:{int(user_id)}" if user_id is not None else "user:unknown"
+
+
+def disable_unreachable_telegram_recipient(db: Session, *, recipient, result: dict | None) -> bool:
+    """Disable future pushes after Telegram permanently rejects a recipient.
+
+    The failed delivery remains visible in history, while recurring schedulers
+    stop retrying an address that cannot receive messages until the user turns
+    notifications back on after unblocking the bot.
+    """
+    if recipient is None or not tg_notify.recipient_is_unreachable(result):
+        return False
+    if getattr(recipient, "notify_enabled", True):
+        recipient.notify_enabled = False
+        db.add(recipient)
+    return True
 
 
 def lock_notification_idempotency_key(db: Session, idempotency_key: str | None) -> None:

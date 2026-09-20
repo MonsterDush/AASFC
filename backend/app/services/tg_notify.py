@@ -11,6 +11,14 @@ from typing import Any
 
 log = logging.getLogger("axelio.tg_notify")
 
+RECIPIENT_UNREACHABLE_FAILURE_REASON = "recipient_unreachable"
+_UNREACHABLE_RECIPIENT_ERRORS = (
+    "bot was blocked by the user",
+    "user is deactivated",
+    "bot was kicked from the group chat",
+    "chat not found",
+)
+
 
 def _bot_service_url() -> str | None:
     return os.getenv("BOT_SERVICE_URL")
@@ -41,6 +49,16 @@ def _normalize_error_message(body_text: str | None) -> str | None:
         pass
     body_text = str(body_text).strip()
     return body_text[:300] if body_text else None
+
+
+def recipient_is_unreachable(result: dict | None) -> bool:
+    """Return whether Telegram permanently rejects this specific recipient."""
+    if not isinstance(result, dict) or result.get("ok") or result.get("retryable"):
+        return False
+    if str(result.get("failure_reason") or "").strip().lower() == RECIPIENT_UNREACHABLE_FAILURE_REASON:
+        return True
+    error_text = str(result.get("error") or "").strip().lower()
+    return any(marker in error_text for marker in _UNREACHABLE_RECIPIENT_ERRORS)
 
 
 def _reply_markup(*, url: str | None, button_text: str | None) -> dict[str, Any] | None:
@@ -124,6 +142,11 @@ def _send_via_bot_service(
                     "retryable": bool(js.get("retryable", False)),
                     "status_code": int(js.get("status_code") or resp.status),
                     "error": js.get("error"),
+                    "failure_reason": (
+                        RECIPIENT_UNREACHABLE_FAILURE_REASON
+                        if js.get("failure_reason") == RECIPIENT_UNREACHABLE_FAILURE_REASON
+                        else None
+                    ),
                 }
                 if result["ok"]:
                     return result

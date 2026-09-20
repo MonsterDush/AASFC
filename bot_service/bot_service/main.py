@@ -48,6 +48,13 @@ app = FastAPI(title="Axelio Bot Service")
 log = logging.getLogger("axelio-bot")
 
 ALLOWED_TELEGRAM_API_METHODS = frozenset({"sendMessage"})
+RECIPIENT_UNREACHABLE_FAILURE_REASON = "recipient_unreachable"
+_UNREACHABLE_RECIPIENT_ERRORS = (
+    "bot was blocked by the user",
+    "user is deactivated",
+    "bot was kicked from the group chat",
+    "chat not found",
+)
 
 
 def _validated_backend_url(value: str) -> str:
@@ -89,6 +96,14 @@ def _normalize_telegram_error(status_code: int | None, body_text: str | None) ->
         return retryable, str(body_text).strip()[:300] or None
 
 
+def _telegram_failure_reason(description: str | None) -> str | None:
+    """Map Telegram text to a stable, non-sensitive failure category."""
+    normalized = str(description or "").strip().lower()
+    if any(marker in normalized for marker in _UNREACHABLE_RECIPIENT_ERRORS):
+        return RECIPIENT_UNREACHABLE_FAILURE_REASON
+    return None
+
+
 def _telegram_payload_to_form_bytes(payload: dict[str, Any]) -> bytes:
     data_dict: dict[str, str] = {}
     for key, value in (payload or {}).items():
@@ -111,7 +126,14 @@ def _parse_telegram_api_response(method: str, status_code: int | None, body: str
 
     ok = bool(js.get("ok"))
     if ok:
-        return {"ok": True, "retryable": False, "status_code": int(status_code or 200), "error": None, "result": js}
+        return {
+            "ok": True,
+            "retryable": False,
+            "status_code": int(status_code or 200),
+            "error": None,
+            "failure_reason": None,
+            "result": js,
+        }
 
     retryable, description = _normalize_telegram_error(status_code, body)
     if curl_returncode:
@@ -122,6 +144,7 @@ def _parse_telegram_api_response(method: str, status_code: int | None, body: str
         "retryable": bool(retryable),
         "status_code": int(status_code or 0) if status_code else None,
         "error": str(error),
+        "failure_reason": _telegram_failure_reason(description),
         "result": js or None,
     }
 
@@ -184,7 +207,14 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
             log.exception("telegram curl transport failed: method=%s", method)
             last_error = "Telegram transport failed"
             if attempt == 2:
-                return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
+                return {
+                    "ok": False,
+                    "retryable": True,
+                    "status_code": None,
+                    "error": last_error,
+                    "failure_reason": None,
+                    "result": None,
+                }
         time.sleep(min(0.5 * (attempt + 1), 1.5))
 
     return {
@@ -192,6 +222,7 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
         "retryable": True,
         "status_code": None,
         "error": last_error or f"telegram {method} failed",
+        "failure_reason": None,
         "result": None,
     }
 
@@ -224,13 +255,21 @@ def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) 
             log.exception("telegram urllib transport failed: method=%s", method)
             last_error = "Telegram transport failed"
             if attempt == 2:
-                return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
+                return {
+                    "ok": False,
+                    "retryable": True,
+                    "status_code": None,
+                    "error": last_error,
+                    "failure_reason": None,
+                    "result": None,
+                }
         time.sleep(min(0.35 * (attempt + 1), 1.0))
     return {
         "ok": False,
         "retryable": True,
         "status_code": None,
         "error": last_error or f"telegram {method} failed",
+        "failure_reason": None,
         "result": None,
     }
 
@@ -287,6 +326,7 @@ def telegram_api_proxy(payload: TelegramApiIn, request: Request):
             "retryable": bool(result.get("retryable")),
             "status_code": result.get("status_code"),
             "error": "Telegram request failed",
+            "failure_reason": result.get("failure_reason"),
             "result": None,
         }
     return result
