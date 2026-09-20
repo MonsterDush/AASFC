@@ -70,6 +70,7 @@ from app.routers.venue_economics_notifications import (
     _enqueue_soft_alerts_job,
     process_pending_notification_jobs_once,
 )
+from app.services.integrations.report_facts import sync_manual_report_contributions
 
 
 _REPORT_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads" / "reports"
@@ -338,6 +339,7 @@ def upsert_daily_report(
         )
 
     db.flush()
+    sync_manual_report_contributions(db, report=obj)
     if str(obj.status or "").upper() == "CLOSED":
         _rebuild_report_tip_allocations(db, report=obj, venue=venue)
         rebuild_revenue_entries_for_report(db=db, report=obj)
@@ -683,6 +685,7 @@ def _close_daily_report_record(
     report.updated_by_user_id = int(actor_user_id)
     report.updated_at = closed_at
 
+    sync_manual_report_contributions(db, report=report, values=values)
     rebuild_revenue_entries_for_report(db=db, report=report, values=values)
     sync_daily_recurring_accruals_for_date(
         db=db,

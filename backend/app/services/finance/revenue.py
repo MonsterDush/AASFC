@@ -3,20 +3,28 @@ from __future__ import annotations
 from datetime import date, timedelta
 import calendar
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import DailyReport, DailyReportValue, Department, PaymentMethod
+from app.services.integrations.report_facts import ReportFactValue, load_period_report_facts, load_report_facts
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
-def load_report_values(*, db: Session, report_id: int) -> list[DailyReportValue]:
-    return list(
-        db.execute(select(DailyReportValue).where(DailyReportValue.report_id == int(report_id))).scalars().all()
-    )
+def load_report_values(*, db: Session, report_id: int) -> list[ReportFactValue]:
+    report = db.get(DailyReport, int(report_id))
+    if report is None:
+        return []
+    return list(load_report_facts(db, report=report).values)
 
 
-def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportValue]) -> list[dict]:
+def build_report_revenue_plan(
+    *,
+    report: DailyReport,
+    values: list[DailyReportValue] | list[ReportFactValue],
+    revenue_total: int | None = None,
+    unallocated_revenue_total: int | None = None,
+) -> list[dict]:
     shift_slot = str(getattr(report, "shift_slot", "DAY") or "DAY").upper()
     payment_values = [v for v in values if v.kind == "PAYMENT" and int(v.value_numeric or 0) > 0]
     if payment_values:
@@ -51,7 +59,11 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
             }
             for v in dept_values
         ]
-        unallocated_total_minor = int(getattr(report, "unallocated_revenue_total", 0) or 0) * 100
+        unallocated_total_minor = int(
+            getattr(report, "unallocated_revenue_total", 0)
+            if unallocated_revenue_total is None
+            else unallocated_revenue_total
+        ) * 100
         if unallocated_total_minor > 0:
             plan.append(
                 {
@@ -67,7 +79,7 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
             )
         return plan
 
-    total_minor = int(report.revenue_total or 0) * 100
+    total_minor = int(report.revenue_total if revenue_total is None else revenue_total) * 100
     if total_minor <= 0:
         return []
 
@@ -96,8 +108,14 @@ def rebuild_revenue_entries_for_report(
     if str(report.status or "").upper() != "CLOSED":
         return 0
 
-    report_values = values if values is not None else load_report_values(db=db, report_id=int(report.id))
-    plan = build_report_revenue_plan(report=report, values=report_values)
+    facts = load_report_facts(db, report=report)
+    report_values = values if values is not None and facts.source_mode == "MANUAL" else list(facts.values)
+    plan = build_report_revenue_plan(
+        report=report,
+        values=report_values,
+        revenue_total=facts.revenue_total,
+        unallocated_revenue_total=facts.unallocated_revenue_total,
+    )
 
     created = 0
     for item in plan:
@@ -187,47 +205,27 @@ def compute_revenue_summary(
     Catalog = PaymentMethod if mode_norm == "payments" else Department
     kind = "PAYMENT" if mode_norm == "payments" else "DEPT"
 
-    closed_reports_subq = (
-        select(DailyReport.id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= period_start,
-            DailyReport.date <= period_end,
-        )
-        .subquery()
+    facts = load_period_report_facts(
+        db,
+        venue_id=int(venue_id),
+        period_start=period_start,
+        period_end_exclusive=period_end + timedelta(days=1),
     )
-
-    closed_reports = int(db.execute(select(func.count()).select_from(closed_reports_subq)).scalar() or 0)
-
-    rows = db.execute(
-        select(
-            DailyReportValue.ref_id,
-            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-        )
-        .where(
-            DailyReportValue.kind == kind,
-            DailyReportValue.report_id.in_(select(closed_reports_subq.c.id)),
-        )
-        .group_by(DailyReportValue.ref_id)
-    ).all()
+    closed_reports = len(facts)
+    amounts_by_ref: dict[int, int] = {}
+    for fact in facts:
+        for value in fact.values_for(kind):
+            amounts_by_ref[int(value.ref_id)] = int(amounts_by_ref.get(int(value.ref_id), 0)) + int(
+                value.value_numeric
+            )
+    rows = sorted(amounts_by_ref.items())
 
     catalog_rows = db.execute(
         select(Catalog.id, getattr(Catalog, "code", None), Catalog.title).where(Catalog.venue_id == int(venue_id))
     ).all()
     unallocated_total = 0
     if mode_norm == "departments":
-        unallocated_total = int(
-            db.execute(
-                select(func.coalesce(func.sum(DailyReport.unallocated_revenue_total), 0)).where(
-                    DailyReport.venue_id == int(venue_id),
-                    DailyReport.status == "CLOSED",
-                    DailyReport.date >= period_start,
-                    DailyReport.date <= period_end,
-                )
-            ).scalar()
-            or 0
-        )
+        unallocated_total = sum(int(fact.unallocated_revenue_total) for fact in facts)
 
     def _row_value(row, idx: int, attr: str):
         if hasattr(row, attr):
@@ -265,38 +263,14 @@ def compute_revenue_summary(
     out_rows.sort(key=lambda x: (-x["amount"], x["title"]))
     daily_series: list[dict] = []
     if include_series:
-        if mode_norm == "departments":
-            daily_rows = db.execute(
-                select(
-                    DailyReport.date,
-                    func.coalesce(func.sum(DailyReport.revenue_total), 0).label("amount"),
-                )
-                .where(
-                    DailyReport.venue_id == int(venue_id),
-                    DailyReport.status == "CLOSED",
-                    DailyReport.date >= period_start,
-                    DailyReport.date <= period_end,
-                )
-                .group_by(DailyReport.date)
-                .order_by(DailyReport.date.asc())
-            ).all()
-        else:
-            daily_rows = db.execute(
-                select(
-                    DailyReport.date,
-                    func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-                )
-                .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-                .where(
-                    DailyReport.venue_id == int(venue_id),
-                    DailyReport.status == "CLOSED",
-                    DailyReport.date >= period_start,
-                    DailyReport.date <= period_end,
-                    DailyReportValue.kind == kind,
-                )
-                .group_by(DailyReport.date)
-                .order_by(DailyReport.date.asc())
-            ).all()
+        daily_amounts: dict[date, int] = {}
+        for fact in facts:
+            if mode_norm == "departments":
+                amount = int(fact.revenue_total)
+            else:
+                amount = sum(int(value.value_numeric) for value in fact.values_for(kind))
+            daily_amounts[fact.report_date] = int(daily_amounts.get(fact.report_date, 0)) + amount
+        daily_rows = sorted(daily_amounts.items())
         daily_series = build_revenue_daily_series(
             period_start=period_start,
             period_end=period_end,

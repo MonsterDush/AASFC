@@ -41,8 +41,10 @@ class MigrationContractTests(unittest.TestCase):
         position_profile_periods = scripts.get_revision("e9a3c5f7b1d4")
         pos_foundation = scripts.get_revision("f3b7c1d9e5a2")
         quickresto_acdm_shadow = scripts.get_revision("f5d9a2c7e4b1")
+        canonical_reports = scripts.get_revision("f7a1c3e5b9d2")
 
-        self.assertEqual(heads, ["f5d9a2c7e4b1"])
+        self.assertEqual(heads, ["f7a1c3e5b9d2"])
+        self.assertEqual(canonical_reports.down_revision, "f5d9a2c7e4b1")
         self.assertEqual(quickresto_acdm_shadow.down_revision, "f3b7c1d9e5a2")
         self.assertEqual(pos_foundation.down_revision, "e9a3c5f7b1d4")
         self.assertEqual(position_profile_periods.down_revision, "d8f0a2c4e6b9")
@@ -659,6 +661,62 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"uq_shift_availability_member_date_slot"', source)
         self.assertIn('"uq_shift_swap_requests_open_assignment"', source)
         self.assertIn('ondelete="SET NULL"', source)
+
+    def test_canonical_reports_and_composite_items_migration_round_trips(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            self.addCleanup(engine.dispose)
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE daily_reports ("
+                    "id INTEGER PRIMARY KEY, revenue_total INTEGER NOT NULL, "
+                    "unallocated_revenue_total INTEGER NOT NULL DEFAULT 0)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE daily_report_values ("
+                    "id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL, kind VARCHAR(12) NOT NULL, "
+                    "ref_id INTEGER NOT NULL, value_numeric INTEGER NOT NULL)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE report_value_contributions ("
+                    "id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL, kind VARCHAR(32) NOT NULL, "
+                    "ref_id INTEGER NOT NULL, source_type VARCHAR(16) NOT NULL, source_id VARCHAR(255) NOT NULL, "
+                    "value_numeric NUMERIC(20, 4) NOT NULL, source_hash VARCHAR(64) NOT NULL, "
+                    "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO daily_reports (id, revenue_total, unallocated_revenue_total) VALUES (1, 1000, 100)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO daily_report_values (id, report_id, kind, ref_id, value_numeric) "
+                    "VALUES (1, 1, 'DEPT', 7, 900)"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f5d9a2c7e4b1")
+                command.upgrade(config, "f7a1c3e5b9d2")
+                inspector = sa.inspect(engine)
+                columns = {column["name"] for column in inspector.get_columns("pos_order_items")}
+                self.assertIn("parent_item_id", columns)
+                self.assertIn("attributed_net_amount", columns)
+                with engine.connect() as connection:
+                    contributions = connection.exec_driver_sql(
+                        "SELECT kind, ref_id, value_numeric FROM report_value_contributions "
+                        "WHERE source_type = 'MANUAL' ORDER BY kind, ref_id"
+                    ).all()
+                self.assertEqual(
+                    contributions,
+                    [("DEPT", 7, 900), ("REVENUE", 0, 1000), ("UNALLOCATED_REVENUE", 0, 100)],
+                )
+                command.downgrade(config, "f5d9a2c7e4b1")
+
+            columns = {column["name"] for column in sa.inspect(engine).get_columns("pos_order_items")}
+            self.assertNotIn("parent_item_id", columns)
 
     def test_kpi_percentage_and_salary_accrual_extend_current_head(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))

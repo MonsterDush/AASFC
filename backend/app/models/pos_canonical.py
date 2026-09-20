@@ -256,27 +256,45 @@ class POSOrder(_CanonicalExternalMixin, Base):
 
 class POSOrderItem(_CanonicalExternalMixin, Base):
     __tablename__ = "pos_order_items"
-    __table_args__ = (UniqueConstraint("connection_id", "external_id", name="uq_pos_order_items_external_identity"),)
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_order_items_external_identity"),
+        CheckConstraint(
+            "item_role IN ('PRODUCT', 'COMPOUND', 'COMPONENT', 'MODIFIER')",
+            name="ck_pos_order_items_item_role",
+        ),
+        CheckConstraint(
+            "component_role IS NULL OR component_role IN ('PRIMARY', 'SECONDARY', 'COMMON', 'MODIFIER')",
+            name="ck_pos_order_items_component_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("pos_orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[int | None] = mapped_column(
         ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    parent_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_order_items.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     source_line_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    item_role: Mapped[str] = mapped_column(String(16), nullable=False, default="PRODUCT", server_default="PRODUCT")
+    component_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
     group_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
     gross_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False, default=0, server_default="0")
     net_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
+    attributed_net_amount: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
     cost_amount: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    included_in_parent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_refund: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
     order = relationship("POSOrder")
     product = relationship("POSProduct")
+    parent_item = relationship("POSOrderItem", remote_side="POSOrderItem.id", foreign_keys=[parent_item_id])
 
 
 class POSOrderEvent(_CanonicalExternalMixin, Base):
