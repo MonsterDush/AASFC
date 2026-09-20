@@ -41,6 +41,7 @@ from app.services.demo.fixture import clear_demo_venue_data, export_demo_fixture
 from app.services.demo.session import DEMO_KIND_PUBLIC, DEMO_KIND_TEMPLATE, DEMO_PERSONA_OWNER, DEMO_PERSONA_STAFF
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
 from app.services.finance.revenue import rebuild_revenue_entries_for_report
+from app.services.integrations.report_facts import sync_manual_report_contributions
 from app.services.payroll import calculate_payroll_for_month
 
 
@@ -714,6 +715,7 @@ def _create_reports(
             created_values += 1
         db.flush()
 
+        sync_manual_report_contributions(db, report=report, values=report_values)
         created_finance_entries += rebuild_revenue_entries_for_report(
             db=db,
             report=report,

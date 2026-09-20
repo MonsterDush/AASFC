@@ -8,6 +8,7 @@ from app.auth.deps import get_current_user
 from app.auth.venue_permissions import require_venue_permission
 from app.core.db import get_db
 from app.integrations.feature_flags import feature_flags_for
+from app.integrations.quality import assess_capability_freshness
 from app.models.integration_capability_state import IntegrationCapabilityState
 from app.models.integration_connection import IntegrationConnection
 from app.models.integration_quarantine import IntegrationQuarantine
@@ -94,6 +95,60 @@ def list_pos_integration_capabilities(
         }
         for row in capability_states
     ]
+
+
+@router.get("/pos-integrations/{connection_id}/quality-summary")
+def get_pos_integration_quality_summary(
+    connection_id: int,
+    stale_after_seconds: int = Query(default=21_600, ge=60, le=604_800),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    connection = db.get(IntegrationConnection, connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="POS integration connection not found")
+    _require_view(db, venue_id=connection.venue_id, user=user)
+    capability_states = list(
+        db.execute(
+            select(IntegrationCapabilityState).where(IntegrationCapabilityState.connection_id == connection_id)
+        ).scalars()
+    )
+    active_issues = list(
+        db.execute(
+            select(IntegrationQuarantine).where(
+                IntegrationQuarantine.connection_id == connection_id,
+                IntegrationQuarantine.status.in_(("OPEN", "RETRY_PENDING", "PROCESSING")),
+            )
+        ).scalars()
+    )
+    freshness = assess_capability_freshness(
+        capability_states,
+        stale_after_seconds=stale_after_seconds,
+    )
+    stale_count = sum(item.freshness in {"STALE", "NO_DATA"} for item in freshness)
+    critical_count = sum(row.severity == "CRITICAL" for row in active_issues)
+    if critical_count:
+        health = "FAILED"
+    elif active_issues or stale_count:
+        health = "DEGRADED"
+    else:
+        health = "HEALTHY"
+    return {
+        "connection_id": connection_id,
+        "health": health,
+        "active_issue_count": len(active_issues),
+        "critical_issue_count": critical_count,
+        "stale_capability_count": stale_count,
+        "capabilities": [
+            {
+                "capability": item.capability,
+                "state": item.state,
+                "freshness": item.freshness,
+                "age_seconds": item.age_seconds,
+            }
+            for item in freshness
+        ],
+    }
 
 
 def _quality_issue_out(row: IntegrationQuarantine) -> dict:

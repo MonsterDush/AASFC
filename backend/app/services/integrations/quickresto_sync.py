@@ -266,12 +266,23 @@ def _enqueue_sync_notification_safely(
 ) -> None:
     """Queue the aggregate result without ever rolling back a completed sync."""
 
+    # Routine successful scheduled imports are visible in integration history
+    # and must not produce a Telegram notification on every closed shift.
+    # Manual/reconciliation results and every degraded/failed run remain
+    # actionable for venue managers and operators.
+    status = str(run.status or "").upper()
+    trigger = str(run.trigger or "").upper()
     should_notify = bool(
-        force
-        or str(run.status or "").upper() in {"PARTIAL", "FAILED"}
-        or int(run.shifts_imported or 0) > 0
-        or int(run.reports_created or 0) > 0
-        or int(run.reports_updated or 0) > 0
+        status in {"PARTIAL", "FAILED"}
+        or (
+            trigger != "SCHEDULED"
+            and (
+                force
+                or int(run.shifts_imported or 0) > 0
+                or int(run.reports_created or 0) > 0
+                or int(run.reports_updated or 0) > 0
+            )
+        )
     )
     if not should_notify:
         return

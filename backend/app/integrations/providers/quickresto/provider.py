@@ -34,6 +34,7 @@ _UNAVAILABLE_CAPABILITIES = {
     Capability.RECIPES,
     Capability.SUPPLIERS,
     Capability.PURCHASES,
+    Capability.WRITEOFFS,
     Capability.STOCK_BALANCES,
     Capability.STOCK_MOVEMENTS,
     Capability.INVENTORY,
@@ -117,7 +118,6 @@ class QuickRestoProviderAdapter:
             Capability.DISCOUNTS,
             Capability.ORDER_EVENTS,
             Capability.GUEST_COUNT,
-            Capability.WRITEOFFS,
         }
         orders_available = results[Capability.ORDERS].state is CapabilityState.SUPPORTED
         for capability in derived_from_orders:
@@ -282,10 +282,42 @@ class QuickRestoProviderAdapter:
     def iter_employees(self, *, updated_since: datetime | None = None) -> Iterable[ProviderRecord]:
         raise ProviderCapabilityError("QuickResto employees capability is unavailable")
 
+    def iter_recipes(self, *, updated_since: datetime | None = None) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto recipes capability is unavailable")
+
+    def iter_warehouses(self, *, updated_since: datetime | None = None) -> Iterable[ProviderRecord]:
+        return tuple(self._records_for("stores"))
+
+    def iter_stock_balances(self, *, at: datetime | None = None) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto stock balances capability is unavailable")
+
+    def iter_stock_movements(
+        self, *, period_start: date, period_end_exclusive: date, cursor: str | None = None
+    ) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto stock movements capability is unavailable")
+
+    def iter_suppliers(self, *, updated_since: datetime | None = None) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto suppliers capability is unavailable")
+
+    def iter_purchases(
+        self, *, period_start: date, period_end_exclusive: date, cursor: str | None = None
+    ) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto purchases capability is unavailable")
+
+    def iter_writeoffs(
+        self, *, period_start: date, period_end_exclusive: date, cursor: str | None = None
+    ) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto writeoff documents capability is unavailable")
+
     def iter_inventory(
         self, *, period_start: date, period_end_exclusive: date, cursor: str | None = None
     ) -> Iterable[ProviderRecord]:
         raise ProviderCapabilityError("QuickResto inventory capability is unavailable")
+
+    def iter_attendance(
+        self, *, period_start: date, period_end_exclusive: date, cursor: str | None = None
+    ) -> Iterable[ProviderRecord]:
+        raise ProviderCapabilityError("QuickResto attendance capability is unavailable")
 
     def _records_for(self, object_type: str) -> Iterable[ProviderRecord]:
         module_name, class_name = QUICKRESTO_OBJECT_TYPES[object_type]

@@ -256,27 +256,45 @@ class POSOrder(_CanonicalExternalMixin, Base):
 
 class POSOrderItem(_CanonicalExternalMixin, Base):
     __tablename__ = "pos_order_items"
-    __table_args__ = (UniqueConstraint("connection_id", "external_id", name="uq_pos_order_items_external_identity"),)
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_order_items_external_identity"),
+        CheckConstraint(
+            "item_role IN ('PRODUCT', 'COMPOUND', 'COMPONENT', 'MODIFIER')",
+            name="ck_pos_order_items_item_role",
+        ),
+        CheckConstraint(
+            "component_role IS NULL OR component_role IN ('PRIMARY', 'SECONDARY', 'COMMON', 'MODIFIER')",
+            name="ck_pos_order_items_component_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("pos_orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[int | None] = mapped_column(
         ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    parent_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_order_items.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     source_line_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    item_role: Mapped[str] = mapped_column(String(16), nullable=False, default="PRODUCT", server_default="PRODUCT")
+    component_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
     group_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
     gross_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False, default=0, server_default="0")
     net_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
+    attributed_net_amount: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
     cost_amount: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    included_in_parent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_refund: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
     order = relationship("POSOrder")
     product = relationship("POSProduct")
+    parent_item = relationship("POSOrderItem", remote_side="POSOrderItem.id", foreign_keys=[parent_item_id])
 
 
 class POSOrderEvent(_CanonicalExternalMixin, Base):
@@ -348,3 +366,287 @@ class POSOrderDiscount(_CanonicalExternalMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
     order = relationship("POSOrder")
+
+
+class POSRecipe(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_recipes"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_recipes_external_identity"),
+        CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="ck_pos_recipes_period"),
+        CheckConstraint("yield_quantity > 0", name="ck_pos_recipes_yield_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    yield_quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    yield_unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+
+    product = relationship("POSProduct")
+    items = relationship("POSRecipeItem", back_populates="recipe", cascade="all, delete-orphan")
+
+
+class POSRecipeItem(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_recipe_items"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_recipe_items_external_identity"),
+        CheckConstraint("quantity > 0", name="ck_pos_recipe_items_quantity_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("pos_recipes.id", ondelete="CASCADE"), nullable=False, index=True)
+    ingredient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    loss_percent: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+
+    recipe = relationship("POSRecipe", back_populates="items")
+    ingredient = relationship("POSProduct")
+
+
+class POSStockSnapshot(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_stock_snapshots"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_stock_snapshots_external_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    warehouse_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_warehouses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    cost_per_unit: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    total_cost: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    warehouse = relationship("POSWarehouse")
+    product = relationship("POSProduct")
+
+
+class POSStockMovement(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_stock_movements"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_stock_movements_external_identity"),
+        CheckConstraint(
+            "movement_type IN ('PURCHASE', 'SALE', 'WRITEOFF', 'TRANSFER_IN', 'TRANSFER_OUT', "
+            "'PRODUCTION', 'INVENTORY_CORRECTION', 'RETURN_TO_SUPPLIER', 'OTHER')",
+            name="ck_pos_stock_movements_type",
+        ),
+        CheckConstraint("quantity <> 0", name="ck_pos_stock_movements_quantity_nonzero"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    warehouse_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_warehouses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    movement_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    source_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_document_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    warehouse = relationship("POSWarehouse")
+    product = relationship("POSProduct")
+
+
+class POSPurchaseDocument(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_purchase_documents"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_purchase_documents_external_identity"),
+        CheckConstraint(
+            "status IN ('DRAFT', 'POSTED', 'CANCELLED', 'DELETED', 'UNKNOWN')",
+            name="ck_pos_purchase_documents_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_suppliers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_warehouses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    document_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    document_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    total_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    supplier = relationship("POSSupplier")
+    warehouse = relationship("POSWarehouse")
+    items = relationship("POSPurchaseItem", back_populates="document", cascade="all, delete-orphan")
+
+
+class POSPurchaseItem(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_purchase_items"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_purchase_items_external_identity"),
+        CheckConstraint("quantity > 0", name="ck_pos_purchase_items_quantity_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_purchase_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    price_per_unit: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    document = relationship("POSPurchaseDocument", back_populates="items")
+    product = relationship("POSProduct")
+
+
+class POSWriteoff(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_writeoffs"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_writeoffs_external_identity"),
+        CheckConstraint(
+            "canonical_reason IN ('SPOILAGE', 'EXPIRED', 'STAFF_ERROR', 'STAFF_MEAL', "
+            "'BREAKAGE', 'TECHNICAL', 'OTHER')",
+            name="ck_pos_writeoffs_reason",
+        ),
+        CheckConstraint(
+            "status IN ('DRAFT', 'POSTED', 'CANCELLED', 'DELETED', 'UNKNOWN')",
+            name="ck_pos_writeoffs_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_warehouses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_employees.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    canonical_reason: Mapped[str] = mapped_column(String(24), nullable=False, default="OTHER", server_default="OTHER")
+    source_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    total_cost: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    warehouse = relationship("POSWarehouse")
+    employee = relationship("POSEmployee")
+    items = relationship("POSWriteoffItem", back_populates="writeoff", cascade="all, delete-orphan")
+
+
+class POSWriteoffItem(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_writeoff_items"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_writeoff_items_external_identity"),
+        CheckConstraint("quantity > 0", name="ck_pos_writeoff_items_quantity_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    writeoff_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_writeoffs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    cost_amount: Mapped[Decimal] = mapped_column(MONEY_TYPE, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    writeoff = relationship("POSWriteoff", back_populates="items")
+    product = relationship("POSProduct")
+
+
+class POSInventoryDocument(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_inventory_documents"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_inventory_documents_external_identity"),
+        CheckConstraint(
+            "status IN ('DRAFT', 'POSTED', 'CANCELLED', 'DELETED', 'UNKNOWN')",
+            name="ck_pos_inventory_documents_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_warehouses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    document_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    document_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    warehouse = relationship("POSWarehouse")
+    items = relationship("POSInventoryItem", back_populates="document", cascade="all, delete-orphan")
+
+
+class POSInventoryItem(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_inventory_items"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_inventory_items_external_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_inventory_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pos_products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    book_quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    actual_quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    difference_quantity: Mapped[Decimal] = mapped_column(QUANTITY_TYPE, nullable=False)
+    cost_per_unit: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    difference_cost: Mapped[Decimal | None] = mapped_column(MONEY_TYPE, nullable=True)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    document = relationship("POSInventoryDocument", back_populates="items")
+    product = relationship("POSProduct")
+
+
+class POSEmployeeAttendance(_CanonicalExternalMixin, Base):
+    __tablename__ = "pos_employee_attendance"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_id", name="uq_pos_employee_attendance_external_identity"),
+        CheckConstraint(
+            "status IN ('OPEN', 'CLOSED', 'CANCELLED', 'DELETED', 'UNKNOWN')",
+            name="ck_pos_employee_attendance_status",
+        ),
+        CheckConstraint("clock_out_at IS NULL OR clock_out_at > clock_in_at", name="ck_pos_employee_attendance_period"),
+        CheckConstraint(
+            "duration_minutes IS NULL OR duration_minutes >= 0", name="ck_pos_employee_attendance_duration"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_employees.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    clock_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    clock_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+
+    employee = relationship("POSEmployee")
