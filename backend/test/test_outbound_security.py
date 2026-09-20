@@ -33,6 +33,58 @@ class OutboundUrlSecurityTests(TestCase):
         self.assertFalse(result["retryable"])
         urlopen.assert_not_called()
 
+    def test_blocked_telegram_recipient_is_classified_as_unreachable(self):
+        self.assertTrue(
+            tg_notify.recipient_is_unreachable(
+                {
+                    "ok": False,
+                    "retryable": False,
+                    "status_code": 403,
+                    "error": "Forbidden: bot was blocked by the user",
+                }
+            )
+        )
+        self.assertFalse(
+            tg_notify.recipient_is_unreachable(
+                {
+                    "ok": False,
+                    "retryable": False,
+                    "status_code": 400,
+                    "error": "Bad Request: message is too long",
+                }
+            )
+        )
+        self.assertFalse(
+            tg_notify.recipient_is_unreachable(
+                {
+                    "ok": False,
+                    "retryable": True,
+                    "status_code": 503,
+                    "error": "Bad Gateway",
+                }
+            )
+        )
+
+    def test_safe_bot_service_failure_reason_is_preserved_and_classified(self):
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = (
+            b'{"ok":false,"retryable":false,"status_code":200,'
+            b'"error":"Telegram request failed","failure_reason":"recipient_unreachable"}'
+        )
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"BOT_SERVICE_URL": "https://bot.example", "BOT_SERVICE_SECRET": "expected"},
+            ),
+            patch.object(tg_notify.urllib.request, "urlopen", return_value=response),
+        ):
+            result = tg_notify._send_via_bot_service(chat_id=7, text="test")
+
+        self.assertEqual(result["failure_reason"], "recipient_unreachable")
+        self.assertTrue(tg_notify.recipient_is_unreachable(result))
+
 
 class RefundXmlSecurityTests(TestCase):
     def test_operation_info_rejects_external_entities(self):

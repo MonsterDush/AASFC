@@ -13,6 +13,7 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     lock_notification_idempotency_key,
     log_notification_attempt,
     notification_delivery_exists,
@@ -112,6 +113,7 @@ def send_owner_billing_notification_once(
             url=open_url,
             button_text=rendered_button,
         )
+        disable_unreachable_telegram_recipient(db, recipient=user, result=result)
         entry.status = "sent" if result.get("ok") else "failed"
         entry.sent_at = _utc_now() if result.get("ok") else None
         if result.get("error"):

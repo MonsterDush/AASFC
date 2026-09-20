@@ -11,6 +11,7 @@ from app.core.i18n import user_locale
 from app.models import Expense, PayrollPaymentSettings, User, Venue, VenueMember
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     lock_notification_idempotency_key,
     log_notification_attempt,
     notification_delivery_exists,
@@ -186,6 +187,7 @@ def _send_once(
         url=url,
         button_text=button_text,
     )
+    disable_unreachable_telegram_recipient(db, recipient=recipient, result=result)
     entry.status = "sent" if result.get("ok") else "failed"
     entry.sent_at = datetime.now(timezone.utc) if result.get("ok") else None
     entry.error_text = str(result.get("error") or "")[:500] or None

@@ -20,6 +20,7 @@ from app.core.request_ip import resolve_client_ip
 from app.models import NotificationDeliveryLog, User
 from app.services import tg_notify
 from app.services.notification_logs import (
+    disable_unreachable_telegram_recipient,
     lock_notification_idempotency_key,
     notification_delivery_exists,
     notification_dedupe_scope,
@@ -233,6 +234,7 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
                 button_text=localized(locale, ru="Открыть профиль", en="Open profile"),
             )
             ok = bool(result.get("ok"))
+            disable_unreachable_telegram_recipient(db, recipient=user, result=result)
             delivery_log.status = "sent" if ok else "failed"
             delivery_log.sent_at = now if ok else None
             delivery_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]

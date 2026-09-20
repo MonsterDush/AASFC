@@ -403,7 +403,11 @@ def _component_allocation_for_day(
     ordered_dates = sorted(worked_dates)
 
     if component_type == "SALARY_HOURLY":
-        shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+        has_shift_rows = "shift_rows" in component
+        raw_shift_rows = component.get("shift_rows")
+        shift_rows = (
+            [row for row in raw_shift_rows if isinstance(row, dict)] if isinstance(raw_shift_rows, list) else []
+        )
         day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
         if day_shift_rows:
             amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
@@ -423,6 +427,8 @@ def _component_allocation_for_day(
                 "month_share_ratio": None,
                 "is_estimated": False,
             }
+        if has_shift_rows:
+            return None
         weights = {day: int(context.minutes_by_date.get(day, 0)) for day in ordered_dates}
         base_text = f"{_fmt_hours(context.minutes_by_date.get(target_date, 0))} из {_fmt_hours(sum(weights.values()))}"
         rate_minor = component.get("source_rate_minor")
@@ -432,7 +438,11 @@ def _component_allocation_for_day(
             else "Распределено по минутам дня внутри месячного hourly-компонента"
         )
     elif component_type == "SALARY_PER_SHIFT":
-        shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+        has_shift_rows = "shift_rows" in component
+        raw_shift_rows = component.get("shift_rows")
+        shift_rows = (
+            [row for row in raw_shift_rows if isinstance(row, dict)] if isinstance(raw_shift_rows, list) else []
+        )
         day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
         if day_shift_rows:
             amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
@@ -452,6 +462,8 @@ def _component_allocation_for_day(
                 "month_share_ratio": None,
                 "is_estimated": False,
             }
+        if has_shift_rows:
+            return None
         weights = {day: int(context.shifts_by_date.get(day, 0)) for day in ordered_dates}
         base_text = f"{int(context.shifts_by_date.get(target_date, 0))} смен из {sum(weights.values())}"
         source_amount_minor = component.get("source_amount_minor")
@@ -466,7 +478,9 @@ def _component_allocation_for_day(
         source_amount_minor = component.get("source_amount_minor", month_component_amount_minor)
         formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {len(ordered_dates)} рабочих дней"
     elif component_type == "PERCENT_TOTAL_REVENUE":
-        day_rows = [row for row in (component.get("day_rows") or []) if isinstance(row, dict)]
+        has_day_rows = "day_rows" in component
+        raw_day_rows = component.get("day_rows")
+        day_rows = [row for row in raw_day_rows if isinstance(row, dict)] if isinstance(raw_day_rows, list) else []
         day_snapshot = next((row for row in day_rows if str(row.get("date") or "") == target_date.isoformat()), None)
         if day_snapshot is not None:
             amount_minor = int(day_snapshot.get("amount_minor") or 0)
@@ -491,6 +505,8 @@ def _component_allocation_for_day(
             if day_snapshot.get("minimum_applied"):
                 formula_text += f" · дневная минималка {_fmt_money_minor(day_snapshot.get('amount_minor'))}"
         else:
+            if has_day_rows:
+                return None
             weights = {day: int(context.revenue_by_date_minor.get(day, 0)) for day in ordered_dates}
             base_text = f"{_fmt_money_minor(context.revenue_by_date_minor.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
             percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
@@ -532,7 +548,9 @@ def _component_allocation_for_day(
         department_ids = _component_department_ids(component)
         dep_titles = _component_department_titles(component, department_ids, prefix="department")
         dep_title = " + ".join(dep_titles) if dep_titles else "департаментов"
-        day_rows = [row for row in (component.get("day_rows") or []) if isinstance(row, dict)]
+        has_day_rows = "day_rows" in component
+        raw_day_rows = component.get("day_rows")
+        day_rows = [row for row in raw_day_rows if isinstance(row, dict)] if isinstance(raw_day_rows, list) else []
         day_snapshot = next((row for row in day_rows if str(row.get("date") or "") == target_date.isoformat()), None)
         if day_snapshot is not None:
             amount_minor = int(day_snapshot.get("amount_minor") or 0)
@@ -557,6 +575,8 @@ def _component_allocation_for_day(
             if day_snapshot.get("minimum_applied"):
                 formula_text += f" · дневная минималка {_fmt_money_minor(day_snapshot.get('amount_minor'))}"
         else:
+            if has_day_rows:
+                return None
             weights = _sum_department_weights_by_date(
                 context.department_revenue_by_date_minor, department_ids, ordered_dates
             )
