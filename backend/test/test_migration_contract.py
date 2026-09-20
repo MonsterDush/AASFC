@@ -43,8 +43,10 @@ class MigrationContractTests(unittest.TestCase):
         quickresto_acdm_shadow = scripts.get_revision("f5d9a2c7e4b1")
         canonical_reports = scripts.get_revision("f7a1c3e5b9d2")
         operational_depth = scripts.get_revision("f8c2d4e6a1b3")
+        integration_v04_core = scripts.get_revision("a4c8e2f6b1d3")
 
-        self.assertEqual(heads, ["f8c2d4e6a1b3"])
+        self.assertEqual(heads, ["a4c8e2f6b1d3"])
+        self.assertEqual(integration_v04_core.down_revision, "f8c2d4e6a1b3")
         self.assertEqual(operational_depth.down_revision, "f7a1c3e5b9d2")
         self.assertEqual(canonical_reports.down_revision, "f5d9a2c7e4b1")
         self.assertEqual(quickresto_acdm_shadow.down_revision, "f3b7c1d9e5a2")
@@ -169,6 +171,68 @@ class MigrationContractTests(unittest.TestCase):
                 command.downgrade(config, "f7a1c3e5b9d2")
 
             self.assertTrue(expected.isdisjoint(set(sa.inspect(engine).get_table_names())))
+
+    def test_pos_integration_v04_core_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE venues (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE integration_connections (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_venues (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_products (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_product_prices (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_recipes (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_stock_snapshots (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_stock_movements (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_warehouses (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_suppliers (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_terminals (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_business_shifts (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_inventory_documents (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_inventory_items (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_orders ("
+                    "id INTEGER PRIMARY KEY, status VARCHAR(24) NOT NULL DEFAULT 'UNKNOWN', "
+                    "CONSTRAINT ck_pos_orders_status CHECK "
+                    "(status IN ('OPEN', 'CLOSED', 'CANCELLED', 'REFUNDED', "
+                    "'PARTIALLY_REFUNDED', 'DELETED', 'UNKNOWN')))",
+                ):
+                    connection.exec_driver_sql(statement)
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f8c2d4e6a1b3")
+                command.upgrade(config, "a4c8e2f6b1d3")
+
+                inspector = sa.inspect(engine)
+                expected = {
+                    "pos_terminal_groups",
+                    "pos_restaurant_sections",
+                    "pos_tables",
+                    "pos_product_variants",
+                    "pos_product_variant_options",
+                    "pos_modifier_groups",
+                    "pos_modifiers",
+                    "pos_product_modifier_rules",
+                    "pos_stop_list_entries",
+                    "pos_order_item_modifiers",
+                    "integration_commands",
+                    "integration_webhook_events",
+                    "pos_operational_snapshots",
+                }
+                self.assertTrue(expected.issubset(set(inspector.get_table_names())))
+                self.assertTrue(
+                    {"terminal_group_id", "restaurant_section_id", "table_id", "current_amount", "is_final"}.issubset(
+                        {column["name"] for column in inspector.get_columns("pos_orders")}
+                    )
+                )
+                command.downgrade(config, "f8c2d4e6a1b3")
+
+            inspector = sa.inspect(engine)
+            self.assertTrue(expected.isdisjoint(set(inspector.get_table_names())))
+            self.assertNotIn("terminal_group_id", {column["name"] for column in inspector.get_columns("pos_terminals")})
 
     def test_quickresto_acdm_shadow_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

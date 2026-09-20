@@ -94,6 +94,8 @@ from .integration_import_batch import IntegrationImportBatch
 from .integration_import_chunk import IntegrationImportChunk
 from .integration_quarantine import IntegrationQuarantine
 from .integration_reconciliation_run import IntegrationReconciliationRun
+from .integration_command import IntegrationCommand
+from .integration_webhook_event import IntegrationWebhookEvent
 from .pos_mapping import (
     POSEmployeeMapping,
     POSGroupDepartmentAllocation,
@@ -103,6 +105,7 @@ from .pos_mapping import (
 )
 from .pos_report_projection import POSReportProjection
 from .report_value_contribution import ReportValueContribution
+from .pos_operational_snapshot import POSOperationalSnapshot
 from .pos_canonical import (
     POSBusinessShift,
     POSEmployee,
@@ -113,12 +116,18 @@ from .pos_canonical import (
     POSOrderDiscount,
     POSOrderEvent,
     POSOrderItem,
+    POSOrderItemModifier,
     POSOrganization,
     POSPayment,
     POSPaymentType,
     POSProduct,
+    POSProductModifierRule,
+    POSProductOption,
+    POSProductOptionGroup,
     POSProductGroup,
     POSProductPrice,
+    POSProductVariant,
+    POSProductVariantOption,
     POSPurchaseDocument,
     POSPurchaseItem,
     POSRecipe,
@@ -127,7 +136,13 @@ from .pos_canonical import (
     POSStockMovement,
     POSStockSnapshot,
     POSSupplier,
+    POSModifier,
+    POSModifierGroup,
+    POSRestaurantSection,
+    POSStopListEntry,
+    POSTable,
     POSTerminal,
+    POSTerminalGroup,
     POSVenue,
     POSWarehouse,
     POSWriteoff,
@@ -234,6 +249,8 @@ __all__ = [
     "IntegrationImportChunk",
     "IntegrationQuarantine",
     "IntegrationReconciliationRun",
+    "IntegrationCommand",
+    "IntegrationWebhookEvent",
     "POSPaymentTypeMapping",
     "POSGroupDepartmentMapping",
     "POSGroupDepartmentAllocation",
@@ -241,12 +258,23 @@ __all__ = [
     "POSEmployeeMapping",
     "POSReportProjection",
     "ReportValueContribution",
+    "POSOperationalSnapshot",
     "POSOrganization",
     "POSVenue",
     "POSTerminal",
+    "POSTerminalGroup",
+    "POSRestaurantSection",
+    "POSTable",
     "POSPaymentType",
     "POSProductGroup",
     "POSProduct",
+    "POSProductOptionGroup",
+    "POSProductOption",
+    "POSProductVariant",
+    "POSProductVariantOption",
+    "POSModifierGroup",
+    "POSModifier",
+    "POSProductModifierRule",
     "POSProductPrice",
     "POSEmployee",
     "POSEmployeeAttendance",
@@ -265,8 +293,10 @@ __all__ = [
     "POSBusinessShift",
     "POSOrder",
     "POSOrderItem",
+    "POSOrderItemModifier",
     "POSOrderEvent",
     "POSPayment",
     "POSRefund",
     "POSOrderDiscount",
+    "POSStopListEntry",
 ]
