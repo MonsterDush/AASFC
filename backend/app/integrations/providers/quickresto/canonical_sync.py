@@ -663,6 +663,9 @@ def record_observed_capabilities(
         Capability.ORDER_EVENTS,
         Capability.RETURNS,
         Capability.DISCOUNTS,
+        Capability.GUEST_COUNT,
+        Capability.TERMINALS,
+        Capability.WAREHOUSES,
     }
     states: dict[Capability, CapabilityState] = {item: CapabilityState.SUPPORTED for item in observed}
     states.update({item: CapabilityState.DERIVED for item in derived})
@@ -674,6 +677,10 @@ def record_observed_capabilities(
         Capability.INVENTORY,
         Capability.PURCHASES,
         Capability.SUPPLIERS,
+        Capability.RECIPES,
+        Capability.STOCK_BALANCES,
+        Capability.STOCK_MOVEMENTS,
+        Capability.WRITEOFFS,
     }
     states.update({item: CapabilityState.UNAVAILABLE for item in unavailable})
     snapshot: dict[str, str] = {}

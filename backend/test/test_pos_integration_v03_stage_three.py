@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+import json
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -15,10 +17,18 @@ import app.models  # noqa: F401 -- register complete metadata
 from app.core.config import settings
 from app.core.db import Base
 from app.integrations.canonical.order_items import attribution_minor_for_item
+from app.integrations.canonical.composite_payloads import normalize_iiko_composite, normalize_quickresto_composite
+from app.integrations.base.capabilities import Capability, CapabilityState
+from app.integrations.base.dto import CanonicalDTO
+from app.integrations.base.errors import ProviderCapabilityError
+from app.integrations.providers.quickresto.provider import QuickRestoProviderAdapter
+from app.integrations.quality import assess_capability_freshness, validate_and_quarantine, validate_canonical_dto
 from app.models import (
     DailyReport,
     DailyReportValue,
+    IntegrationCapabilityState,
     IntegrationConnection,
+    IntegrationQuarantine,
     POSReportProjection,
     ReportValueContribution,
     User,
@@ -30,6 +40,9 @@ from app.services.integrations.report_facts import (
     load_report_facts,
     sync_manual_report_contributions,
 )
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pos"
 
 
 @compiles(JSONB, "sqlite")
@@ -233,6 +246,62 @@ class POSIntegrationStageThreeTests(unittest.TestCase):
         self.assertEqual(attribution_minor_for_item(unresolved_component), 0)
         self.assertEqual(attribution_minor_for_item(fallback_parent), 100_000)
 
+    def test_provider_neutral_validation_reopens_the_same_quarantine_issue(self):
+        dto = CanonicalDTO(
+            entity_type="PURCHASE",
+            external_id="purchase-1",
+            attributes={"supplier_external_id": "supplier-1", "supplier_id": None},
+        )
+        first = validate_and_quarantine(
+            self.db,
+            connection_id=1,
+            dto=dto,
+            affected_report_keys=("2031-03-10:DAY",),
+        )
+        self.db.flush()
+        first[0].status = "RESOLVED"
+        self.db.flush()
+        second = validate_and_quarantine(self.db, connection_id=1, dto=dto)
+        self.db.flush()
+        self.assertEqual(first[0].id, second[0].id)
+        self.assertEqual(second[0].status, "OPEN")
+
+    def test_quality_summary_surfaces_stale_capability_and_critical_issue(self):
+        from app.routers.pos_integrations import get_pos_integration_quality_summary
+
+        self.db.add_all(
+            [
+                IntegrationCapabilityState(
+                    connection_id=1,
+                    capability="ORDERS",
+                    state="SUPPORTED",
+                    last_success_at=datetime.now(timezone.utc) - timedelta(hours=8),
+                ),
+                IntegrationQuarantine(
+                    connection_id=1,
+                    issue_key="critical-1",
+                    entity_type="ORDER",
+                    external_id="order-1",
+                    error_class="VALIDATION",
+                    error_code="CLOSED_ORDER_WITHOUT_PAYMENT",
+                    severity="CRITICAL",
+                    status="OPEN",
+                    user_summary="Closed order has no positive payment",
+                ),
+            ]
+        )
+        self.db.commit()
+        with patch("app.routers.pos_integrations._require_view"):
+            result = get_pos_integration_quality_summary(
+                1,
+                stale_after_seconds=3600,
+                db=self.db,
+                user=SimpleNamespace(id=1),
+            )
+        self.assertEqual(result["health"], "FAILED")
+        self.assertEqual(result["critical_issue_count"], 1)
+        self.assertEqual(result["stale_capability_count"], 1)
+
 
 class StageThreeNotificationRegressionTests(unittest.TestCase):
     def test_successful_auto_import_does_not_enqueue_user_notification(self):
@@ -296,3 +365,121 @@ class StageThreeNotificationRegressionTests(unittest.TestCase):
         )
         self.assertIsNotNone(item)
         self.assertEqual(item["amount_minor"], 300_000)
+
+
+class StageThreeOperationalDepthTests(unittest.TestCase):
+    def test_operational_models_are_registered_with_expected_decimal_precision(self):
+        expected_tables = {
+            "pos_recipes",
+            "pos_recipe_items",
+            "pos_stock_snapshots",
+            "pos_stock_movements",
+            "pos_purchase_documents",
+            "pos_purchase_items",
+            "pos_writeoffs",
+            "pos_writeoff_items",
+            "pos_inventory_documents",
+            "pos_inventory_items",
+            "pos_employee_attendance",
+        }
+        self.assertTrue(expected_tables.issubset(Base.metadata.tables))
+        self.assertEqual(Base.metadata.tables["pos_stock_snapshots"].c.quantity.type.scale, 6)
+        self.assertEqual(Base.metadata.tables["pos_purchase_documents"].c.total_amount.type.scale, 4)
+
+    def test_provider_neutral_quality_rules_cover_stage_three_entities(self):
+        order = CanonicalDTO(
+            entity_type="ORDER",
+            external_id="order-1",
+            attributes={
+                "status": "CLOSED",
+                "net_amount": "-10.00",
+                "payment_amount": "0",
+                "items_count": 0,
+                "employee_external_id": "employee-1",
+                "employee_id": None,
+            },
+        )
+        self.assertEqual(
+            {issue.code for issue in validate_canonical_dto(order)},
+            {"NEGATIVE_REVENUE", "CLOSED_ORDER_WITHOUT_PAYMENT", "ORDER_WITHOUT_ITEMS", "UNKNOWN_EMPLOYEE"},
+        )
+        purchase = CanonicalDTO(
+            entity_type="PURCHASE",
+            external_id="purchase-1",
+            attributes={"supplier_external_id": "supplier-1", "supplier_id": None},
+        )
+        self.assertEqual([issue.code for issue in validate_canonical_dto(purchase)], ["PURCHASE_WITHOUT_SUPPLIER"])
+        inventory_item = CanonicalDTO(
+            entity_type="INVENTORY_ITEM",
+            external_id="inventory-item-1",
+            attributes={"product_external_id": "product-1", "product_id": None},
+        )
+        self.assertEqual(
+            [issue.code for issue in validate_canonical_dto(inventory_item)],
+            ["INVENTORY_UNKNOWN_PRODUCT"],
+        )
+
+    def test_freshness_distinguishes_stale_missing_and_unavailable_capabilities(self):
+        now = datetime(2031, 3, 10, 12, tzinfo=timezone.utc)
+        rows = [
+            SimpleNamespace(capability="ORDERS", state="SUPPORTED", last_success_at=now - timedelta(minutes=5)),
+            SimpleNamespace(capability="PRODUCTS", state="SUPPORTED", last_success_at=now - timedelta(hours=8)),
+            SimpleNamespace(capability="PURCHASES", state="UNKNOWN", last_success_at=None),
+            SimpleNamespace(capability="RECIPES", state="UNAVAILABLE", last_success_at=None),
+        ]
+        result = {
+            item.capability: item.freshness
+            for item in assess_capability_freshness(rows, stale_after_seconds=3600, now=now)
+        }
+        self.assertEqual(
+            result,
+            {"ORDERS": "FRESH", "PRODUCTS": "STALE", "PURCHASES": "NO_DATA", "RECIPES": "NOT_APPLICABLE"},
+        )
+
+    def test_iiko_and_quickresto_compounds_share_one_canonical_financial_shape(self):
+        quickresto = normalize_quickresto_composite(
+            json.loads((FIXTURES_DIR / "quickresto_compound_order_item.json").read_text(encoding="utf-8"))
+        )
+        iiko = normalize_iiko_composite(
+            json.loads((FIXTURES_DIR / "iiko_compound_order_item.json").read_text(encoding="utf-8"))
+        )
+
+        def signature(lines):
+            return [
+                (
+                    line.external_id,
+                    line.parent_external_id,
+                    line.item_role,
+                    line.component_role,
+                    line.product_external_id,
+                    line.quantity,
+                    line.net_amount,
+                    line.attributed_net_amount,
+                    line.included_in_parent,
+                )
+                for line in lines
+            ]
+
+        self.assertEqual(signature(quickresto), signature(iiko))
+        self.assertEqual(sum(line.attributed_net_amount or 0 for line in iiko), Decimal("750.00"))
+
+    def test_quickresto_stage_three_capabilities_are_truthful(self):
+        class Client:
+            def list_objects(self, **_kwargs):
+                return []
+
+            def list_all_objects(self, *, class_name, **_kwargs):
+                if class_name.endswith(".Store"):
+                    return [{"id": 7, "name": "Main store"}]
+                return []
+
+            def fallback_diagnostics(self):
+                return []
+
+        adapter = QuickRestoProviderAdapter(Client())
+        capabilities = adapter.get_capabilities()
+        self.assertEqual(capabilities[Capability.WAREHOUSES].state, CapabilityState.DERIVED)
+        self.assertEqual(capabilities[Capability.WRITEOFFS].state, CapabilityState.UNAVAILABLE)
+        self.assertEqual([row.external_id for row in adapter.iter_warehouses()], ["7"])
+        with self.assertRaises(ProviderCapabilityError):
+            adapter.iter_recipes()

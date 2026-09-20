@@ -42,8 +42,10 @@ class MigrationContractTests(unittest.TestCase):
         pos_foundation = scripts.get_revision("f3b7c1d9e5a2")
         quickresto_acdm_shadow = scripts.get_revision("f5d9a2c7e4b1")
         canonical_reports = scripts.get_revision("f7a1c3e5b9d2")
+        operational_depth = scripts.get_revision("f8c2d4e6a1b3")
 
-        self.assertEqual(heads, ["f7a1c3e5b9d2"])
+        self.assertEqual(heads, ["f8c2d4e6a1b3"])
+        self.assertEqual(operational_depth.down_revision, "f7a1c3e5b9d2")
         self.assertEqual(canonical_reports.down_revision, "f5d9a2c7e4b1")
         self.assertEqual(quickresto_acdm_shadow.down_revision, "f3b7c1d9e5a2")
         self.assertEqual(pos_foundation.down_revision, "e9a3c5f7b1d4")
@@ -126,6 +128,47 @@ class MigrationContractTests(unittest.TestCase):
             inspector = sa.inspect(engine)
             self.assertNotIn("integration_connections", inspector.get_table_names())
             self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
+
+    def test_pos_operational_depth_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE integration_connections (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_products (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_warehouses (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_suppliers (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_employees (id INTEGER PRIMARY KEY)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f7a1c3e5b9d2")
+                command.upgrade(config, "f8c2d4e6a1b3")
+
+                inspector = sa.inspect(engine)
+                expected = {
+                    "pos_recipes",
+                    "pos_recipe_items",
+                    "pos_stock_snapshots",
+                    "pos_stock_movements",
+                    "pos_purchase_documents",
+                    "pos_purchase_items",
+                    "pos_writeoffs",
+                    "pos_writeoff_items",
+                    "pos_inventory_documents",
+                    "pos_inventory_items",
+                    "pos_employee_attendance",
+                }
+                self.assertTrue(expected.issubset(set(inspector.get_table_names())))
+                self.assertEqual(
+                    {column["name"] for column in inspector.get_columns("pos_purchase_documents")}
+                    & {"supplier_id", "warehouse_id", "total_amount"},
+                    {"supplier_id", "warehouse_id", "total_amount"},
+                )
+                command.downgrade(config, "f7a1c3e5b9d2")
+
+            self.assertTrue(expected.isdisjoint(set(sa.inspect(engine).get_table_names())))
 
     def test_quickresto_acdm_shadow_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

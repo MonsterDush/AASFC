@@ -1,0 +1,12 @@
+{
+  "Id": "combo-1",
+  "ProductId": "combo-product",
+  "Name": "Lunch",
+  "Amount": "1",
+  "ResultSum": "750.00",
+  "PrimaryComponent": {"Id": "main-1", "ProductId": "main", "Name": "Soup", "Amount": 1},
+  "SecondaryComponent": {"Id": "side-1", "ProductId": "side", "Name": "Salad", "Amount": 1},
+  "CommonModifiers": [
+    {"Id": "mod-1", "ProductId": "bread", "Name": "Bread", "Amount": 1}
+  ]
+}
