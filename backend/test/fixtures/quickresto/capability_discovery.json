@@ -16,10 +16,10 @@
       {"id": 401, "name": "Fixture scheme"}
     ],
     "modifier_groups": [
-      {"id": 601, "name": "Fixture modifier group"}
+      {"id": 601, "className": "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.ModifierGroup", "name": "Fixture modifier group"}
     ],
     "modifiers": [
-      {"id": 602, "name": "Fixture modifier", "price": 99.0}
+      {"id": 602, "className": "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.Modifier", "name": "Fixture modifier", "price": 99.0}
     ],
     "dishes": [
       {"id": 701, "name": "Fixture dish"}

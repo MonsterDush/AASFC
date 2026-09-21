@@ -129,13 +129,36 @@ class QuickRestoCapabilityDiscoveryTests(unittest.TestCase):
 
         report = discover_quickresto_capabilities(_FixtureClient(fixture))
 
-        self.assertEqual(report.capabilities[Capability.CURRENT_BUSINESS_SHIFT].state, CapabilityState.DEGRADED)
-        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.DEGRADED)
-        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.DEGRADED)
+        self.assertEqual(report.capabilities[Capability.CURRENT_BUSINESS_SHIFT].state, CapabilityState.DERIVED)
+        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.UNKNOWN)
+        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.UNKNOWN)
         self.assertEqual(
             report.capabilities[Capability.OPEN_ORDERS].last_error_code,
             "FILTER_NOT_VERIFIED",
         )
+
+    def test_paid_by_partner_is_not_mistaken_for_open_order_status(self):
+        fixture = deepcopy(self.fixture)
+        fixture["lists"]["orders"] = [{"id": 201, "paidByPartner": False, "frontTotalPrice": 1234.56}]
+
+        report = discover_quickresto_capabilities(_FixtureClient(fixture))
+
+        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.UNKNOWN)
+        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.UNKNOWN)
+        order_surface = next(surface for surface in report.surfaces if surface.surface == "open_orders")
+        self.assertEqual(order_surface.error_code, "FILTER_NOT_VERIFIED")
+
+    def test_modifier_class_mismatch_is_not_reported_supported(self):
+        fixture = deepcopy(self.fixture)
+        fixture["lists"]["modifiers"][0]["className"] = (
+            "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.ModifierGroup"
+        )
+
+        report = discover_quickresto_capabilities(_FixtureClient(fixture))
+
+        self.assertEqual(report.capabilities[Capability.MODIFIERS].state, CapabilityState.DEGRADED)
+        modifier_surface = next(surface for surface in report.surfaces if surface.surface == "modifiers")
+        self.assertEqual(modifier_surface.error_code, "CLASS_NOT_VERIFIED")
 
     def test_adapter_caches_extended_probe_without_changing_legacy_reader(self):
         adapter = QuickRestoProviderAdapter(_FixtureClient(self.fixture))

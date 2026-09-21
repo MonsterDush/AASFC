@@ -208,6 +208,15 @@ def _contains_collection_path(evidence: QuickRestoSurfaceEvidence, fragments: tu
     )
 
 
+def _contains_exact_leaf(evidence: QuickRestoSurfaceEvidence, names: tuple[str, ...]) -> bool:
+    expected = {name.lower() for name in names}
+    for path in evidence.structural_paths:
+        leaf = path.rsplit(".", 1)[-1].replace("[]", "").lower()
+        if leaf in expected:
+            return True
+    return False
+
+
 def _probe_for_capability(
     capability: Capability,
     state: CapabilityState,
@@ -256,12 +265,20 @@ def discover_quickresto_capabilities(
                 note="OPEN filter returned rows outside the requested status",
             )
     surfaces.append(open_shift)
+    current_shift_state = (
+        CapabilityState.DERIVED
+        if open_shift.error_code == "FILTER_NOT_VERIFIED"
+        and _contains_exact_leaf(open_shift, ("status", "opened", "isOpen"))
+        else open_shift.state
+    )
     capabilities[Capability.CURRENT_BUSINESS_SHIFT] = _probe_for_capability(
         Capability.CURRENT_BUSINESS_SHIFT,
-        open_shift.state,
+        current_shift_state,
         checked_at,
         "QuickResto Shift /api/list accepted a read-only OPEN-status probe"
-        if open_shift.state is CapabilityState.SUPPORTED
+        if current_shift_state is CapabilityState.SUPPORTED
+        else "Current shift can be derived by local status filtering; the server ignored the OPEN filter"
+        if current_shift_state is CapabilityState.DERIVED
         else "QuickResto open-shift probe or its server-side filter could not be verified",
         error_code=open_shift.error_code,
     )
@@ -276,7 +293,14 @@ def discover_quickresto_capabilities(
         explicit_statuses = {
             str(row.get("status") or "").upper() for row in order_rows if row.get("status") is not None
         }
-        if explicit_statuses and explicit_statuses != {"OPEN"}:
+        if not explicit_statuses:
+            open_orders = replace(
+                open_orders,
+                state=CapabilityState.DEGRADED,
+                error_code="FILTER_NOT_VERIFIED",
+                note="OPEN filter returned rows without an explicit order status field",
+            )
+        elif explicit_statuses != {"OPEN"}:
             open_orders = replace(
                 open_orders,
                 state=CapabilityState.DEGRADED,
@@ -284,10 +308,14 @@ def discover_quickresto_capabilities(
                 note="OPEN filter returned orders outside the requested status",
             )
     surfaces.append(open_orders)
-    order_status_paths = ("status", "closed", "open", "paid", "orderstate")
-    can_identify_open = _contains_path(open_orders, order_status_paths)
+    can_identify_open = _contains_exact_leaf(
+        open_orders,
+        ("status", "orderStatus", "state", "closed", "isClosed", "open", "isOpen"),
+    )
     open_order_state = (
-        open_orders.state
+        CapabilityState.UNKNOWN
+        if open_orders.error_code == "FILTER_NOT_VERIFIED"
+        else open_orders.state
         if open_orders.state is not CapabilityState.SUPPORTED
         else CapabilityState.SUPPORTED
         if order_rows and can_identify_open
@@ -299,8 +327,8 @@ def discover_quickresto_capabilities(
         checked_at,
         "OrderInfo rows expose an identifiable operational status"
         if open_order_state is CapabilityState.SUPPORTED
-        else "OrderInfo endpoint responded, but open-order state was not evidenced by sampled structure"
-        if open_orders.state is CapabilityState.SUPPORTED
+        else "OrderInfo endpoint responded, but the OPEN filter and open-order state were not evidenced"
+        if open_orders.error_code == "FILTER_NOT_VERIFIED" or open_orders.state is CapabilityState.SUPPORTED
         else "QuickResto OrderInfo read-only probe failed",
         error_code=open_orders.error_code,
     )
@@ -355,14 +383,34 @@ def discover_quickresto_capabilities(
         )
 
     modifier_evidence = []
-    for surface, object_type in (("modifier_groups", "modifier_groups"), ("modifiers", "modifiers")):
-        evidence, _, _ = runner.probe(surface, object_type, limit=sample_limit, include_detail=True)
+    for surface, object_type, expected_class in (
+        ("modifier_groups", "modifier_groups", "ModifierGroup"),
+        ("modifiers", "modifiers", "Modifier"),
+    ):
+        evidence, rows, _ = runner.probe(surface, object_type, limit=sample_limit, include_detail=True)
+        if evidence.state is CapabilityState.SUPPORTED and rows:
+            class_names = {str(row.get("className") or "").rsplit(".", 1)[-1] for row in rows}
+            if class_names != {expected_class}:
+                evidence = replace(
+                    evidence,
+                    state=CapabilityState.DEGRADED,
+                    error_code="CLASS_NOT_VERIFIED",
+                    note=f"Endpoint rows did not exclusively identify as {expected_class}",
+                )
+        elif evidence.state is CapabilityState.SUPPORTED:
+            evidence = replace(
+                evidence,
+                state=CapabilityState.UNKNOWN,
+                note=f"No {expected_class} row was available for class validation",
+            )
         surfaces.append(evidence)
         modifier_evidence.append(evidence)
     modifier_state = (
         CapabilityState.SUPPORTED
         if all(item.state is CapabilityState.SUPPORTED for item in modifier_evidence)
         else CapabilityState.DEGRADED
+        if any(item.state is CapabilityState.DEGRADED for item in modifier_evidence)
+        else CapabilityState.UNKNOWN
     )
     capabilities[Capability.MODIFIERS] = _probe_for_capability(
         Capability.MODIFIERS,
