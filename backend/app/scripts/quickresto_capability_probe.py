@@ -45,8 +45,7 @@ def main() -> int:
     args = parser.parse_args()
 
     output_path = args.output or Path(
-        "/private/tmp/axelio-quickresto-capabilities-"
-        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        f"/private/tmp/axelio-quickresto-capabilities-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
     )
     if not output_path.is_absolute():
         raise ValueError("Capability probe output path must be absolute")

@@ -204,8 +204,7 @@ def _contains_path(evidence: QuickRestoSurfaceEvidence, fragments: tuple[str, ..
 
 def _contains_collection_path(evidence: QuickRestoSurfaceEvidence, fragments: tuple[str, ...]) -> bool:
     return any(
-        "[]" in path and any(fragment in path.lower() for fragment in fragments)
-        for path in evidence.structural_paths
+        "[]" in path and any(fragment in path.lower() for fragment in fragments) for path in evidence.structural_paths
     )
 
 
@@ -275,9 +274,7 @@ def discover_quickresto_capabilities(
     )
     if open_orders.state is CapabilityState.SUPPORTED and order_rows:
         explicit_statuses = {
-            str(row.get("status") or "").upper()
-            for row in order_rows
-            if row.get("status") is not None
+            str(row.get("status") or "").upper() for row in order_rows if row.get("status") is not None
         }
         if explicit_statuses and explicit_statuses != {"OPEN"}:
             open_orders = replace(
@@ -340,8 +337,7 @@ def discover_quickresto_capabilities(
     ):
         state = (
             CapabilityState.SUPPORTED
-            if schemes.state is CapabilityState.SUPPORTED
-            and _contains_collection_path(schemes, fragments)
+            if schemes.state is CapabilityState.SUPPORTED and _contains_collection_path(schemes, fragments)
             else CapabilityState.UNKNOWN
             if schemes.state is CapabilityState.SUPPORTED
             else schemes.state
