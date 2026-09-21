@@ -12,6 +12,7 @@ from app.services.integrations.quickresto_discovery import discover_quickresto_c
 
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "quickresto" / "capability_discovery.json"
+_LIVE_SHAPE_PATH = Path(__file__).parent / "fixtures" / "quickresto" / "capability_discovery_live_shape.json"
 
 
 class _FixtureClient:
@@ -129,13 +130,36 @@ class QuickRestoCapabilityDiscoveryTests(unittest.TestCase):
 
         report = discover_quickresto_capabilities(_FixtureClient(fixture))
 
-        self.assertEqual(report.capabilities[Capability.CURRENT_BUSINESS_SHIFT].state, CapabilityState.DEGRADED)
-        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.DEGRADED)
-        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.DEGRADED)
+        self.assertEqual(report.capabilities[Capability.CURRENT_BUSINESS_SHIFT].state, CapabilityState.DERIVED)
+        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.UNKNOWN)
+        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.UNKNOWN)
         self.assertEqual(
             report.capabilities[Capability.OPEN_ORDERS].last_error_code,
             "FILTER_NOT_VERIFIED",
         )
+
+    def test_paid_by_partner_is_not_mistaken_for_open_order_status(self):
+        fixture = deepcopy(self.fixture)
+        fixture["lists"]["orders"] = [{"id": 201, "paidByPartner": False, "frontTotalPrice": 1234.56}]
+
+        report = discover_quickresto_capabilities(_FixtureClient(fixture))
+
+        self.assertEqual(report.capabilities[Capability.OPEN_ORDERS].state, CapabilityState.UNKNOWN)
+        self.assertEqual(report.capabilities[Capability.CURRENT_ORDER_TOTAL].state, CapabilityState.UNKNOWN)
+        order_surface = next(surface for surface in report.surfaces if surface.surface == "open_orders")
+        self.assertEqual(order_surface.error_code, "FILTER_NOT_VERIFIED")
+
+    def test_modifier_class_mismatch_is_not_reported_supported(self):
+        fixture = deepcopy(self.fixture)
+        fixture["lists"]["modifiers"][0]["className"] = (
+            "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.ModifierGroup"
+        )
+
+        report = discover_quickresto_capabilities(_FixtureClient(fixture))
+
+        self.assertEqual(report.capabilities[Capability.MODIFIERS].state, CapabilityState.DEGRADED)
+        modifier_surface = next(surface for surface in report.surfaces if surface.surface == "modifiers")
+        self.assertEqual(modifier_surface.error_code, "CLASS_NOT_VERIFIED")
 
     def test_adapter_caches_extended_probe_without_changing_legacy_reader(self):
         adapter = QuickRestoProviderAdapter(_FixtureClient(self.fixture))
@@ -162,6 +186,18 @@ class QuickRestoCapabilityDiscoveryTests(unittest.TestCase):
             actual_module, actual_class = QUICKRESTO_OBJECT_TYPES[object_type]
             self.assertEqual(actual_module, module_name)
             self.assertTrue(actual_class.endswith(class_suffix))
+
+    def test_sanitized_live_shape_records_conservative_stage_two_result(self):
+        live_shape = json.loads(_LIVE_SHAPE_PATH.read_text(encoding="utf-8"))
+
+        self.assertFalse(live_shape["contains_payload_values"])
+        self.assertEqual(live_shape["capabilities"]["CURRENT_BUSINESS_SHIFT"], "DERIVED")
+        self.assertEqual(live_shape["capabilities"]["OPEN_ORDERS"], "UNKNOWN")
+        self.assertEqual(live_shape["capabilities"]["MODIFIERS"], "DEGRADED")
+        self.assertEqual(live_shape["capabilities"]["TABLES"], "SUPPORTED")
+        serialized = json.dumps(live_shape, ensure_ascii=False).lower()
+        for forbidden in ("firstname", "lastname", "fullname", "email", "phone", "password", "login"):
+            self.assertNotIn(forbidden, serialized)
 
 
 if __name__ == "__main__":
