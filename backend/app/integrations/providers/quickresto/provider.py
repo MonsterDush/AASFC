@@ -24,6 +24,10 @@ from app.services.integrations.quickresto import (
     QuickRestoError,
     QuickRestoHTTPError,
 )
+from app.services.integrations.quickresto_discovery import (
+    QuickRestoDiscoveryReport,
+    discover_quickresto_capabilities,
+)
 from app.services.integrations.quickresto_normalize import QuickRestoDataError, business_date_for_shift
 
 
@@ -50,6 +54,7 @@ class QuickRestoProviderAdapter:
         self._successful_probes: set[Capability] = set()
         self._last_probe_at: datetime | None = None
         self._server_filter_verified = False
+        self._extended_capability_probes: dict[Capability, CapabilityProbe] = {}
 
     @classmethod
     def from_credentials(cls, credentials: ProviderCredentials) -> QuickRestoProviderAdapter:
@@ -77,6 +82,14 @@ class QuickRestoProviderAdapter:
             translated = self._translate_error(exc)
             return ProviderHealth(healthy=False, checked_at=checked_at, message=str(translated))
         return ProviderHealth(healthy=True, checked_at=checked_at, message="QuickResto read-only API responded")
+
+    def verify_credentials(self) -> ProviderHealth:
+        return self.health_check()
+
+    def probe_extended_capabilities(self, *, sample_limit: int = 5) -> QuickRestoDiscoveryReport:
+        report = discover_quickresto_capabilities(self.client, sample_limit=sample_limit)
+        self._extended_capability_probes = dict(report.capabilities)
+        return report
 
     def get_capabilities(self) -> Mapping[Capability, CapabilityProbe]:
         checked_at = datetime.now(timezone.utc)
@@ -182,6 +195,7 @@ class QuickRestoProviderAdapter:
                     else None
                 ),
             )
+        results.update(self._extended_capability_probes)
         self._last_probe_at = checked_at
         return results
 
