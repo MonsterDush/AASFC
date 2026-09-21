@@ -31,7 +31,18 @@ def _allowlisted_payload(payload: Mapping[str, Any], allowed_fields: Collection[
 
 
 def _reject_secret_fields(value: Any, *, path: str = "payload") -> None:
-    forbidden = {"authorization", "password", "token", "secret", "api_key", "apikey", "api-key"}
+    forbidden = {
+        "authorization",
+        "password",
+        "token",
+        "tokens",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "api_key",
+        "apikey",
+        "api-key",
+    }
     if isinstance(value, Mapping):
         for key, child in value.items():
             normalized_key = str(key).strip().lower()

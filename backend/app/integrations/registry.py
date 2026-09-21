@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .base.credentials import ProviderCredentials
-from .base.provider import ProviderAdapter, ProviderAdapters
+from .base.provider import ProviderAdapter, ProviderAdapters, ProviderOperationalAdapter
 
 
 ProviderFactory = Callable[[ProviderCredentials], ProviderAdapter | ProviderAdapters]
@@ -49,7 +49,13 @@ class ProviderRegistry:
 
         normalized, product = self._build_product(provider_code, credentials)
         bundle = (
-            product if isinstance(product, ProviderAdapters) else ProviderAdapters(discovery=product, reader=product)
+            product
+            if isinstance(product, ProviderAdapters)
+            else ProviderAdapters(
+                discovery=product,
+                reader=product,
+                operational=product if isinstance(product, ProviderOperationalAdapter) else None,
+            )
         )
         adapters = (
             bundle.discovery,
