@@ -45,16 +45,29 @@ The default output is a timestamped JSON file in `/private/tmp`. Supplying
 
 ## Current live evidence
 
-Two read-only attempts on 2026-09-21 used the configured real Quick Resto
-account. The first timed out during the TLS handshake; the Stage 2 probe then
-reported a connection failure. Neither received an HTTP response or payload.
-An unauthenticated transport check established TLS in about 0.2 seconds, after
-which the cloud closed the stream with an HTTP/2 protocol error; forcing
-HTTP/1.1 produced a connection reset.
-The circuit breaker stopped the remaining calls after the global transport
-failure while preserving all matrix rows as `DEGRADED`. Documentation-only
-surfaces remain `UNKNOWN`; none is promoted to `SUPPORTED`. A later successful
-probe may update the matrix without changing discovery code.
+On 2026-09-21 the probe was executed in an isolated temporary checkout on the
+production host using the already configured encrypted Quick Resto connection
+for venue 21. It did not change the production checkout, database, services or
+feature flags. The temporary checkout and report were deleted on exit.
+
+The live result established:
+
+- current shift is `DERIVED`: the server ignored `status=OPEN`, while exact
+  `status` and `opened` fields allow local filtering;
+- tables, halls, employees, inventory documents, purchases and write-offs are
+  `SUPPORTED`;
+- stock movements are `DERIVED` from confirmed document surfaces;
+- open orders and current order total remain `UNKNOWN`: `OrderInfo` exposes
+  table, waiter and amount fields, but not an explicit open/closed state, and
+  the requested OPEN filter could not be verified;
+- modifiers are `DEGRADED`: both documented class requests returned rows whose
+  schema class was `ModifierGroup`;
+- variants/configurations, stop lists and stock balances remain `UNKNOWN`.
+
+No payload values, credentials, employee names or customer data were retained.
+The synthetic fixture and sanitized live-shape fixture cover the resulting
+contract and prevent a field such as `paidByPartner` from being mistaken for an
+open-order state.
 
 ## Stage boundary
 

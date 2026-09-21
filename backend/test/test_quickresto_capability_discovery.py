@@ -12,6 +12,7 @@ from app.services.integrations.quickresto_discovery import discover_quickresto_c
 
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "quickresto" / "capability_discovery.json"
+_LIVE_SHAPE_PATH = Path(__file__).parent / "fixtures" / "quickresto" / "capability_discovery_live_shape.json"
 
 
 class _FixtureClient:
@@ -185,6 +186,18 @@ class QuickRestoCapabilityDiscoveryTests(unittest.TestCase):
             actual_module, actual_class = QUICKRESTO_OBJECT_TYPES[object_type]
             self.assertEqual(actual_module, module_name)
             self.assertTrue(actual_class.endswith(class_suffix))
+
+    def test_sanitized_live_shape_records_conservative_stage_two_result(self):
+        live_shape = json.loads(_LIVE_SHAPE_PATH.read_text(encoding="utf-8"))
+
+        self.assertFalse(live_shape["contains_payload_values"])
+        self.assertEqual(live_shape["capabilities"]["CURRENT_BUSINESS_SHIFT"], "DERIVED")
+        self.assertEqual(live_shape["capabilities"]["OPEN_ORDERS"], "UNKNOWN")
+        self.assertEqual(live_shape["capabilities"]["MODIFIERS"], "DEGRADED")
+        self.assertEqual(live_shape["capabilities"]["TABLES"], "SUPPORTED")
+        serialized = json.dumps(live_shape, ensure_ascii=False).lower()
+        for forbidden in ("firstname", "lastname", "fullname", "email", "phone", "password", "login"):
+            self.assertNotIn(forbidden, serialized)
 
 
 if __name__ == "__main__":

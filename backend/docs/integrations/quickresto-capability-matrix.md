@@ -6,19 +6,19 @@ the live status to `SUPPORTED` or `DERIVED`.
 
 | Canonical capability | Quick Resto API 2.92 | Live probe status | Canonical model | Stage |
 |---|---|---|---|---|
-| `CURRENT_BUSINESS_SHIFT` | `front.zreport.Shift`, list filtered by `status=OPEN` | `DEGRADED` — 2026-09-21 probes ended before an HTTP response (TLS timeout, then connection failure) | `POSBusinessShift`, `POSOperationalSnapshot` | 2 discovery; normalization in 3 |
-| `OPEN_ORDERS` | `front.orders.OrderInfo`, list filtered by `status=OPEN` | `DEGRADED` — live payload structure unverified | `POSOrder`, `POSOperationalSnapshot` | 2 discovery; normalization in 3 |
-| `CURRENT_ORDER_TOTAL` | candidate amount/total field in an open `OrderInfo` | `UNKNOWN` until an open-order amount field is observed | `POSOrder.current_amount` | 2 discovery; normalization in 3 |
-| `TABLES` | `front.tablemanagement.TableScheme` detail | `DEGRADED` — live collection structure not yet received | `POSTable` | 2 discovery; normalization in 3 |
-| `RESTAURANT_SECTIONS` | `front.tablemanagement.TableScheme` detail | `DEGRADED` — live collection structure not yet received | `POSRestaurantSection` | 2 discovery; normalization in 3 |
-| `MODIFIERS` | `warehouse.nomenclature.mods.Modifier` and `ModifierGroup` | `DEGRADED` — documented endpoints, no live payload | `POSModifier`, `POSModifierGroup`, `POSProductModifierRule` | 2 discovery; normalization in 3 |
-| `PRODUCT_VARIANTS` | candidate configuration/option structure in `warehouse.nomenclature.dish.Dish` detail | `UNKNOWN` until sampled structure is observed | `POSProductVariant`, `POSProductOption`, `POSProductVariantOption` | 2 discovery; normalization in 3 |
-| `EMPLOYEES` | `personnel.employee.Employee` | `DEGRADED` — documented endpoint, no live payload | `POSEmployee` | 2 discovery; normalization in 3 |
+| `CURRENT_BUSINESS_SHIFT` | `front.zreport.Shift` | `DERIVED` — the real cloud ignored `status=OPEN`, but rows expose exact `status`/`opened` fields for local filtering | `POSBusinessShift`, `POSOperationalSnapshot` | local-filter normalization in 3 |
+| `OPEN_ORDERS` | `front.orders.OrderInfo` | `UNKNOWN` — the real response has order/table/waiter/amount fields but no explicit open/closed state; `status=OPEN` was not verifiable | `POSOrder`, `POSOperationalSnapshot` | requires another source or correlation proof |
+| `CURRENT_ORDER_TOTAL` | `frontTotalPrice` and related amount fields in `OrderInfo` | `UNKNOWN` — amount exists, but no sampled row was proven to be an open order | `POSOrder.current_amount` | blocked by `OPEN_ORDERS` evidence |
+| `TABLES` | `front.tablemanagement.TableScheme.tables` | `SUPPORTED` — list/read exposed table identity, capacity, shape and coordinates | `POSTable` | normalization in 3 |
+| `RESTAURANT_SECTIONS` | `front.tablemanagement.TableScheme.webHalls` | `SUPPORTED` — list/read exposed halls with nested tables | `POSRestaurantSection` | normalization in 3 |
+| `MODIFIERS` | `warehouse.nomenclature.mods.Modifier` and `ModifierGroup` | `DEGRADED` — on the real cloud both class requests returned `ModifierGroup`; independent modifier rows were not proven | `POSModifier`, `POSModifierGroup`, `POSProductModifierRule` | requires alternate source/class evidence |
+| `PRODUCT_VARIANTS` | candidate configuration/option structure in `warehouse.nomenclature.dish.Dish` detail | `UNKNOWN` — sampled list/read had sales and price structure but no configuration/variant/option structure | `POSProductVariant`, `POSProductOption`, `POSProductVariantOption` | requires another source or representative data |
+| `EMPLOYEES` | `personnel.employee.Employee` | `SUPPORTED` — real list response exposed stable identity and active/blocked structure | `POSEmployee` | normalization in 3 |
 | `STOP_LISTS` | no dedicated read endpoint documented in API 2.92 | `UNKNOWN`; the product UI is not API evidence | `POSStopListEntry` | requires provider evidence before 3 |
-| `INVENTORY` | `warehouse.inventory.document.v2.InventoryDocument2` | `DEGRADED` — documented endpoint, no live payload | `POSInventoryDocument`, `POSInventoryItem` | 2 discovery; normalization in 3 |
-| `PURCHASES` | `warehouse.documents.incoming.IncomingInvoice` | `DEGRADED` — documented endpoint, no live payload | `POSPurchaseDocument`, `POSPurchaseItem` | 2 discovery; normalization in 3 |
-| `WRITEOFFS` | `warehouse.documents.discard.DiscardInvoice` | `DEGRADED` — documented endpoint, no live payload | `POSWriteoff`, `POSWriteoffItem` | 2 discovery; normalization in 3 |
-| `STOCK_MOVEMENTS` | inventory, incoming, outgoing, discard, exchange, cooking, decomposition and processing documents | `DEGRADED`; becomes `DERIVED` after at least one successful document probe | `POSStockMovement` | 2 discovery; derivation in 3 |
+| `INVENTORY` | `warehouse.inventory.document.v2.InventoryDocument2` | `SUPPORTED` — real rows exposed store, date, processed state and totals | `POSInventoryDocument`, `POSInventoryItem` | normalization in 3 |
+| `PURCHASES` | `warehouse.documents.incoming.IncomingInvoice` | `SUPPORTED` — real rows exposed provider, store, date, paid/processed state and totals | `POSPurchaseDocument`, `POSPurchaseItem` | normalization in 3 |
+| `WRITEOFFS` | `warehouse.documents.discard.DiscardInvoice` | `SUPPORTED` — real rows exposed store, reason, date, processed state and totals | `POSWriteoff`, `POSWriteoffItem` | normalization in 3 |
+| `STOCK_MOVEMENTS` | inventory, incoming, outgoing, discard, exchange, cooking, decomposition and processing documents | `DERIVED` — multiple document surfaces returned live structural evidence | `POSStockMovement` | derivation in 3 |
 | `STOCK_BALANCES` | no dedicated stock-balance list endpoint documented in API 2.92 | `UNKNOWN` | `POSStockSnapshot` | requires provider evidence before 3 |
 
 The existing historical Quick Resto paths for closed shifts, orders, payment
