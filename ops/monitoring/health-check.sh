@@ -4,7 +4,6 @@ set -euo pipefail
 : "${APP_ROOT:?Set APP_ROOT}"
 : "${API_BASE_URL:?Set API_BASE_URL}"
 : "${API_SERVICE:?Set API_SERVICE}"
-: "${BOT_SERVICE:?Set BOT_SERVICE}"
 : "${NOTIFY_TIMER:?Set NOTIFY_TIMER}"
 : "${BOT_SERVICE_URL:?Set BOT_SERVICE_URL}"
 : "${BOT_SERVICE_SECRET:?Set BOT_SERVICE_SECRET}"
@@ -38,13 +37,16 @@ check_active() {
 }
 
 check_active "${API_SERVICE}"
-check_active "${BOT_SERVICE}"
+if [[ -n "${BOT_SERVICE:-}" ]]; then
+  check_active "${BOT_SERVICE}"
+fi
 check_active "${NOTIFY_TIMER}"
 check_active "axelio-backup-prod.timer"
 
 health_body="$(mktemp)"
+bot_health_body="$(mktemp)"
 health_meta=""
-cleanup() { rm -f -- "${health_body}"; }
+cleanup() { rm -f -- "${health_body}" "${bot_health_body}"; }
 trap cleanup EXIT
 if health_meta="$(curl --fail --silent --show-error --max-time 15 \
   --output "${health_body}" \
@@ -71,6 +73,22 @@ PY
   fi
 else
   failures+=("API readiness is unavailable")
+fi
+
+if curl --fail --silent --show-error --max-time 15 \
+  --output "${bot_health_body}" \
+  "${BOT_SERVICE_URL%/}/health"; then
+  if ! "${python_bin}" - "${bot_health_body}" <<'PY'
+import json, sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+if payload.get("ok") is not True:
+    raise SystemExit(1)
+PY
+  then
+    failures+=("Bot service health payload is invalid")
+  fi
+else
+  failures+=("Bot service health is unavailable")
 fi
 
 newest_backup="$(find "${backup_dir}/daily" -maxdepth 1 -type f -name '*.dump.enc' -print 2>/dev/null | sort | tail -n 1)"
