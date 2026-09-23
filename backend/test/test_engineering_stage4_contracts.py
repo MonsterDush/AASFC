@@ -104,6 +104,8 @@ class MonitoringContractTests(TestCase):
         for contract in (
             "systemctl is-active",
             "/health/ready",
+            '"${BOT_SERVICE_URL%/}/health"',
+            '[[ -n "${BOT_SERVICE:-}" ]]',
             "production backup is stale",
             "failed_payments_24h",
             "open_reconciliation_high",
