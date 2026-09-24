@@ -46,6 +46,7 @@ assert.ok(memoryStorage.has(dashboardLayoutStorageKey(21, "mobile")));
 
 const html = read("owner-dashboard.html");
 const script = read("owner-dashboard.js");
+const app = read("app.js");
 const navigation = read("app/navigation.js");
 const index = read("index.html");
 const expenses = read("owner-expenses.js");
@@ -58,7 +59,11 @@ assert.match(script, /finance\/summary\?month=/);
 assert.match(script, /action", item\.action/);
 assert.match(script, /quality-summary/);
 assert.match(script, /economics\/day/);
-assert.match(navigation, /owner-dashboard\.html/);
+assert.match(html, /owner-dashboard\.js\?v=20260924-dashboardnav1/);
+assert.match(script, /app\.js\?v=20260924-dashboardnav1/);
+assert.match(app, /app\/navigation\.js\?v=20260924-dashboardnav1/);
+assert.match(navigation, /title: t\("dashboard"\).*owner-dashboard\.html/s);
+assert.doesNotMatch(navigation, /owner-summary\.html/);
 assert.match(index, /owner-dashboard\.html/);
 assert.match(expenses, /params\.get\("action"\) === "add"/);
 

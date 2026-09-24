@@ -2,7 +2,7 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
-import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
+import { createNavigation } from "/app/navigation.js?v=20260924-dashboardnav1";
 import { createUiPreferences } from "/app/ui-preferences.js?v=20260813-assurance2";
 import { enableDemoMetrika, disableDemoMetrika, trackDemoMetrikaEvent } from "/app/demo-metrika.js?v=20260820-demo1";
 

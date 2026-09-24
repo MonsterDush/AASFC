@@ -17,7 +17,7 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardnav1";
 import { intervalPositionIds, intervalPositionLabel, positionMatchesInterval, availableIntervalsForMember, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
