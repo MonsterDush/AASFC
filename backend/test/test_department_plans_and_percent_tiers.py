@@ -325,6 +325,7 @@ class DepartmentPlansAndTiersTests(TestCase):
                 result = self.decision(component, actual)
                 self.assertEqual(result.applied_percent_bps, rate)
                 self.assertEqual(result.amount_minor, actual * rate // 10000)
+                self.assertEqual(sum(row["amount_minor"] for row in result.day_rows), result.amount_minor)
         for target in [None, 0]:
             self.assertEqual(self.decision(component, target=target).amount_minor, 3510000)
         snapshot = _build_percent_component_snapshot(component, self.decision(component))
@@ -353,10 +354,9 @@ class DepartmentPlansAndTiersTests(TestCase):
         result = self.decision(component, daily={date(2026, 9, 4): 117000000, date(2026, 9, 5): 99000000})
         self.assertEqual(result.amount_minor, 5850000 + 4000000)
         component.maximum_cap_minor = 8000000
-        self.assertEqual(
-            self.decision(component, daily={date(2026, 9, 4): 117000000, date(2026, 9, 5): 99000000}).amount_minor,
-            8000000,
-        )
+        capped = self.decision(component, daily={date(2026, 9, 4): 117000000, date(2026, 9, 5): 99000000})
+        self.assertEqual(capped.amount_minor, 8000000)
+        self.assertEqual(sum(row["amount_minor"] for row in capped.day_rows), capped.amount_minor)
 
     def test_venue_and_multiple_department_sources(self):
         venue_component = self.create_component(
