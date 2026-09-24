@@ -211,8 +211,10 @@ class FrontendAssuranceContractTests(TestCase):
 
         self.assertIn("--data-file=.coverage.unit", workflow)
         self.assertIn("--data-file=.coverage.e2e", workflow)
+        self.assertIn("--data-file=.coverage.night", workflow)
+        self.assertIn("-m app.scripts.verify_night_shift_e2e", workflow)
         self.assertIn("coverage combine --keep", workflow)
-        self.assertIn("--fail-under=60", workflow)
+        self.assertIn("--fail-under=75", workflow)
 
     def test_versioned_static_assets_are_immutable_and_smoke_checked(self):
         cache_map = (REPO_DIR / "ops/nginx/axelio-cache-map.conf").read_text(encoding="utf-8")

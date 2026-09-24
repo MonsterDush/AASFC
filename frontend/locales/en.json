@@ -1135,6 +1135,8 @@
   "Должность создана": "Role created",
   "Должность:": "Position:",
   "Доля месячного начисления": "Share of monthly payout",
+  "Доля месячного начисления по выручке": "Share of monthly payout by revenue",
+  "Доля месячного начисления по выручке дня": "Share of monthly payout allocated by daily revenue",
   "Доля прибыли от выручки за период.": "Profit as a share of revenue for the period.",
   "Доля, сумма и изменение относительно периода сравнения.": "Share, amount and change relative to the comparison period.",
   "Доп. настройка": "Additional setup",
