@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 56)
+        self.assertEqual(len(html_pages), 57)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -843,7 +843,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 57)
+        self.assertEqual(consumer_count, 58)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

@@ -124,7 +124,7 @@ const role = String(v?.my_role || "").toUpperCase();
 if (role) {
   location.replace(role === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
-    : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
+    : `/owner-dashboard.html?venue_id=${encodeURIComponent(vid)}`
   );
   return;
 }
@@ -135,7 +135,7 @@ try {
   const r = String(perms?.role || "").toUpperCase();
   location.replace(r === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
-    : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
+    : `/owner-dashboard.html?venue_id=${encodeURIComponent(vid)}`
   );
   return;
 } catch {

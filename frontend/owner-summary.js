@@ -966,14 +966,14 @@ async function loadSummary() {
 
 async function boot() {
   applyTelegramTheme();
-  mountCommonUI("summary");
+  mountCommonUI("dashboard");
   await ensureLogin({ silent: true });
 
   const params = new URLSearchParams(location.search);
   const venueId = params.get("venue_id") || getActiveVenueId();
   if (venueId) setActiveVenueId(venueId);
 
-  await mountNav({ activeTab: "summary" });
+  await mountNav({ activeTab: "dashboard" });
 
   try {
     const venues = await getMyVenues();

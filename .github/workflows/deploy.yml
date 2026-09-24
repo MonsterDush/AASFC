@@ -165,6 +165,7 @@ jobs:
           node frontend/positions_split_check.mjs
           node frontend/staff_shifts_split_check.mjs
           node frontend/style_contract_check.mjs
+          node frontend/owner_dashboard_contract_check.mjs
           node frontend/finance_ledger_contract_check.mjs
           node frontend/finance_summary_contract_check.mjs
           node frontend/payroll_analytics_contract_check.mjs
