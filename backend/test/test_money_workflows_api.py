@@ -95,14 +95,18 @@ class MoneyWorkflowApiTests(unittest.TestCase):
                 is_demo_user=False,
                 demo_persona=None,
             )
-            self.staff_id = db.execute(
-                select(VenueMember.user_id)
-                .where(
-                    VenueMember.venue_id == self.venue_id,
-                    VenueMember.venue_role == "STAFF",
+            self.staff_id = (
+                db.execute(
+                    select(VenueMember.user_id)
+                    .where(
+                        VenueMember.venue_id == self.venue_id,
+                        VenueMember.venue_role == "STAFF",
+                    )
+                    .order_by(VenueMember.user_id)
                 )
-                .order_by(VenueMember.user_id)
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             staff_row = db.get(User, int(self.staff_id))
             self.staff = SimpleNamespace(
                 id=int(staff_row.id),
@@ -122,16 +126,24 @@ class MoneyWorkflowApiTests(unittest.TestCase):
                     .order_by(PaymentMethod.id)
                 ).scalars()
             )
-            self.category_id = db.execute(
-                select(ExpenseCategory.id)
-                .where(ExpenseCategory.venue_id == self.venue_id, ExpenseCategory.is_active.is_(True))
-                .order_by(ExpenseCategory.id)
-            ).scalars().first()
-            self.supplier_id = db.execute(
-                select(Supplier.id)
-                .where(Supplier.venue_id == self.venue_id, Supplier.is_active.is_(True))
-                .order_by(Supplier.id)
-            ).scalars().first()
+            self.category_id = (
+                db.execute(
+                    select(ExpenseCategory.id)
+                    .where(ExpenseCategory.venue_id == self.venue_id, ExpenseCategory.is_active.is_(True))
+                    .order_by(ExpenseCategory.id)
+                )
+                .scalars()
+                .first()
+            )
+            self.supplier_id = (
+                db.execute(
+                    select(Supplier.id)
+                    .where(Supplier.venue_id == self.venue_id, Supplier.is_active.is_(True))
+                    .order_by(Supplier.id)
+                )
+                .scalars()
+                .first()
+            )
             self.department_ids = list(
                 db.execute(
                     select(Department.id)
@@ -176,11 +188,7 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         profile_details = [
             self.json("GET", f"/venues/{self.venue_id}/pay-profiles/{profile['id']}") for profile in profiles
         ]
-        seeded_types = {
-            component["component_type"]
-            for detail in profile_details
-            for component in detail["components"]
-        }
+        seeded_types = {component["component_type"] for detail in profile_details for component in detail["components"]}
         self.assertEqual(
             seeded_types,
             {
@@ -216,9 +224,7 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         for line in ranged["lines"]:
             breakdown = line["breakdown"]
             self.assertEqual(breakdown["summary"]["total_minor"], line["amount_minor"])
-            payable_components = [
-                item for item in breakdown["components"] if str(item.get("category") or "") != "tip"
-            ]
+            payable_components = [item for item in breakdown["components"] if str(item.get("category") or "") != "tip"]
             self.assertEqual(sum(item["amount_minor"] for item in payable_components), line["amount_minor"])
 
         partial = self.json(
@@ -505,10 +511,7 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertEqual(reconciliation["issue_count"], baseline_reconciliation["issue_count"])
         self.assertEqual(
             {(item["check_key"], item["source_type"], item["source_id"]) for item in reconciliation["issues"]},
-            {
-                (item["check_key"], item["source_type"], item["source_id"])
-                for item in baseline_reconciliation["issues"]
-            },
+            {(item["check_key"], item["source_type"], item["source_id"]) for item in baseline_reconciliation["issues"]},
         )
 
         rule = self.json(
@@ -649,7 +652,9 @@ class MoneyWorkflowApiTests(unittest.TestCase):
             params={"date": "2026-09-10", "shift_slot": "TOTAL"},
         )
         self.assertEqual(day["date"], "2026-09-10")
-        self.assertEqual(day["summary"]["profit_minor"], day["summary"]["revenue_minor"] - day["summary"]["total_cost_minor"])
+        self.assertEqual(
+            day["summary"]["profit_minor"], day["summary"]["revenue_minor"] - day["summary"]["total_cost_minor"]
+        )
         self.assertEqual(
             day["summary"]["revenue_breakdown_total_minor"] - day["summary"]["revenue_minor"],
             day["summary"]["revenue_discrepancy_minor"],
@@ -978,12 +983,10 @@ class MoneyWorkflowApiTests(unittest.TestCase):
             },
             "alerts": alerts,
             "payment_revenue_breakdown": [
-                {"title": f"Payment {index}", "amount_minor": 100_000 + index}
-                for index in range(9)
+                {"title": f"Payment {index}", "amount_minor": 100_000 + index} for index in range(9)
             ],
             "department_revenue_breakdown": [
-                {"title": f"Department {index}", "amount_minor": 200_000 + index}
-                for index in range(9)
+                {"title": f"Department {index}", "amount_minor": 200_000 + index} for index in range(9)
             ],
         }
         selected = notifications._select_soft_alerts_for_notification(economics)
@@ -1405,9 +1408,7 @@ class MoneyWorkflowApiTests(unittest.TestCase):
             expected=404,
             json={"paid_until": "2035-01-01T00:00:00Z"},
         )
-        self.request(
-            "POST", "/admin/venues/999999/billing/refund", expected=404, json={"amount_minor": 10_000}
-        )
+        self.request("POST", "/admin/venues/999999/billing/refund", expected=404, json={"amount_minor": 10_000})
 
         promo_rows = self.json("GET", "/admin/billing/promocodes")["items"]
         self.assertGreaterEqual(len(promo_rows), 3)
@@ -1432,7 +1433,10 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertIsNone(billing_manager.get_checkout_expires_at(None))
 
         now = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
-        with Session(self.engine, expire_on_commit=False) as db, patch.object(billing_manager, "utcnow", return_value=now):
+        with (
+            Session(self.engine, expire_on_commit=False) as db,
+            patch.object(billing_manager, "utcnow", return_value=now),
+        ):
             state = billing_manager.get_or_create_billing_state(db, venue_id=self.venue_id)
             state.status = "ACTIVE"
             state.paid_until = now - timedelta(days=1)
@@ -1521,9 +1525,7 @@ class MoneyWorkflowApiTests(unittest.TestCase):
             )
             self.assertEqual(request_event.event_type, "ROBOKASSA_REFUND_REQUESTED")
             self.assertEqual(
-                billing_manager.get_reserved_refund_amount_for_payment(
-                    db, payment_transaction_id=paid.id
-                ),
+                billing_manager.get_reserved_refund_amount_for_payment(db, payment_transaction_id=paid.id),
                 50_000,
             )
             self.assertEqual(

@@ -27,24 +27,12 @@ def _session_context(db: MagicMock) -> MagicMock:
 
 class MoneyOperationalScriptTests(unittest.TestCase):
     def test_billing_delivery_filters_deduplicates_localizes_and_records_results(self):
-        disabled = SimpleNamespace(
-            id=1, tg_user_id=101, notify_enabled=False, preferred_locale="ru"
-        )
-        no_chat = SimpleNamespace(
-            id=2, tg_user_id=None, notify_enabled=True, preferred_locale="ru"
-        )
-        english = SimpleNamespace(
-            id=3, tg_user_id=303, notify_enabled=True, preferred_locale="en"
-        )
-        duplicate = SimpleNamespace(
-            id=4, tg_user_id=303, notify_enabled=True, preferred_locale="ru"
-        )
-        failed = SimpleNamespace(
-            id=5, tg_user_id=505, notify_enabled=True, preferred_locale="ru"
-        )
-        already_sent = SimpleNamespace(
-            id=6, tg_user_id=606, notify_enabled=True, preferred_locale="ru"
-        )
+        disabled = SimpleNamespace(id=1, tg_user_id=101, notify_enabled=False, preferred_locale="ru")
+        no_chat = SimpleNamespace(id=2, tg_user_id=None, notify_enabled=True, preferred_locale="ru")
+        english = SimpleNamespace(id=3, tg_user_id=303, notify_enabled=True, preferred_locale="en")
+        duplicate = SimpleNamespace(id=4, tg_user_id=303, notify_enabled=True, preferred_locale="ru")
+        failed = SimpleNamespace(id=5, tg_user_id=505, notify_enabled=True, preferred_locale="ru")
+        already_sent = SimpleNamespace(id=6, tg_user_id=606, notify_enabled=True, preferred_locale="ru")
         recipients = [disabled, no_chat, english, duplicate, failed, already_sent]
 
         db = MagicMock()
