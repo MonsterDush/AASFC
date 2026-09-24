@@ -231,14 +231,16 @@ jobs:
           done
 
           pnpm test:browser
+          (cd backend && python -m coverage run --branch --source=app \
+            --data-file=.coverage.night -m app.scripts.verify_night_shift_e2e)
           kill -USR1 "${api_pid}"
           sleep 1
 
       - name: Enforce combined unit and browser branch coverage
         working-directory: backend
         run: |
-          python -m coverage combine --keep .coverage.unit .coverage.e2e
-          python -m coverage report --show-missing --fail-under=60
+          python -m coverage combine --keep .coverage.unit .coverage.e2e .coverage.night
+          python -m coverage report --show-missing --fail-under=75
           python ../tools/check_critical_coverage.py
 
       - name: Encrypted PostgreSQL backup and restore drill

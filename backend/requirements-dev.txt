@@ -2,5 +2,6 @@
 
 coverage==7.15.2
 bandit==1.9.4
+httpx2==2.13.1
 pip-audit==2.10.1
 ruff==0.16.2

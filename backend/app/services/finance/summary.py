@@ -1035,13 +1035,20 @@ def get_monthly_finance_summary(
     mode = str(income_mode or "PAYMENTS").upper()
     if mode not in {"PAYMENTS", "DEPARTMENTS"}:
         raise ValueError("Bad income_mode, expected PAYMENTS or DEPARTMENTS")
+    revenue_breakdown = _group_revenue_breakdown(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode
+    )
+    revenue_breakdown_total_minor = sum(int(item.get("amount_minor") or 0) for item in revenue_breakdown)
     return {
         **base,
         "month": month or None,
         "income_mode": mode,
-        "revenue_breakdown": _group_revenue_breakdown(
-            db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode
-        ),
+        "revenue_breakdown": revenue_breakdown,
+        # DailyReport.revenue_total remains the management-accounting source of
+        # truth.  Keep the aggregate discrepancy explicit when payment or
+        # department rows do not reconcile with that declared total.
+        "revenue_breakdown_total_minor": revenue_breakdown_total_minor,
+        "revenue_discrepancy_minor": revenue_breakdown_total_minor - int(base.get("revenue_minor") or 0),
         "expense_categories": _group_expense_categories(
             db, venue_id=venue_id, period_start=period_start, period_end=period_end
         ),
@@ -1147,6 +1154,10 @@ def get_day_finance_summary(
         period_start=target_date,
         period_end=target_date,
     )
+    revenue_breakdown = _group_revenue_breakdown(
+        db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode, shift_slot=slot
+    )
+    revenue_breakdown_total_minor = sum(int(item.get("amount_minor") or 0) for item in revenue_breakdown)
     return {
         "date": target_date,
         "month": target_date.strftime("%Y-%m"),
@@ -1169,9 +1180,9 @@ def get_day_finance_summary(
         "shift_slot": slot or "TOTAL",
         "slot_costs_available": True,
         "slot_profit_available": True,
-        "revenue_breakdown": _group_revenue_breakdown(
-            db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode, shift_slot=slot
-        ),
+        "revenue_breakdown": revenue_breakdown,
+        "revenue_breakdown_total_minor": revenue_breakdown_total_minor,
+        "revenue_discrepancy_minor": revenue_breakdown_total_minor - revenue_minor,
         "point_expenses": point_expenses,
         "point_expense_minor": point_expense_minor,
         "recurring_expenses": recurring_expenses,
