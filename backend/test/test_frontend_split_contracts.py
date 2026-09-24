@@ -339,7 +339,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/finance-pages.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/finance-pages.css?v=20260810-financepolish1", html)
-        self.assertIn("/owner-expenses.js?v=20260810-financepolish1", html)
+        self.assertIn("/owner-expenses.js?v=20260924-dashboardnav1", html)
         for contract in (
             "expense-status-badge--confirmed",
             "expense-row__recognition",
@@ -514,7 +514,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
 
         tip_settings_html = (FRONTEND / "owner-tip-settings.html").read_text(encoding="utf-8")
         tip_settings_js = (FRONTEND / "owner-tip-settings.js").read_text(encoding="utf-8")
-        self.assertIn("/owner-tip-settings.js?v=20260729-tips1", tip_settings_html)
+        self.assertIn("/owner-tip-settings.js?v=20260924-dashboardnav1", tip_settings_html)
         self.assertIn('id="rulesNote"', tip_settings_html)
         self.assertIn("renderRulesNote", tip_settings_js)
         self.assertIn("Promise.allSettled", tip_settings_js)
@@ -560,9 +560,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260913-multiprofile1",
-            "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
-            "staff-report.html": "/staff-report.js?v=20260910-unallocated1",
+            "staff-salary.html": "/staff-salary.js?v=20260924-dashboardnav1",
+            "staff-adjustments.html": "/staff-adjustments.js?v=20260924-dashboardnav1",
+            "staff-report.html": "/staff-report.js?v=20260924-dashboardnav1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -613,7 +613,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         revenue_html = (FRONTEND / "owner-turnover.html").read_text(encoding="utf-8")
         revenue_script = (FRONTEND / "owner-turnover.js").read_text(encoding="utf-8")
         self.assertIn("/styles/pages/finance-pages.css?v=20260802-financeux4", revenue_html)
-        self.assertIn("/owner-turnover.js?v=20260802-financeux2", revenue_html)
+        self.assertIn("/owner-turnover.js?v=20260924-dashboardnav1", revenue_html)
         self.assertIn('id="revenueTrendChart"', revenue_html)
         self.assertIn('id="revenueRowsSubtitle"', revenue_html)
         self.assertIn('primaryQuery.set("include_series", "1")', revenue_script)
@@ -654,9 +654,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "app-adjustments.html": "/app-adjustments.js?v=20260726-navmore1",
-            "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260726-navmore1",
-            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260906-tiers1",
+            "app-adjustments.html": "/app-adjustments.js?v=20260924-dashboardnav1",
+            "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260924-dashboardnav1",
+            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260924-dashboardnav1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -677,7 +677,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260913-multiprofile1", html)
+        self.assertIn("/owner-payroll.js?v=20260924-dashboardnav1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -724,7 +724,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             html = (FRONTEND / f"{page_name}.html").read_text(encoding="utf-8")
             script = (FRONTEND / f"{page_name}.js").read_text(encoding="utf-8")
             self.assertIn("/styles/pages/owner-catalogs.css?v=20260726-polish10", html, page_name)
-            self.assertIn(f"/{page_name}.js?v=20260726-navmore1", html, page_name)
+            self.assertIn(f"/{page_name}.js?v=20260924-dashboardnav1", html, page_name)
             self.assertIn("catalog-bootstrap", html, page_name)
             self.assertIn("catalog-loading", script, page_name)
             self.assertIn("catalog-state--denied", script, page_name)
@@ -749,8 +749,8 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
 
         for html, page_name, script_version in (
-            (day_html, "owner-day-economics", "20260810-financepolish1"),
-            (rules_html, "owner-economics-rules", "20260726-navmore1"),
+            (day_html, "owner-day-economics", "20260924-dashboardnav1"),
+            (rules_html, "owner-economics-rules", "20260924-dashboardnav1"),
         ):
             style_version = "20260810-financepolish1" if page_name == "owner-day-economics" else "20260726-polish11"
             self.assertIn(f"/styles/pages/owner-economics.css?v={style_version}", html, page_name)
@@ -827,13 +827,13 @@ class AppFacadeSplitContractTests(TestCase):
             source = (FRONTEND / "app" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
             cache_key = {
-                "navigation.js": "20260726-navmore1",
+                "navigation.js": "20260924-dashboardnav1",
                 "ui-preferences.js": "20260813-assurance2",
             }.get(filename, "20260719-split1")
             self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
-        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260820-i18nmetrika1[\"']")
+        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260924-dashboardnav1[\"']")
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
             if path.suffix not in {".js", ".mjs", ".html"}:
@@ -967,7 +967,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260906-names-scopes1", html)
+        self.assertIn("owner-setup.js?v=20260924-dashboardnav1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -1021,7 +1021,7 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260729-overnight1", main)
         self.assertIn("/staff-shifts/comment-controller.js?v=20260906-names-scopes1", main)
-        self.assertIn("staff-shifts.js?v=20260906-names-scopes1", html)
+        self.assertIn("staff-shifts.js?v=20260924-dashboardnav1", html)
         self.assertIn("/shifts/export-metadata?", module)
         self.assertIn("/mentionable-members", comments)
         self.assertIn("reply_to_comment_id", comments)
@@ -1099,7 +1099,7 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260906-tiers1", html)
+        self.assertIn("owner-pay-profile.js?v=20260924-dashboardnav1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
@@ -1167,7 +1167,7 @@ class PositionsSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 420)
-        self.assertIn("positions.js?v=20260913-effectivepay1", html)
+        self.assertIn("positions.js?v=20260924-dashboardnav1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)

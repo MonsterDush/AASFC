@@ -19,7 +19,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardnav1";
 import {
   formatComparisonRange,
   normalizeIsoRange,

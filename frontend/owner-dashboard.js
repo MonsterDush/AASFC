@@ -1,7 +1,7 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
   getMyVenues, getMyVenuePermissions, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardnav1";
 import { isOwnerRole, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,

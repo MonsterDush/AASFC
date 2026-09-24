@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getStoredDemoUiState,
   coerceDemoMonth,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardnav1";
 
 import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
