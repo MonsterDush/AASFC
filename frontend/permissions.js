@@ -141,6 +141,21 @@ export function canViewRevenue(permSet, venueRoleUpper, systemRoleUpper) {
   return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "REVENUE_VIEW");
 }
 
+export function hasOwnerDashboardAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  const systemRole = String(systemRoleUpper || "").trim().toUpperCase();
+  return (
+    isOwnerRole(venueRoleUpper) ||
+    systemRole === "SUPER_ADMIN" ||
+    hasAnyPerm(permSet, [
+      "REPORTS_VIEW_PNL",
+      "MONTHLY_SUMMARY_VIEW",
+      "REVENUE_VIEW",
+      "EXPENSE_VIEW",
+      "PAYROLL_VIEW",
+    ])
+  );
+}
+
 
 
 

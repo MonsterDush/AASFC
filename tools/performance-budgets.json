@@ -20,6 +20,12 @@
       "maxTransferBytes": 1800000,
       "maxDomNodes": 2200
     },
+    "owner-dashboard": {
+      "maxReadyMs": 5000,
+      "maxRequests": 75,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    },
     "owner-summary": {
       "maxReadyMs": 5000,
       "maxRequests": 65,

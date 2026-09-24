@@ -1,8 +1,8 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
-  getMyVenues, getMyVenuePermissions, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260924-dashboardnav1";
-import { isOwnerRole, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
+  getMyVenues, getMyVenuePermissions, getMe, api, toast, coerceDemoMonth,
+} from "/app.js?v=20260924-dashboardi18n1";
+import { hasOwnerDashboardAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260924-dashboardaccess1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,
   moveDashboardAction, moveDashboardWidget, reorderDashboardWidget, resetDashboardLayout,
@@ -643,8 +643,9 @@ async function boot() {
   state.layout = loadDashboardLayout(state.venueId, globalThis.localStorage, state.deviceKind);
   await mountNav({ activeTab: "dashboard", requireVenue: true });
   try {
-    const [permissions, venues] = await Promise.all([getMyVenuePermissions(state.venueId), getMyVenues()]);
-    if (!isOwnerRole(roleUpper(permissions))) { location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(state.venueId)}`); return; }
+    const [permissions, venues, me] = await Promise.all([getMyVenuePermissions(state.venueId), getMyVenues(), getMe()]);
+    const role = roleUpper(permissions);
+    if (!hasOwnerDashboardAccess(permSetFromResponse(permissions), role, String(me?.system_role || ""))) { location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(state.venueId)}`); return; }
     state.financialValuesHidden = isFinancialValuesHidden(permissions);
     state.ownerVenues = venues.filter((item) => String(item.my_role || item.role || "").toUpperCase().includes("OWNER"));
     const venue = venues.find((item) => String(item.id) === state.venueId);

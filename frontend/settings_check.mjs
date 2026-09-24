@@ -15,7 +15,7 @@
       setActiveVenueId,
       wa,
       toast,
-    } from "/app.js?v=20260924-dashboardnav1";
+    } from "/app.js?v=20260924-dashboardi18n1";
 
     applyTelegramTheme();
     mountCommonUI("settings");

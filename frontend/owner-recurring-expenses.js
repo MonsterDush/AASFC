@@ -12,7 +12,7 @@ import {
   closeModal,
   coerceDemoMonth,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260924-dashboardnav1";
+} from "/app.js?v=20260924-dashboardi18n1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let access = { canView: false, canManage: false };
