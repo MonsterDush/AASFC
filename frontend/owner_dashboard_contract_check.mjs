@@ -67,6 +67,7 @@ const index = read("index.html");
 const expenses = read("owner-expenses.js");
 const venue = read("app-venue.html");
 assert.match(html, /id="dashboardWidgetGrid"/);
+assert.match(html, /<main class="card owner-dashboard-content">/);
 assert.match(html, /id="dashboardConfigList"/);
 assert.match(html, /id="dashboardAttentionList"/);
 assert.match(html, /id="dashboardTrendChart"/);
