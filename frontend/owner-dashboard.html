@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/owner-dashboard.css?v=20260924-owner-dashboard1" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · Дашборд</title>
+</head>
+<body class="owner-dashboard-page">
+  <div class="container owner-dashboard-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Дашборд</b>
+          <div class="muted" id="subtitle">главное по заведению</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <main class="owner-dashboard-content">
+      <section class="owner-dashboard-head" aria-labelledby="dashboardTitle">
+        <div>
+          <div class="owner-dashboard-eyebrow">Мои показатели</div>
+          <h1 id="dashboardTitle">Что происходит сейчас</h1>
+          <div class="muted" id="dashboardPeriodLabel">Текущий месяц</div>
+        </div>
+        <div class="owner-dashboard-head__actions">
+          <input class="finance-control" id="dashboardMonthPick" type="month" aria-label="Месяц дашборда" />
+          <button class="btn subtle" id="configureDashboardBtn" type="button" aria-expanded="false" aria-controls="dashboardConfig">Настроить</button>
+        </div>
+      </section>
+
+      <section class="itemcard owner-dashboard-config hidden" id="dashboardConfig" aria-labelledby="dashboardConfigTitle">
+        <div class="owner-dashboard-config__head">
+          <div>
+            <b id="dashboardConfigTitle">Настройка виджетов</b>
+            <div class="muted mt-4">Выберите показатели и их порядок. Настройка сохранится на этом устройстве.</div>
+          </div>
+          <button class="btn sm subtle" id="resetDashboardBtn" type="button">Сбросить</button>
+        </div>
+        <div class="owner-dashboard-config__list mt-12" id="dashboardConfigList"></div>
+      </section>
+
+      <div class="state owner-dashboard-state hidden" id="dashboardState" role="status" aria-live="polite">
+        <div class="state__title" id="dashboardStateTitle"></div>
+        <div class="state__text" id="dashboardStateText"></div>
+      </div>
+
+      <section class="owner-dashboard-widget-grid" id="dashboardWidgetGrid" aria-busy="true" aria-label="Показатели заведения"></section>
+
+      <section class="card owner-dashboard-actions" aria-labelledby="quickActionsTitle">
+        <div class="owner-dashboard-actions__head">
+          <div>
+            <div class="owner-dashboard-actions__icon" aria-hidden="true">↗</div>
+            <div>
+              <b id="quickActionsTitle">Быстрые действия</b>
+              <div class="muted mt-4">Частые операции без поиска по меню</div>
+            </div>
+          </div>
+        </div>
+        <div class="owner-dashboard-actions-grid mt-12" id="dashboardActions"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <div class="toast" id="toast"><div class="toast__text"></div></div>
+  <div class="modal" id="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <b class="modal__title">Детали</b>
+        <button class="btn" data-close>Закрыть</button>
+      </div>
+      <div class="modal__body"></div>
+    </div>
+  </div>
+  <script type="module" src="/owner-dashboard.js?v=20260924-owner-dashboard1"></script>
+</body>
+</html>

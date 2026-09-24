@@ -63,6 +63,7 @@ const extractedPageStyles = new Map([
   ["owner-departments.html", "styles/pages/owner-catalogs.css"],
   ["owner-day-economics.html", "styles/pages/owner-economics.css"],
   ["owner-department-plans.html", "styles/pages/department-plans.css"],
+  ["owner-dashboard.html", "styles/pages/owner-dashboard.css"],
   ["owner-expense-categories.html", "styles/pages/owner-catalogs.css"],
   ["owner-economics-rules.html", "styles/pages/owner-economics.css"],
   ["owner-expenses.html", "styles/pages/finance-pages.css"],
@@ -113,6 +114,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-departments.html", "20260726-polish10"],
   ["owner-day-economics.html", "20260810-financepolish1"],
   ["owner-department-plans.html", "20260911-planrecalc1"],
+  ["owner-dashboard.html", "20260924-owner-dashboard1"],
   ["owner-expense-categories.html", "20260726-polish10"],
   ["owner-economics-rules.html", "20260726-polish11"],
   ["owner-expenses.html", "20260810-financepolish1"],
@@ -155,6 +157,7 @@ const inlineFreePages = [
   "owner-departments.html",
   "owner-day-economics.html",
   "owner-department-plans.html",
+  "owner-dashboard.html",
   "owner-economics-plans.html",
   "owner-economics-rules.html",
   "owner-expense-categories.html",
@@ -185,6 +188,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-departments.html", "/owner-departments.js?v=20260726-navmore1"],
   ["owner-day-economics.html", "/owner-day-economics.js?v=20260810-financepolish1"],
   ["owner-department-plans.html", "/owner-department-plans.js?v=20260911-planrecalc1"],
+  ["owner-dashboard.html", "/owner-dashboard.js?v=20260924-owner-dashboard1"],
   ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260906-deptplans1"],
   ["owner-economics-rules.html", "/owner-economics-rules.js?v=20260726-navmore1"],
   ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260726-navmore1"],
@@ -215,6 +219,8 @@ const inlineFreeModules = [
   "owner-departments.js",
   "owner-day-economics.js",
   "owner-department-plans.js",
+  "owner-dashboard.js",
+  "owner-dashboard-config.js",
   "owner-economics-plans.js",
   "owner-economics-rules.js",
   "owner-expense-categories.js",
@@ -366,7 +372,7 @@ assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest une
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
-assert.equal(htmlPageFiles.length, 56, "every frontend HTML page must use the global loader");
+assert.equal(htmlPageFiles.length, 57, "every frontend HTML page must use the global loader");
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
@@ -480,6 +486,7 @@ for (const [htmlFileName, pageStylePath, contracts] of [
   ["app-venues.html", "styles/pages/app-venues.css", ["venue-card__layout", "venue-card__actions", "venue-list-state"]],
   ["app-dashboard.html", "styles/pages/app-dashboard.css", ["dashboard-section-card", "dashboard-state", "dashboard-sections-grid--state"]],
   ["app-venue.html", "styles/pages/app-venue.css", ["venue-notice--setup", "venue-billing-card", "venue-member-row__main"]],
+  ["owner-dashboard.html", "styles/pages/owner-dashboard.css", ["owner-dashboard-widget-grid", "owner-dashboard-actions-grid", "owner-dashboard-config"]],
   ["owner-summary.html", "styles/pages/finance-pages.css", ["summary-metric--profit", "summary-state", "finance-stat__value is-loading", "summary-chart-focus__values"]],
   ["owner-expenses.html", "styles/pages/finance-pages.css", ["expense-status-badge--confirmed", "expense-row__recognition", "expense-row__actions"]],
   ["owner-setup.html", "styles/pages/owner-setup.css", ["setup-step__index", "setup-loading", "setup-detail-card"]],

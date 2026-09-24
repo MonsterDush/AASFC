@@ -574,7 +574,7 @@ window.addEventListener("axelio:demo-state-changed", (event) => {
 const SS_DEMO_TOUR_STATE = "axelio.demo_tour_state";
 const DEMO_TOUR_STEPS = {
   OWNER: [
-    { id: "owner-summary", path: "/owner-summary.html", title: "Сводка", text: "Здесь владелец видит доходы, расходы и общий результат по заведению." },
+    { id: "owner-dashboard", path: "/owner-dashboard.html", title: "Дашборд", text: "Здесь владелец видит главные показатели и быстрые действия по заведению." },
     { id: "owner-expenses", path: "/owner-expenses.html", title: "Расходы", text: "Здесь можно посмотреть структуру расходов и категории затрат." },
     { id: "owner-payroll", path: "/owner-payroll.html", title: "Начисления", text: "Здесь владелец видит прозрачный расчёт начислений команды." },
     { id: "app-venue", path: "/app-venue.html", title: "Карточка заведения", text: "Здесь собраны ключевые действия и настройки заведения." },
