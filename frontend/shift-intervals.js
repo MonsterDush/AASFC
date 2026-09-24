@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
-} from "/app.js?v=20260924-dashboardnav1";
+} from "/app.js?v=20260924-dashboardi18n1";
 import { intervalPositionLabel, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
