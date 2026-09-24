@@ -1,0 +1,168 @@
+{
+  "organizations": [
+    {
+      "id": "org-1",
+      "name": "Тестовый ресторан",
+      "responseType": "Simple"
+    }
+  ],
+  "terminal_groups": [
+    {
+      "id": "tg-1",
+      "organizationId": "org-1",
+      "name": "Основная группа",
+      "timeZone": "+03:00"
+    }
+  ],
+  "terminal_groups_alive": [
+    {
+      "terminalGroupId": "tg-1",
+      "organizationId": "org-1",
+      "isAlive": true
+    }
+  ],
+  "nomenclature": {
+    "revision": 17,
+    "groups": [
+      {
+        "id": "group-coffee",
+        "name": "Кофе",
+        "isDeleted": false,
+        "isGroupModifier": false
+      }
+    ],
+    "productCategories": [
+      {
+        "id": "category-drinks",
+        "name": "Напитки",
+        "isDeleted": false
+      }
+    ],
+    "sizes": [
+      {
+        "id": "size-large",
+        "name": "Большой",
+        "priority": 1,
+        "isDefault": false
+      }
+    ],
+    "products": [
+      {
+        "id": "product-latte",
+        "name": "Латте",
+        "code": "LATTE",
+        "type": "dish",
+        "groupId": "group-coffee",
+        "productCategoryId": "category-drinks",
+        "measureUnit": "порц",
+        "isDeleted": false,
+        "sizePrices": [
+          {
+            "sizeId": "size-large",
+            "price": {
+              "currentPrice": 450,
+              "isIncludedInMenu": true,
+              "nextIncludedInMenu": true
+            }
+          }
+        ],
+        "modifiers": [
+          {
+            "id": "modifier-syrup",
+            "minAmount": 0,
+            "maxAmount": 2,
+            "defaultAmount": 0,
+            "required": false,
+            "freeOfChargeAmount": 0
+          }
+        ],
+        "groupModifiers": [
+          {
+            "id": "modifier-group-milk",
+            "minAmount": 1,
+            "maxAmount": 1,
+            "defaultAmount": 1,
+            "required": true,
+            "freeOfChargeAmount": 0,
+            "childModifiers": [
+              {
+                "id": "modifier-oat",
+                "minAmount": 0,
+                "maxAmount": 1,
+                "defaultAmount": 0,
+                "required": false,
+                "freeOfChargeAmount": 0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "modifier-group-milk",
+        "name": "Тип молока",
+        "type": "modifier",
+        "isDeleted": false,
+        "sizePrices": [],
+        "modifiers": [],
+        "groupModifiers": []
+      },
+      {
+        "id": "modifier-syrup",
+        "name": "Сироп",
+        "type": "modifier",
+        "isDeleted": false,
+        "sizePrices": [],
+        "modifiers": [],
+        "groupModifiers": []
+      },
+      {
+        "id": "modifier-oat",
+        "name": "Овсяное молоко",
+        "type": "modifier",
+        "isDeleted": false,
+        "sizePrices": [],
+        "modifiers": [],
+        "groupModifiers": []
+      }
+    ]
+  },
+  "payment_types": [
+    {
+      "id": "payment-card",
+      "name": "Банковская карта",
+      "isDeleted": false,
+      "terminalGroups": []
+    }
+  ],
+  "stop_lists": [
+    {
+      "organizationId": "org-1",
+      "terminalGroupId": "tg-1",
+      "productId": "product-latte",
+      "sizeId": "size-large",
+      "balance": 0,
+      "dateAdd": "2026-09-21 12:00:00.000"
+    }
+  ],
+  "restaurant_sections": {
+    "revision": 9,
+    "restaurantSections": [
+      {
+        "id": "section-main",
+        "terminalGroupId": "tg-1",
+        "name": "Основной зал",
+        "tables": [
+          {
+            "id": "table-7",
+            "number": 7,
+            "name": "Стол 7",
+            "seatingCapacity": 4,
+            "revision": 5,
+            "isDeleted": false,
+            "posId": "pos-table-7"
+          }
+        ]
+      }
+    ]
+  }
+}
