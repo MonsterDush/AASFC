@@ -426,6 +426,73 @@ class PayComponentValidationTests(TestCase):
 
 
 class PayrollPercentDecisionTests(TestCase):
+    def test_department_percent_period_parts_equal_month_without_cross_profile_leakage(self):
+        first_day = date(2026, 9, 10)
+        second_day = date(2026, 9, 20)
+        other_profile_day = date(2026, 9, 25)
+        component = SimpleNamespace(
+            component_type="PERCENT_DEPARTMENT_REVENUE",
+            percent_bps=100,
+            department_id=3,
+            base_scope=None,
+            boost_enabled=False,
+            boost_percent_bps=None,
+            boost_source_type=None,
+            boost_recalc_mode=None,
+            minimum_guarantee_minor=None,
+            maximum_cap_minor=None,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(worked_dates={first_day, second_day}),
+            revenue_metrics=PayrollRevenueMetrics(
+                department_revenue_minor={3: 584_391_600},
+                department_revenue_by_date_minor={
+                    3: {
+                        first_day: 194_797_200,
+                        second_day: 194_797_200,
+                        other_profile_day: 194_797_200,
+                    }
+                },
+            ),
+            kpi_metrics=PayrollKpiMetrics(),
+            venue_plan_metrics=PayrollVenuePlanMetrics(),
+        )
+        context = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[first_day, second_day, other_profile_day],
+            worked_dates=[first_day, second_day, other_profile_day],
+            minutes_by_date={first_day: 480, second_day: 480, other_profile_day: 480},
+            shifts_by_date={first_day: 1, second_day: 1, other_profile_day: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        stored_component = {
+            "component_type": component.component_type,
+            "title": "1% от департамента",
+            "amount_minor": decision.amount_minor,
+            "percent_bps": component.percent_bps,
+            "department_id": component.department_id,
+            "department_title": "Зал",
+            "day_rows": decision.day_rows,
+        }
+
+        parts = [
+            _component_allocation_for_day(component=stored_component, target_date=day, context=context)
+            for day in (first_day, second_day)
+        ]
+
+        self.assertEqual(decision.amount_minor, 3_895_944)
+        self.assertEqual(sum(item["amount_minor"] for item in parts), decision.amount_minor)
+        self.assertIsNone(
+            _component_allocation_for_day(
+                component=stored_component,
+                target_date=other_profile_day,
+                context=context,
+            )
+        )
+
     def test_percent_department_defaults_to_worked_dates_scope(self):
         component = SimpleNamespace(
             component_type="PERCENT_DEPARTMENT_REVENUE",
@@ -457,6 +524,21 @@ class PayrollPercentDecisionTests(TestCase):
         self.assertEqual(decision.base_scope, BASE_SCOPE_WORKED_DATES)
         self.assertEqual(decision.base_amount_minor, 300000)
         self.assertEqual(decision.amount_minor, 15000)
+        self.assertEqual(
+            decision.day_rows,
+            [
+                {
+                    "date": "2026-03-02",
+                    "base_amount_minor": 300000,
+                    "actual_amount_minor": 300000,
+                    "target_amount_minor": None,
+                    "boost_applied": False,
+                    "percent_bps": 500,
+                    "amount_minor": 15000,
+                    "monthly_allocation": True,
+                }
+            ],
+        )
 
     def test_percent_total_with_month_plan_boost_replace_all(self):
         component = SimpleNamespace(
@@ -539,6 +621,8 @@ class PayrollPercentDecisionTests(TestCase):
         )
         self.assertTrue(decision.minimum_applied)
         self.assertEqual(decision.amount_minor, 40000)
+        self.assertEqual(sum(row["amount_minor"] for row in decision.day_rows), decision.amount_minor)
+        self.assertTrue(all(row["monthly_allocation"] for row in decision.day_rows))
 
     def test_percent_total_with_kpi_boost(self):
         component = SimpleNamespace(

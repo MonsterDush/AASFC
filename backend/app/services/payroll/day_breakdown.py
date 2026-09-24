@@ -515,7 +515,11 @@ def _component_allocation_for_day(
                 base_text += f" · факт {_fmt_money_minor(actual_minor)}"
             if target_minor is not None:
                 base_text += f" · цель {_fmt_money_minor(target_minor)}"
-            formula_text = f"{(percent_bps / 100):.2f}% от базы дня"
+            formula_text = (
+                "Доля месячного начисления по выручке дня"
+                if day_snapshot.get("monthly_allocation")
+                else f"{(percent_bps / 100):.2f}% от базы дня"
+            )
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
             if day_snapshot.get("minimum_applied"):
@@ -585,7 +589,11 @@ def _component_allocation_for_day(
                 base_text += f" · факт {_fmt_money_minor(actual_minor)}"
             if target_minor is not None:
                 base_text += f" · цель {_fmt_money_minor(target_minor)}"
-            formula_text = f"{(percent_bps / 100):.2f}% от {dep_title}"
+            formula_text = (
+                f"Доля месячного начисления по выручке {dep_title}"
+                if day_snapshot.get("monthly_allocation")
+                else f"{(percent_bps / 100):.2f}% от {dep_title}"
+            )
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
             if day_snapshot.get("minimum_applied"):

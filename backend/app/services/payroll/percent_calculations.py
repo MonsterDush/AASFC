@@ -35,6 +35,7 @@ from .payroll_types import (
     PayrollRevenueMetrics,
     PayrollVenuePlanMetrics,
 )
+from .percent_day_rows import reconcile_percent_day_rows
 
 
 def _build_percent_component_snapshot(component: PayComponent, decision: PayrollPercentDecision) -> dict:
@@ -392,6 +393,20 @@ def _build_percent_component_decision(
     if maximum_cap_minor is not None and amount_minor > maximum_cap_minor:
         amount_minor = int(maximum_cap_minor)
         maximum_applied = True
+
+    fallback_dates = (
+        metrics.worked_dates
+        if base_scope == BASE_SCOPE_WORKED_DATES
+        else getattr(metrics, "_salary_active_dates", None)
+    )
+    day_rows = reconcile_percent_day_rows(
+        day_rows=day_rows,
+        amount_minor=amount_minor,
+        base_by_date=base_by_date,
+        allocation_dates=fallback_dates,
+        percent_bps=applied_percent_bps,
+        boost_applied=boost_applied,
+    )
 
     return PayrollPercentDecision(
         amount_minor=int(amount_minor),

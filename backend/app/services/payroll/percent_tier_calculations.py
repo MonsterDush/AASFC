@@ -15,6 +15,7 @@ from .component_calculations import (
     _sum_department_revenue_minor,
 )
 from .payroll_types import BOOST_RECALC_TITLES, BOOST_SOURCE_TITLES, PayrollPercentDecision
+from .percent_day_rows import reconcile_percent_day_rows
 from .percent_tier_rules import excess_compatible, tier_dict
 
 
@@ -166,6 +167,15 @@ def calculate_tier_decision(component, metrics, revenue, kpis, plans):
     maximum_applied = maximum is not None and amount > maximum
     if maximum_applied:
         amount = maximum
+    fallback_dates = metrics.worked_dates if scope == "WORKED_DATES" else getattr(metrics, "_salary_active_dates", None)
+    rows = reconcile_percent_day_rows(
+        day_rows=rows,
+        amount_minor=amount,
+        base_by_date=bases,
+        allocation_dates=fallback_dates,
+        percent_bps=result["percent_bps"],
+        boost_applied=result["boost_applied"],
+    )
     decision = PayrollPercentDecision(
         amount_minor=int(amount),
         base_amount_minor=base,
