@@ -408,7 +408,15 @@ def _component_allocation_for_day(
         shift_rows = (
             [row for row in raw_shift_rows if isinstance(row, dict)] if isinstance(raw_shift_rows, list) else []
         )
-        day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+        day_shift_rows = [
+            row
+            for row in shift_rows
+            if str(row.get("date") or "") == target_date.isoformat()
+            and (
+                context.shift_slot == "TOTAL"
+                or str(row.get("shift_slot") or "DAY").strip().upper() == context.shift_slot
+            )
+        ]
         if day_shift_rows:
             amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
             applied_rates = sorted({int(row.get("applied_rate_minor") or 0) for row in day_shift_rows})
@@ -443,7 +451,15 @@ def _component_allocation_for_day(
         shift_rows = (
             [row for row in raw_shift_rows if isinstance(row, dict)] if isinstance(raw_shift_rows, list) else []
         )
-        day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+        day_shift_rows = [
+            row
+            for row in shift_rows
+            if str(row.get("date") or "") == target_date.isoformat()
+            and (
+                context.shift_slot == "TOTAL"
+                or str(row.get("shift_slot") or "DAY").strip().upper() == context.shift_slot
+            )
+        ]
         if day_shift_rows:
             amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
             applied_rates = sorted({int(row.get("applied_rate_minor") or 0) for row in day_shift_rows})
@@ -499,7 +515,11 @@ def _component_allocation_for_day(
                 base_text += f" · факт {_fmt_money_minor(actual_minor)}"
             if target_minor is not None:
                 base_text += f" · цель {_fmt_money_minor(target_minor)}"
-            formula_text = f"{(percent_bps / 100):.2f}% от базы дня"
+            formula_text = (
+                "Доля месячного начисления по выручке дня"
+                if day_snapshot.get("monthly_allocation")
+                else f"{(percent_bps / 100):.2f}% от базы дня"
+            )
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
             if day_snapshot.get("minimum_applied"):
@@ -569,7 +589,11 @@ def _component_allocation_for_day(
                 base_text += f" · факт {_fmt_money_minor(actual_minor)}"
             if target_minor is not None:
                 base_text += f" · цель {_fmt_money_minor(target_minor)}"
-            formula_text = f"{(percent_bps / 100):.2f}% от {dep_title}"
+            formula_text = (
+                f"Доля месячного начисления по выручке {dep_title}"
+                if day_snapshot.get("monthly_allocation")
+                else f"{(percent_bps / 100):.2f}% от {dep_title}"
+            )
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
             if day_snapshot.get("minimum_applied"):
@@ -625,7 +649,15 @@ def _component_allocation_for_day(
         if scope in {"SHIFT", "DAY"}:
             shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
             if shift_rows:
-                day_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+                day_rows = [
+                    row
+                    for row in shift_rows
+                    if str(row.get("date") or "") == target_date.isoformat()
+                    and (
+                        context.shift_slot == "TOTAL"
+                        or str(row.get("shift_slot") or "DAY").strip().upper() == context.shift_slot
+                    )
+                ]
                 amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_rows)
                 if amount_minor == 0:
                     return None
@@ -813,16 +845,26 @@ def build_member_day_breakdown(
     )
 
     items: list[dict] = []
-    # Payroll lines are stored at month/date level, not per DAY/NIGHT slot.
-    # Keep TOTAL fully detailed; for a single slot expose slot-specific context/tips
-    # without duplicating a full monthly component into both DAY and NIGHT.
-    if slot == "TOTAL":
-        for component in breakdown.get("components") or []:
-            if not isinstance(component, dict):
-                continue
-            item = _component_allocation_for_day(component=component, target_date=target_date, context=context)
-            if item is not None:
-                items.append(item)
+    # Month/day based components cannot be split safely between DAY and NIGHT.
+    # Shift-backed components carry an explicit shift_slot and are safe to use
+    # for the notification emitted by closing one concrete shift slot.
+    for component in breakdown.get("components") or []:
+        if not isinstance(component, dict):
+            continue
+        component_type = str(component.get("component_type") or "").strip().upper()
+        minimum_scope = (
+            str(component.get("minimum_payout_scope") or component.get("minimum_guarantee_scope") or "MONTH")
+            .strip()
+            .upper()
+        )
+        slot_compatible = component_type in {"SALARY_HOURLY", "SALARY_PER_SHIFT"} or (
+            component_type == "MINIMUM_PAYOUT" and minimum_scope == "SHIFT"
+        )
+        if slot != "TOTAL" and not slot_compatible:
+            continue
+        item = _component_allocation_for_day(component=component, target_date=target_date, context=context)
+        if item is not None:
+            items.append(item)
 
     tip_rows = db.execute(
         select(DailyReportTipAllocation.amount)

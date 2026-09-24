@@ -41,8 +41,14 @@ class MigrationContractTests(unittest.TestCase):
         position_profile_periods = scripts.get_revision("e9a3c5f7b1d4")
         pos_foundation = scripts.get_revision("f3b7c1d9e5a2")
         quickresto_acdm_shadow = scripts.get_revision("f5d9a2c7e4b1")
+        canonical_reports = scripts.get_revision("f7a1c3e5b9d2")
+        operational_depth = scripts.get_revision("f8c2d4e6a1b3")
+        integration_v04_core = scripts.get_revision("a4c8e2f6b1d3")
 
-        self.assertEqual(heads, ["f5d9a2c7e4b1"])
+        self.assertEqual(heads, ["a4c8e2f6b1d3"])
+        self.assertEqual(integration_v04_core.down_revision, "f8c2d4e6a1b3")
+        self.assertEqual(operational_depth.down_revision, "f7a1c3e5b9d2")
+        self.assertEqual(canonical_reports.down_revision, "f5d9a2c7e4b1")
         self.assertEqual(quickresto_acdm_shadow.down_revision, "f3b7c1d9e5a2")
         self.assertEqual(pos_foundation.down_revision, "e9a3c5f7b1d4")
         self.assertEqual(position_profile_periods.down_revision, "d8f0a2c4e6b9")
@@ -124,6 +130,109 @@ class MigrationContractTests(unittest.TestCase):
             inspector = sa.inspect(engine)
             self.assertNotIn("integration_connections", inspector.get_table_names())
             self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
+
+    def test_pos_operational_depth_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE integration_connections (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_products (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_warehouses (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_suppliers (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE pos_employees (id INTEGER PRIMARY KEY)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f7a1c3e5b9d2")
+                command.upgrade(config, "f8c2d4e6a1b3")
+
+                inspector = sa.inspect(engine)
+                expected = {
+                    "pos_recipes",
+                    "pos_recipe_items",
+                    "pos_stock_snapshots",
+                    "pos_stock_movements",
+                    "pos_purchase_documents",
+                    "pos_purchase_items",
+                    "pos_writeoffs",
+                    "pos_writeoff_items",
+                    "pos_inventory_documents",
+                    "pos_inventory_items",
+                    "pos_employee_attendance",
+                }
+                self.assertTrue(expected.issubset(set(inspector.get_table_names())))
+                self.assertEqual(
+                    {column["name"] for column in inspector.get_columns("pos_purchase_documents")}
+                    & {"supplier_id", "warehouse_id", "total_amount"},
+                    {"supplier_id", "warehouse_id", "total_amount"},
+                )
+                command.downgrade(config, "f7a1c3e5b9d2")
+
+            self.assertTrue(expected.isdisjoint(set(sa.inspect(engine).get_table_names())))
+
+    def test_pos_integration_v04_core_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE venues (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE integration_connections (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_venues (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_products (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_product_prices (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_recipes (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_stock_snapshots (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_stock_movements (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_warehouses (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_suppliers (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_terminals (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_business_shifts (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_inventory_documents (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_inventory_items (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE pos_orders ("
+                    "id INTEGER PRIMARY KEY, status VARCHAR(24) NOT NULL DEFAULT 'UNKNOWN', "
+                    "CONSTRAINT ck_pos_orders_status CHECK "
+                    "(status IN ('OPEN', 'CLOSED', 'CANCELLED', 'REFUNDED', "
+                    "'PARTIALLY_REFUNDED', 'DELETED', 'UNKNOWN')))",
+                ):
+                    connection.exec_driver_sql(statement)
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f8c2d4e6a1b3")
+                command.upgrade(config, "a4c8e2f6b1d3")
+
+                inspector = sa.inspect(engine)
+                expected = {
+                    "pos_terminal_groups",
+                    "pos_restaurant_sections",
+                    "pos_tables",
+                    "pos_product_variants",
+                    "pos_product_variant_options",
+                    "pos_modifier_groups",
+                    "pos_modifiers",
+                    "pos_product_modifier_rules",
+                    "pos_stop_list_entries",
+                    "pos_order_item_modifiers",
+                    "integration_commands",
+                    "integration_webhook_events",
+                    "pos_operational_snapshots",
+                }
+                self.assertTrue(expected.issubset(set(inspector.get_table_names())))
+                self.assertTrue(
+                    {"terminal_group_id", "restaurant_section_id", "table_id", "current_amount", "is_final"}.issubset(
+                        {column["name"] for column in inspector.get_columns("pos_orders")}
+                    )
+                )
+                command.downgrade(config, "f8c2d4e6a1b3")
+
+            inspector = sa.inspect(engine)
+            self.assertTrue(expected.isdisjoint(set(inspector.get_table_names())))
+            self.assertNotIn("terminal_group_id", {column["name"] for column in inspector.get_columns("pos_terminals")})
 
     def test_quickresto_acdm_shadow_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
@@ -659,6 +768,60 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"uq_shift_availability_member_date_slot"', source)
         self.assertIn('"uq_shift_swap_requests_open_assignment"', source)
         self.assertIn('ondelete="SET NULL"', source)
+
+    def test_canonical_reports_and_composite_items_migration_round_trips(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            self.addCleanup(engine.dispose)
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE daily_reports ("
+                    "id INTEGER PRIMARY KEY, revenue_total INTEGER NOT NULL, "
+                    "unallocated_revenue_total INTEGER NOT NULL DEFAULT 0)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE daily_report_values ("
+                    "id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL, kind VARCHAR(12) NOT NULL, "
+                    "ref_id INTEGER NOT NULL, value_numeric INTEGER NOT NULL)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TABLE report_value_contributions ("
+                    "id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL, kind VARCHAR(32) NOT NULL, "
+                    "ref_id INTEGER NOT NULL, source_type VARCHAR(16) NOT NULL, source_id VARCHAR(255) NOT NULL, "
+                    "value_numeric NUMERIC(20, 4) NOT NULL, source_hash VARCHAR(64) NOT NULL, "
+                    "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)"
+                )
+                connection.exec_driver_sql("CREATE TABLE pos_order_items (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql(
+                    "INSERT INTO daily_reports (id, revenue_total, unallocated_revenue_total) VALUES (1, 1000, 100)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO daily_report_values (id, report_id, kind, ref_id, value_numeric) "
+                    "VALUES (1, 1, 'DEPT', 7, 900)"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f5d9a2c7e4b1")
+                command.upgrade(config, "f7a1c3e5b9d2")
+                inspector = sa.inspect(engine)
+                columns = {column["name"] for column in inspector.get_columns("pos_order_items")}
+                self.assertIn("parent_item_id", columns)
+                self.assertIn("attributed_net_amount", columns)
+                with engine.connect() as connection:
+                    contributions = connection.exec_driver_sql(
+                        "SELECT kind, ref_id, value_numeric FROM report_value_contributions "
+                        "WHERE source_type = 'MANUAL' ORDER BY kind, ref_id"
+                    ).all()
+                self.assertEqual(
+                    contributions,
+                    [("DEPT", 7, 900), ("REVENUE", 0, 1000), ("UNALLOCATED_REVENUE", 0, 100)],
+                )
+                command.downgrade(config, "f5d9a2c7e4b1")
+
+            columns = {column["name"] for column in sa.inspect(engine).get_columns("pos_order_items")}
+            self.assertNotIn("parent_item_id", columns)
 
     def test_kpi_percentage_and_salary_accrual_extend_current_head(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "provider": "QUICKRESTO",
+  "contains_payload_values": false,
+  "capabilities": {
+    "CURRENT_BUSINESS_SHIFT": "DERIVED",
+    "OPEN_ORDERS": "UNKNOWN",
+    "CURRENT_ORDER_TOTAL": "UNKNOWN",
+    "TABLES": "SUPPORTED",
+    "RESTAURANT_SECTIONS": "SUPPORTED",
+    "MODIFIERS": "DEGRADED",
+    "PRODUCT_VARIANTS": "UNKNOWN",
+    "EMPLOYEES": "SUPPORTED",
+    "STOP_LISTS": "UNKNOWN",
+    "INVENTORY": "SUPPORTED",
+    "PURCHASES": "SUPPORTED",
+    "WRITEOFFS": "SUPPORTED",
+    "STOCK_MOVEMENTS": "DERIVED",
+    "STOCK_BALANCES": "UNKNOWN"
+  },
+  "surface_shapes": {
+    "open_business_shift": {
+      "fields": ["id", "opened", "status", "salePlace", "tableScheme"],
+      "error_code": "FILTER_NOT_VERIFIED"
+    },
+    "open_orders": {
+      "fields": ["id", "shiftId", "table", "waiter", "frontTotalPrice", "paidByPartner"],
+      "missing_required_fields": ["status", "state", "closed", "isClosed", "open", "isOpen"],
+      "error_code": "FILTER_NOT_VERIFIED"
+    },
+    "table_schemes": {
+      "fields": ["id", "tables", "webHalls"]
+    },
+    "modifier_groups": {
+      "schema_classes": ["ModifierGroup"]
+    },
+    "modifiers": {
+      "schema_classes": ["ModifierGroup"],
+      "error_code": "CLASS_NOT_VERIFIED"
+    },
+    "dish_configurations": {
+      "fields": ["id", "dishSales", "sellingType"],
+      "missing_required_structures": ["configuration", "variant", "option"]
+    },
+    "employees": {
+      "fields": ["id", "blocked", "systemEmployee", "user"]
+    },
+    "inventory_documents": {
+      "fields": ["id", "invoiceDate", "processed", "store", "shortfallSum", "surplusSum"]
+    },
+    "incoming_invoices": {
+      "fields": ["id", "invoiceDate", "paid", "processed", "provider", "store"]
+    },
+    "discard_invoices": {
+      "fields": ["id", "invoiceDate", "processed", "discardReason", "store"]
+    }
+  }
+}

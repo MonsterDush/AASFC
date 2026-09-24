@@ -1,0 +1,63 @@
+{
+  "lists": {
+    "shifts": [
+      {"id": 101, "status": "OPEN", "ordersCount": 3}
+    ],
+    "orders": [
+      {
+        "id": 201,
+        "status": "OPEN",
+        "frontTotalPrice": 1234.56,
+        "table": {"id": 301},
+        "employee": {"id": 501}
+      }
+    ],
+    "venues": [
+      {"id": 401, "name": "Fixture scheme"}
+    ],
+    "modifier_groups": [
+      {"id": 601, "className": "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.ModifierGroup", "name": "Fixture modifier group"}
+    ],
+    "modifiers": [
+      {"id": 602, "className": "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.Modifier", "name": "Fixture modifier", "price": 99.0}
+    ],
+    "dishes": [
+      {"id": 701, "name": "Fixture dish"}
+    ],
+    "employees": [
+      {"id": 801, "firstName": "PrivateFixtureName", "email": "private@example.invalid"}
+    ],
+    "inventory_documents": [],
+    "incoming_invoices": [],
+    "discard_invoices": [],
+    "outgoing_invoices": [],
+    "exchange_invoices": [],
+    "cooking_invoices": [],
+    "decomposition_invoices": [],
+    "processing_invoices": []
+  },
+  "details": {
+    "venues": {
+      "id": 401,
+      "sections": [
+        {"id": 402, "tables": [{"id": 403, "number": "T-1"}]}
+      ]
+    },
+    "modifier_groups": {
+      "id": 601,
+      "modifiers": [{"id": 602}]
+    },
+    "modifiers": {
+      "id": 602,
+      "group": {"id": 601},
+      "minAmount": 0,
+      "maxAmount": 2
+    },
+    "dishes": {
+      "id": 701,
+      "configurations": [
+        {"id": 702, "options": [{"id": 703}]}
+      ]
+    }
+  }
+}

@@ -57,6 +57,50 @@ QUICKRESTO_OBJECT_TYPES: dict[str, tuple[str, str]] = {
         "front.orders",
         "ru.edgex.quickresto.modules.front.orders.OrderInfo",
     ),
+    "employees": (
+        "personnel.employee",
+        "ru.edgex.quickresto.modules.personnel.employee.Employee",
+    ),
+    "modifier_groups": (
+        "warehouse.nomenclature.mods",
+        "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.ModifierGroup",
+    ),
+    "modifiers": (
+        "warehouse.nomenclature.mods",
+        "ru.edgex.quickresto.modules.warehouse.nomenclature.mods.Modifier",
+    ),
+    "inventory_documents": (
+        "warehouse.inventory.document.v2",
+        "ru.edgex.quickresto.modules.warehouse.inventory.document.InventoryDocument2",
+    ),
+    "incoming_invoices": (
+        "warehouse.documents.incoming",
+        "ru.edgex.quickresto.modules.warehouse.documents.incoming.IncomingInvoice",
+    ),
+    "outgoing_invoices": (
+        "warehouse.documents.outgoing",
+        "ru.edgex.quickresto.modules.warehouse.documents.outgoing.OutgoingInvoice",
+    ),
+    "discard_invoices": (
+        "warehouse.documents.discard",
+        "ru.edgex.quickresto.modules.warehouse.documents.discard.DiscardInvoice",
+    ),
+    "exchange_invoices": (
+        "warehouse.documents.exchange",
+        "ru.edgex.quickresto.modules.warehouse.documents.exchange.ExchangeInvoice",
+    ),
+    "cooking_invoices": (
+        "warehouse.documents.cooking",
+        "ru.edgex.quickresto.modules.warehouse.documents.cooking.CookingInvoice",
+    ),
+    "decomposition_invoices": (
+        "warehouse.documents.decomposition",
+        "ru.edgex.quickresto.modules.warehouse.documents.decomposition.DecompositionInvoice",
+    ),
+    "processing_invoices": (
+        "warehouse.documents.processing",
+        "ru.edgex.quickresto.modules.warehouse.documents.processing.ProcessingInvoice",
+    ),
 }
 
 

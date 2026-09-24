@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.integrations.canonical.report_projector import ReportProjector, ShadowProjectionCandidate
+from app.integrations.canonical.order_items import attribution_minor_for_item
 from app.integrations.base.capabilities import Capability, CapabilityState
 from app.integrations.base.dto import ProviderRecord
 from app.integrations.feature_flags import feature_flags_for
@@ -164,7 +165,8 @@ def ensure_quickresto_integration_connection(
     canonical.status = "ACTIVE" if connection.is_active else "PAUSED"
     canonical.external_venue_id = str(connection.external_venue_id) if connection.external_venue_id else None
     canonical.shadow_sync_enabled = flags.shadow_write_enabled
-    canonical.read_mode = "LEGACY"
+    # Operations owns the per-connection rollout gate. Synchronization
+    # refreshes health and coverage but must not silently undo POS_CANONICAL.
     canonical.coverage_start = connection.sync_from_date
     canonical.updated_at = _utcnow()
     connection.integration_connection_id = int(canonical.id)
@@ -661,6 +663,9 @@ def record_observed_capabilities(
         Capability.ORDER_EVENTS,
         Capability.RETURNS,
         Capability.DISCOUNTS,
+        Capability.GUEST_COUNT,
+        Capability.TERMINALS,
+        Capability.WAREHOUSES,
     }
     states: dict[Capability, CapabilityState] = {item: CapabilityState.SUPPORTED for item in observed}
     states.update({item: CapabilityState.DERIVED for item in derived})
@@ -672,6 +677,10 @@ def record_observed_capabilities(
         Capability.INVENTORY,
         Capability.PURCHASES,
         Capability.SUPPLIERS,
+        Capability.RECIPES,
+        Capability.STOCK_BALANCES,
+        Capability.STOCK_MOVEMENTS,
+        Capability.WRITEOFFS,
     }
     states.update({item: CapabilityState.UNAVAILABLE for item in unavailable})
     snapshot: dict[str, str] = {}
@@ -1210,6 +1219,8 @@ def shadow_write_snapshot_group(
                             "order_id": int(order.id),
                             "product_id": int(product.id) if product else None,
                             "source_line_number": str(index + 1),
+                            "item_role": "PRODUCT",
+                            "component_role": None,
                             "product_name_snapshot": str(
                                 product.name if product else f"QuickResto #{product_external_id}"
                             ),
@@ -1220,6 +1231,8 @@ def shadow_write_snapshot_group(
                             "gross_amount": _minor_to_money(total_minor + charge_minor),
                             "discount_amount": _minor_to_money(item_discount_minor),
                             "net_amount": _minor_to_money(total_minor - item_discount_minor + charge_minor),
+                            "attributed_net_amount": None,
+                            "included_in_parent": False,
                             "is_modifier": False,
                             "is_refund": returned,
                             "currency": "RUB",
@@ -1465,6 +1478,9 @@ def _canonical_aggregate(
         if order_ids
         else []
     )
+    compound_parent_ids = {
+        int(row.parent_item_id) for row in items if row.parent_item_id is not None and not bool(row.is_deleted)
+    }
     payments = (
         list(
             db.execute(
@@ -1539,11 +1555,17 @@ def _canonical_aggregate(
         product = products.get(int(item.product_id))
         if product is None or product.category_id is None:
             continue
-        item_minor = _money_to_minor(item.net_amount)
+        # A compound dish owns the financial charge once. Providers may map
+        # that charge onto component rows through attributed_net_amount; a
+        # component included in its parent contributes zero by default.
+        item_minor = attribution_minor_for_item(item)
         product_mapping = product_mappings.get(int(product.id))
         if product_mapping and product_mapping.status == "MAPPED" and product_mapping.target_id:
             quantity = Decimal(str(item.quantity or 0))
-            if quantity == quantity.to_integral_value():
+            is_expanded_compound = str(item.item_role or "PRODUCT") == "COMPOUND" and int(item.id) in (
+                compound_parent_ids
+            )
+            if not is_expanded_compound and quantity == quantity.to_integral_value():
                 kpis_internal[int(product_mapping.target_id)] += int(quantity)
             if product_mapping.exclude_from_percentage_base:
                 excluded_by_group_minor[int(product.category_id)] += item_minor

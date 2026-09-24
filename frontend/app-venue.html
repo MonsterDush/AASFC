@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260828-integrations1" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260924-dashboardi18n1" />
   <script>
     (() => {
       try {
@@ -34,7 +34,10 @@
     </div>
 
     <div class="card section-card venue-page">
-      <div class="page-caption venue-page__intro">Здесь собраны основные разделы, настройки и команда заведения.</div>
+      <div class="venue-page__intro">
+        <div class="page-caption">Здесь собраны основные разделы, настройки и команда заведения.</div>
+        <a class="btn primary hidden venue-dashboard-entry" id="openDashboard" href="#">Дашборд</a>
+      </div>
 
       <div class="itemcard mt-12 hidden venue-notice venue-notice--archive" id="archiveNotice">
         <b>Заведение в архиве</b>
@@ -214,8 +217,8 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260820-i18nmetrika1";
-    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260924-dashboardi18n1";
+    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasOwnerDashboardAccess, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260924-dashboardaccess1";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -302,6 +305,7 @@
         let canViewPayProfiles = false;
         let canViewPayroll = false;
         let canViewIntegrations = false;
+        let canViewDashboard = false;
         let canOpenVenue = false;
         let billingStatus = "ACTIVE";
         let billingAccessMode = "FULL";
@@ -340,6 +344,7 @@
           canViewPayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE");
           canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
           canViewIntegrations = isOwner || isAdmin || hasPerm(pset, "INTEGRATIONS_VIEW") || hasPerm(pset, "INTEGRATIONS_MANAGE");
+          canViewDashboard = hasOwnerDashboardAccess(pset, myRole, String(me?.system_role || ""));
 
           billingStatus = getBillingStatus(perms);
           billingAccessMode = getBillingAccessMode(perms);
@@ -975,6 +980,7 @@ const titleEl = document.getElementById("title");
         const openSetup = document.getElementById("openSetup");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
+        const openDashboard = document.getElementById("openDashboard");
         const openSummary = document.getElementById("openSummary");
         const openPayProfiles = document.getElementById("openPayProfiles");
         const openPayroll = document.getElementById("openPayroll");
@@ -1016,6 +1022,7 @@ const titleEl = document.getElementById("title");
           refreshSetupEntryPoint();
           openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openDashboard) openDashboard.href = `/owner-dashboard.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
 openAdjustments.href = canManageAdjustments
@@ -1039,6 +1046,7 @@ openAdjustments.href = canManageAdjustments
           if (openIntervals) openIntervals.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
 
           // hide/show by permissions
+          setVisible(openDashboard, canViewDashboard);
           setVisible(openInvites, canManageStaff);
           setVisible(openPositions, isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE"));
 

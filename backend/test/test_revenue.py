@@ -9,7 +9,31 @@ from unittest.mock import patch
 from openpyxl import load_workbook
 
 from app.routers import venue_revenue_exports
+from app.services.integrations.report_facts import ReportFacts, ReportFactValue
 from app.services.xlsx_export import build_revenue_xlsx
+
+
+def _report_fact(
+    report_date: date,
+    *,
+    report_id: int = 1,
+    revenue_total: int,
+    unallocated: int = 0,
+    department_id: int = 10,
+    department_value: int | None = None,
+) -> ReportFacts:
+    value = revenue_total - unallocated if department_value is None else department_value
+    return ReportFacts(
+        report_id=report_id,
+        venue_id=1,
+        report_date=report_date,
+        shift_slot="DAY",
+        status="CLOSED",
+        source_mode="MANUAL",
+        revenue_total=revenue_total,
+        unallocated_revenue_total=unallocated,
+        values=(ReportFactValue(kind="DEPT", ref_id=department_id, value_numeric=value),),
+    )
 
 
 class _ScalarResult:
@@ -58,10 +82,7 @@ class RevenueTests(TestCase):
     def test_revenue_summary_queries_closed_reports_only(self):
         db = _FakeSession(
             responses=[
-                _ScalarResult(1),
-                _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
-                _ScalarsResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
-                _ScalarResult(0),
+                _AllResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
             ]
         )
         user = SimpleNamespace(id=101, system_role="NONE")
@@ -70,6 +91,10 @@ class RevenueTests(TestCase):
             patch.object(venue_revenue_exports, "_require_active_member_or_admin", return_value=None),
             patch.object(venue_revenue_exports, "_require_report_viewer", return_value=None),
             patch.object(venue_revenue_exports, "_require_revenue_viewer", return_value=None),
+            patch(
+                "app.services.finance.revenue.load_period_report_facts",
+                return_value=[_report_fact(date(2026, 3, 1), revenue_total=700)],
+            ) as load_facts,
         ):
             result = venue_revenue_exports.get_revenue_summary(
                 venue_id=1,
@@ -85,27 +110,12 @@ class RevenueTests(TestCase):
         self.assertEqual(result["total"], 700)
         self.assertEqual(result["rows"][0]["title"], "Кальяны")
 
-        compiled_params = [stmt.compile().params for stmt in db.statements]
-        params_with_closed = [params for params in compiled_params if "CLOSED" in params.values()]
-        self.assertGreaterEqual(
-            len(params_with_closed),
-            2,
-            "Revenue queries must explicitly filter DailyReport.status == CLOSED",
-        )
+        load_facts.assert_called_once()
 
     def test_revenue_daily_series_uses_selected_mode_and_fills_missing_dates(self):
         db = _FakeSession(
             responses=[
-                _ScalarResult(2),
-                _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
                 _AllResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
-                _ScalarResult(0),
-                _AllResult(
-                    [
-                        SimpleNamespace(date=date(2026, 3, 1), amount=400),
-                        SimpleNamespace(date=date(2026, 3, 3), amount=300),
-                    ]
-                ),
             ]
         )
         user = SimpleNamespace(id=101, system_role="NONE")
@@ -114,6 +124,13 @@ class RevenueTests(TestCase):
             patch.object(venue_revenue_exports, "_require_active_member_or_admin", return_value=None),
             patch.object(venue_revenue_exports, "_require_report_viewer", return_value=None),
             patch.object(venue_revenue_exports, "_require_revenue_viewer", return_value=None),
+            patch(
+                "app.services.finance.revenue.load_period_report_facts",
+                return_value=[
+                    _report_fact(date(2026, 3, 1), report_id=1, revenue_total=400),
+                    _report_fact(date(2026, 3, 3), report_id=2, revenue_total=300),
+                ],
+            ),
         ):
             result = venue_revenue_exports.get_revenue_summary(
                 venue_id=1,
@@ -132,28 +149,25 @@ class RevenueTests(TestCase):
         self.assertEqual(result["daily_series"][2], {"date": date(2026, 3, 3), "amount": 300})
         self.assertEqual(sum(point["amount"] for point in result["daily_series"]), result["total"])
 
-        compiled_params = [stmt.compile().params for stmt in db.statements]
-        self.assertTrue(any("DEPT" in params.values() for params in compiled_params))
-        self.assertIn("CLOSED", compiled_params[-1].values())
-
     def test_department_summary_includes_kpi_revenue_outside_departments(self):
         db = _FakeSession(
             responses=[
-                _ScalarResult(1),
-                _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
                 _AllResult([SimpleNamespace(id=10, code="HOOKAH", title="Кальяны", venue_id=1)]),
-                _ScalarResult(300),
             ]
         )
 
-        result = venue_revenue_exports._compute_revenue_summary(
-            venue_id=1,
-            month="2026-03",
-            date_from=None,
-            date_to=None,
-            mode="DEPARTMENTS",
-            db=db,
-        )
+        with patch(
+            "app.services.finance.revenue.load_period_report_facts",
+            return_value=[_report_fact(date(2026, 3, 1), revenue_total=1_000, unallocated=300)],
+        ):
+            result = venue_revenue_exports._compute_revenue_summary(
+                venue_id=1,
+                month="2026-03",
+                date_from=None,
+                date_to=None,
+                mode="DEPARTMENTS",
+                db=db,
+            )
 
         self.assertEqual(result["total"], 1000)
         self.assertEqual(

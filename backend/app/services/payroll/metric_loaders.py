@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     DailyReport,
-    DailyReportValue,
     DayEconomicsMonthPlan,
     DayEconomicsPlan,
     DayEconomicsPlanTemplate,
@@ -17,12 +16,12 @@ from app.models import (
     PayComponent,
     PayProfile,
     PayProfileAssignment,
-    QuickRestoReportImport,
     Shift,
     ShiftAssignment,
     ShiftInterval,
     User,
 )
+from app.services.integrations.report_facts import load_period_report_facts
 from app.services.shifts.slots import normalize_shift_slot
 
 from .component_calculations import (
@@ -275,112 +274,28 @@ def _load_member_metrics(
 def _load_revenue_metrics(
     db: Session, *, venue_id: int, month_start: date, month_end_excl: date
 ) -> PayrollRevenueMetrics:
-    total_revenue_minor = (
-        int(
-            db.execute(
-                select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
-                    DailyReport.venue_id == int(venue_id),
-                    DailyReport.status == "CLOSED",
-                    DailyReport.date >= month_start,
-                    DailyReport.date < month_end_excl,
-                )
-            ).scalar()
-            or 0
-        )
-        * 100
+    facts = load_period_report_facts(
+        db,
+        venue_id=int(venue_id),
+        period_start=month_start,
+        period_end_exclusive=month_end_excl,
     )
-
-    total_daily_rows = db.execute(
-        select(
-            DailyReport.date.label("report_date"),
-            func.coalesce(func.sum(DailyReport.revenue_total), 0).label("amount"),
-        )
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
-        )
-        .group_by(DailyReport.date)
-    ).all()
-    total_revenue_by_date_minor: dict[date, int] = {
-        row.report_date: int(row.amount or 0) * 100 for row in total_daily_rows if row and row.report_date is not None
-    }
-
-    dept_rows = db.execute(
-        select(
-            DailyReportValue.ref_id,
-            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-        )
-        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
-            DailyReportValue.kind == "DEPT",
-        )
-        .group_by(DailyReportValue.ref_id)
-    ).all()
-
+    total_revenue_minor = 0
+    total_revenue_by_date_minor: dict[date, int] = {}
     department_revenue_minor: dict[int, int] = {}
-    for row in dept_rows:
-        department_revenue_minor[int(row.ref_id)] = int(row.amount or 0) * 100
-
-    dept_daily_rows = db.execute(
-        select(
-            DailyReport.date.label("report_date"),
-            DailyReportValue.ref_id,
-            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-        )
-        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
-            DailyReportValue.kind == "DEPT",
-        )
-        .group_by(DailyReport.date, DailyReportValue.ref_id)
-    ).all()
-
     department_revenue_by_date_minor: dict[int, dict[date, int]] = {}
-    for row in dept_daily_rows:
-        dep_id = int(row.ref_id)
-        by_date = department_revenue_by_date_minor.setdefault(dep_id, {})
-        by_date[row.report_date] = int(row.amount or 0) * 100
-
-    imported_reports = db.execute(
-        select(QuickRestoReportImport, DailyReport.date)
-        .join(DailyReport, DailyReport.id == QuickRestoReportImport.daily_report_id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
+    for fact in facts:
+        eligible_minor = max(0, int(fact.revenue_total) - int(fact.unallocated_revenue_total)) * 100
+        total_revenue_minor += eligible_minor
+        total_revenue_by_date_minor[fact.report_date] = (
+            int(total_revenue_by_date_minor.get(fact.report_date, 0)) + eligible_minor
         )
-    ).all()
-    for source, report_date in imported_reports:
-        summary = source.summary_json if isinstance(source.summary_json, dict) else {}
-        excluded_total_minor = max(0, int(summary.get("percentage_excluded_total") or 0)) * 100
-        if excluded_total_minor:
-            total_revenue_minor = max(0, total_revenue_minor - excluded_total_minor)
-            total_revenue_by_date_minor[report_date] = max(
-                0,
-                int(total_revenue_by_date_minor.get(report_date) or 0) - excluded_total_minor,
-            )
-        excluded_departments = summary.get("percentage_excluded_departments_internal") or {}
-        for raw_department_id, raw_value in (
-            excluded_departments.items() if isinstance(excluded_departments, dict) else ()
-        ):
-            department_id = int(raw_department_id)
-            excluded_minor = max(0, int(raw_value or 0)) * 100
-            department_revenue_minor[department_id] = max(
-                0,
-                int(department_revenue_minor.get(department_id) or 0) - excluded_minor,
-            )
-            by_date = department_revenue_by_date_minor.setdefault(department_id, {})
-            by_date[report_date] = max(0, int(by_date.get(report_date) or 0) - excluded_minor)
+        for value in fact.values_for("DEPT"):
+            dep_id = int(value.ref_id)
+            amount_minor = int(value.value_numeric) * 100
+            department_revenue_minor[dep_id] = int(department_revenue_minor.get(dep_id, 0)) + amount_minor
+            by_date = department_revenue_by_date_minor.setdefault(dep_id, {})
+            by_date[fact.report_date] = int(by_date.get(fact.report_date, 0)) + amount_minor
 
     return PayrollRevenueMetrics(
         total_revenue_minor=total_revenue_minor,
@@ -391,48 +306,22 @@ def _load_revenue_metrics(
 
 
 def _load_kpi_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> PayrollKpiMetrics:
-    rows = db.execute(
-        select(
-            DailyReportValue.ref_id,
-            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("value_total"),
-        )
-        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
-            DailyReportValue.kind == "KPI",
-        )
-        .group_by(DailyReportValue.ref_id)
-    ).all()
-
     totals_by_metric_id: dict[int, int] = {}
-    for row in rows:
-        totals_by_metric_id[int(row.ref_id)] = int(row.value_total or 0)
-
-    slot_rows = db.execute(
-        select(
-            DailyReportValue.ref_id,
-            DailyReport.date,
-            DailyReport.shift_slot,
-            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("value_total"),
-        )
-        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= month_start,
-            DailyReport.date < month_end_excl,
-            DailyReportValue.kind == "KPI",
-        )
-        .group_by(DailyReportValue.ref_id, DailyReport.date, DailyReport.shift_slot)
-    ).all()
     values_by_metric_date_slot: dict[int, dict[tuple[date, str], int]] = {}
-    for row in slot_rows:
-        metric_values = values_by_metric_date_slot.setdefault(int(row.ref_id), {})
-        report_key = (row.date, normalize_shift_slot(row.shift_slot))
-        metric_values[report_key] = int(row.value_total or 0)
+    facts = load_period_report_facts(
+        db,
+        venue_id=int(venue_id),
+        period_start=month_start,
+        period_end_exclusive=month_end_excl,
+    )
+    for fact in facts:
+        for value in fact.values_for("KPI"):
+            metric_id = int(value.ref_id)
+            amount = int(value.value_numeric)
+            totals_by_metric_id[metric_id] = int(totals_by_metric_id.get(metric_id, 0)) + amount
+            metric_values = values_by_metric_date_slot.setdefault(metric_id, {})
+            report_key = (fact.report_date, normalize_shift_slot(fact.shift_slot))
+            metric_values[report_key] = int(metric_values.get(report_key, 0)) + amount
     return PayrollKpiMetrics(
         totals_by_metric_id=totals_by_metric_id,
         values_by_metric_date_slot=values_by_metric_date_slot,

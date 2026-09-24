@@ -48,7 +48,7 @@
     }, 8000);
   </script>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260820-i18nmetrika1";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260924-dashboardi18n1";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -124,7 +124,7 @@ const role = String(v?.my_role || "").toUpperCase();
 if (role) {
   location.replace(role === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
-    : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
+    : `/owner-dashboard.html?venue_id=${encodeURIComponent(vid)}`
   );
   return;
 }
@@ -135,7 +135,7 @@ try {
   const r = String(perms?.role || "").toUpperCase();
   location.replace(r === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
-    : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
+    : `/owner-dashboard.html?venue_id=${encodeURIComponent(vid)}`
   );
   return;
 } catch {

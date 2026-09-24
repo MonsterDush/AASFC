@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardi18n1";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
@@ -966,14 +966,14 @@ async function loadSummary() {
 
 async function boot() {
   applyTelegramTheme();
-  mountCommonUI("summary");
+  mountCommonUI("dashboard");
   await ensureLogin({ silent: true });
 
   const params = new URLSearchParams(location.search);
   const venueId = params.get("venue_id") || getActiveVenueId();
   if (venueId) setActiveVenueId(venueId);
 
-  await mountNav({ activeTab: "summary" });
+  await mountNav({ activeTab: "dashboard" });
 
   try {
     const venues = await getMyVenues();

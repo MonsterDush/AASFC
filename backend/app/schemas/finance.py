@@ -172,6 +172,8 @@ class PaymentMethodBalanceRowOut(BaseModel):
 class MonthlyFinanceSummaryOut(FinanceSummaryOut):
     income_mode: str
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    revenue_breakdown_total_minor: int = 0
+    revenue_discrepancy_minor: int = 0
     expense_categories: list[MonthlyFinanceBreakdownRowOut]
     payment_method_balances: list[PaymentMethodBalanceRowOut]
     draft_expense_count: int = 0
@@ -185,6 +187,8 @@ class DailyFinanceSummaryOut(FinanceSummaryOut):
     slot_costs_available: bool = True
     slot_profit_available: bool = True
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    revenue_breakdown_total_minor: int = 0
+    revenue_discrepancy_minor: int = 0
     point_expenses: list[MonthlyFinanceBreakdownRowOut]
     point_expense_minor: int
     recurring_expenses: list[MonthlyFinanceBreakdownRowOut]

@@ -43,6 +43,18 @@ def _raw_payload_fernet():
     return _fernet_for_domain(b"axelio:integration-raw-payloads:v1")
 
 
+def _command_payload_fernet():
+    return _fernet_for_domain(b"axelio:integration-command-payloads:v1")
+
+
+def _event_payload_fernet():
+    return _fernet_for_domain(b"axelio:integration-event-payloads:v1")
+
+
+def _operational_payload_fernet():
+    return _fernet_for_domain(b"axelio:integration-operational-payloads:v1")
+
+
 def encrypt_credential(value: str) -> str:
     plaintext = str(value or "")
     if not plaintext:
@@ -98,3 +110,44 @@ def decrypt_raw_integration_payload(value: str) -> str:
         return plaintext.decode("utf-8")
     except Exception as exc:
         raise IntegrationCredentialError("Integration raw payload could not be decrypted") from exc
+
+
+def _encrypt_domain_payload(value: str, *, label: str, fernet) -> str:
+    plaintext = str(value or "")
+    if not plaintext:
+        raise IntegrationCredentialError(f"Integration {label} payload cannot be empty")
+    return f"v1:{fernet().encrypt(plaintext.encode('utf-8')).decode('ascii')}"
+
+
+def _decrypt_domain_payload(value: str, *, label: str, fernet) -> str:
+    stored = str(value or "")
+    if not stored.startswith("v1:"):
+        raise IntegrationCredentialError(f"Integration {label} payload has an unsupported format")
+    try:
+        return fernet().decrypt(stored[3:].encode("ascii")).decode("utf-8")
+    except Exception as exc:
+        raise IntegrationCredentialError(f"Integration {label} payload could not be decrypted") from exc
+
+
+def encrypt_command_payload(value: str) -> str:
+    return _encrypt_domain_payload(value, label="command", fernet=_command_payload_fernet)
+
+
+def decrypt_command_payload(value: str) -> str:
+    return _decrypt_domain_payload(value, label="command", fernet=_command_payload_fernet)
+
+
+def encrypt_event_payload(value: str) -> str:
+    return _encrypt_domain_payload(value, label="event", fernet=_event_payload_fernet)
+
+
+def decrypt_event_payload(value: str) -> str:
+    return _decrypt_domain_payload(value, label="event", fernet=_event_payload_fernet)
+
+
+def encrypt_operational_payload(value: str) -> str:
+    return _encrypt_domain_payload(value, label="operational", fernet=_operational_payload_fernet)
+
+
+def decrypt_operational_payload(value: str) -> str:
+    return _decrypt_domain_payload(value, label="operational", fernet=_operational_payload_fernet)

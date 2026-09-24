@@ -82,7 +82,7 @@ for (const [fileName, [factoryName, lineLimit]] of Object.entries(moduleContract
       : (fileName === "position-editor.js" ? "20260913-effectivepay1" : "20260720-unified6"));
   assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /positions\.js\?v=20260913-effectivepay1/);
+assert.match(htmlSource, /positions\.js\?v=20260924-dashboardi18n1/);
 assert.match(moduleSources["permission-controller.js"], /position-template-ui\.js\?v=20260726-navmore1/);
 
 const state = {

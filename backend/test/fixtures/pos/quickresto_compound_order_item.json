@@ -1,0 +1,16 @@
+{
+  "id": "combo-1",
+  "productId": "combo-product",
+  "name": "Lunch",
+  "quantity": "1",
+  "netAmount": "750.00",
+  "primaryComponents": [
+    {"id": "main-1", "productId": "main", "name": "Soup", "quantity": 1}
+  ],
+  "secondaryComponents": [
+    {"id": "side-1", "productId": "side", "name": "Salad", "quantity": 1}
+  ],
+  "modifiers": [
+    {"id": "mod-1", "productId": "bread", "name": "Bread", "quantity": 1}
+  ]
+}

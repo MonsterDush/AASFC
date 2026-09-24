@@ -57,8 +57,8 @@ for (const [fileName, factoryName] of moduleContracts) {
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
   const cacheKey = fileName === "navigation.js"
-    ? "20260726-navmore1"
-    : (fileName === "ui-preferences.js" ? "20260813-assurance2" : "20260719-split1");
+    ? "20260924-dashboardi18n1"
+    : (fileName === "ui-preferences.js" ? "20260924-dashboardi18n1" : "20260719-split1");
   assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
@@ -158,12 +158,12 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260820-i18nmetrika1["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260924-dashboardi18n1["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);
   }
 }
-assert.equal(consumerCount, 57);
+assert.equal(consumerCount, 58);
 
 console.log(`app facade contract: ${EXPECTED_EXPORTS.length} exports, ${consumerCount} consumers`);

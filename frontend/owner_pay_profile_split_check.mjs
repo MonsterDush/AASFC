@@ -76,7 +76,7 @@ for (const [fileName, limit] of Object.entries(sizeLimits)) {
   const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260906-tiers1";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260906-tiers1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260924-dashboardi18n1/);
 const percentTiersSource = fs.readFileSync(path.join(moduleDir, "percent-tiers.js"), "utf8");
 assert.ok(percentTiersSource.split("\n").length < 260, "percent-tiers.js is too large");
 assert.match(moduleSources["component-controller.js"], /\.\/percent-tiers\.js\?v=20260906-tiers1/);

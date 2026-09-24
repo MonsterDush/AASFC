@@ -19,7 +19,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardi18n1";
 import {
   formatComparisonRange,
   normalizeIsoRange,
@@ -1147,6 +1147,12 @@ async function boot() {
     if (categoryFilter) categoryFilter.value = state.categoryId;
     if (supplierFilter) supplierFilter.value = state.supplierId;
     await loadExpenses();
+    if (params.get("action") === "add" && access.canEdit && !isDemoUiMode()) {
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete("action");
+      history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+      openExpenseForm();
+    }
   } catch (err) {
     document.getElementById("expensesList").innerHTML = `<div class="muted">${esc(err?.data?.detail || err.message || "Ошибка загрузки")}</div>`;
     document.getElementById("expensesState").textContent = "Ошибка";
@@ -1169,7 +1175,7 @@ function mountDemoFlowTour() {
     total: 4,
     title: "Продолжение DEMO-тура",
     text: "На этом шаге видно, как расходы собраны по категориям и как они влияют на экономику месяца.",
-    prevPath: `/owner-summary.html${q}`,
+    prevPath: `/owner-dashboard.html${q}`,
     nextPath: `/owner-payroll.html${q}`,
   });
 }

@@ -36,6 +36,7 @@ const viewports = [
 const expectedScenarios = [
   "owner-auth",
   "owner-venues",
+  "owner-dashboard",
   "owner-summary",
   "owner-expenses",
   "owner-payroll",
@@ -1030,6 +1031,7 @@ async function exerciseReadOnlyCoverageSurfaces(browser) {
       [
         `/app-dashboard.html${venueQuery}`,
         `/app-venue.html${venueQuery}`,
+        `/owner-dashboard.html${venueQuery}`,
         `/app-adjustments.html${venueQuery}`,
         `/owner-departments.html${venueQuery}`,
         `/owner-economics-plans.html${venueQuery}`,
@@ -1751,6 +1753,39 @@ async function ownerScenarios(browser, viewport) {
     scenarios.push({
       name: "owner-venues",
       quality: await assertPageQuality(page, "owner-venues", `${label} venues`),
+    });
+
+    await page.goto(
+      `${frontendBase}/app-venue.html?venue_id=${venueId}&lang=ru`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+    const dashboardEntry = page.locator("#openDashboard");
+    await dashboardEntry.waitFor({ state: "visible", timeout: 20_000 });
+    assert.equal((await dashboardEntry.textContent())?.trim(), "Дашборд");
+    assert.equal(
+      await page.locator('#nav [data-tab="dashboard"]').first().textContent(),
+      "Дашборд",
+      "owner navbar must use the Russian dashboard translation",
+    );
+    await dashboardEntry.click();
+    await page.waitForURL((url) => url.pathname === "/owner-dashboard.html");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#dashboardWidgetGrid")
+          ?.getAttribute("aria-busy") === "false",
+      null,
+      { timeout: 20_000 },
+    );
+    scenarios.push({
+      name: "owner-dashboard",
+      quality: await assertPageQuality(
+        page,
+        "owner-dashboard",
+        `${label} dashboard`,
+      ),
     });
 
     await page.goto(`${frontendBase}/owner-summary.html?venue_id=${venueId}`, {

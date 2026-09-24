@@ -1,5 +1,6 @@
 .venue-page{display:grid;gap:0}
-.venue-page__intro{padding:2px 2px 0}
+.venue-page__intro{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 2px 0}
+.venue-dashboard-entry{flex:none;min-width:132px}
 .venue-notice{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
 .venue-notice--archive{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
 .venue-notice--billing{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
@@ -29,6 +30,8 @@
 .venue-member-row:last-child{border-bottom:0;padding-bottom:0}
 .venue-member-row__main{min-width:0;overflow-wrap:anywhere}
 @media (max-width:560px){
+  .venue-page__intro{align-items:stretch;flex-direction:column}
+  .venue-dashboard-entry{width:100%}
   .venue-widget-copy{flex-basis:100%}
   .venue-widget-row{display:grid;grid-template-columns:minmax(0,1fr)}
   .venue-widget-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));width:100%;max-width:none}

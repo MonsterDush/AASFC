@@ -10,7 +10,7 @@ import {
   mountNav,
   setActiveVenueId,
   toast,
-} from "/app.js?v=20260820-i18nmetrika1";
+} from "/app.js?v=20260924-dashboardi18n1";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -29,6 +29,10 @@ const ids = [
   "openCount",
   "affectedShiftCount",
   "oldestFailedAt",
+  "canonicalQualitySummary",
+  "canonicalHealth",
+  "canonicalIssueCount",
+  "canonicalStaleCount",
   "activeIssues",
   "allIssues",
   "providerFilter",
@@ -163,6 +167,38 @@ function renderCounters(result = {}) {
   el.oldestFailedAt.textContent = formatDate(result.oldest_failed_at, {
     withTime: true,
   });
+}
+
+function canonicalHealthLabel(value) {
+  const health = String(value || "").toUpperCase();
+  if (health === "HEALTHY") return "Работает";
+  if (health === "DEGRADED") return "Требует внимания";
+  if (health === "FAILED") return "Критическая ошибка";
+  return "—";
+}
+
+async function renderCanonicalQualitySummary() {
+  const connections = await api(
+    `/venues/${encodeURIComponent(venueId)}/pos-integrations`,
+  );
+  const connection = (Array.isArray(connections) ? connections : []).find(
+    (item) => String(item.provider || "").toUpperCase() === "QUICKRESTO",
+  );
+  if (!connection?.id) {
+    el.canonicalQualitySummary.hidden = true;
+    return;
+  }
+  const summary = await api(
+    `/pos-integrations/${encodeURIComponent(connection.id)}/quality-summary`,
+  );
+  el.canonicalHealth.textContent = canonicalHealthLabel(summary.health);
+  el.canonicalIssueCount.textContent = String(
+    Number(summary.active_issue_count || 0),
+  );
+  el.canonicalStaleCount.textContent = String(
+    Number(summary.stale_capability_count || 0),
+  );
+  el.canonicalQualitySummary.hidden = false;
 }
 
 function renderFilters() {
@@ -1377,6 +1413,11 @@ async function loadPage() {
     }
   }
   renderCounters(integration.issues || {});
+  try {
+    await renderCanonicalQualitySummary();
+  } catch {
+    el.canonicalQualitySummary.hidden = true;
+  }
   await loadIssues();
   const requestedIssueId = params.get("issue_id");
   if (requestedIssueId) await openIssue(requestedIssueId);

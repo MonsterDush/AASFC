@@ -87,6 +87,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             "post_quickresto_import_batch_retry",
             "list_pos_integrations",
             "list_pos_integration_capabilities",
+            "get_pos_integration_quality_summary",
             "list_pos_integration_quality_issues",
             "get_pos_integration_quality_issue",
             "get_pos_integration_reconciliation",
@@ -181,6 +182,11 @@ class VenueEconomicsRouterContractTests(TestCase):
             ),
             (
                 ("GET",),
+                "/pos-integrations/{connection_id}/quality-summary",
+                "get_pos_integration_quality_summary",
+            ),
+            (
+                ("GET",),
                 "/pos-integrations/{connection_id}/quality-issues",
                 "list_pos_integration_quality_issues",
             ),
@@ -196,7 +202,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             ),
         }
 
-        self.assertEqual(len(manifest), 194)
+        self.assertEqual(len(manifest), 195)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 
