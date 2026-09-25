@@ -28,6 +28,7 @@ from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
+from app.models.report_value_contribution import ReportValueContribution
 from app.models.user import User
 from app.models.venue import Venue
 from app.routers.venue_quickresto import (
@@ -48,12 +49,14 @@ from app.services.integrations.quickresto_normalize import (
     normalize_closed_shift,
 )
 from app.services.integrations.quickresto_sync import (
+    _close_imported_report,
     _mapped_aggregate,
     _replace_report_values,
     _report_values,
     _report_values_match,
 )
-from app.services.payroll.metric_loaders import _load_revenue_metrics
+from app.services.integrations.report_facts import load_report_facts
+from app.services.payroll.metric_loaders import _load_kpi_metrics, _load_revenue_metrics
 
 
 @compiles(JSONB, "sqlite")
@@ -182,6 +185,7 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             QuickRestoSourceSnapshot.__table__,
             DailyReport.__table__,
             DailyReportValue.__table__,
+            ReportValueContribution.__table__,
             QuickRestoReportImport.__table__,
         ]
         from app.core.db import Base
@@ -478,6 +482,67 @@ class QuickRestoKpiImportTests(unittest.TestCase):
             _replace_report_values(db, report, removed, previous_aggregate=second)
             db.flush()
             self.assertEqual(_report_values(db, report.id, "KPI"), {41: 3, 42: 7})
+
+    def test_auto_close_flushes_report_values_before_manual_facts_and_payroll_reads(self):
+        with Session(self.engine, autoflush=False) as db:
+            user, venue, connection = self._seed(db)
+            report = DailyReport(
+                venue_id=venue.id,
+                date=date(2026, 9, 24),
+                shift_slot="DAY",
+                revenue_total=9000,
+                unallocated_revenue_total=0,
+                status="DRAFT",
+                created_by_user_id=user.id,
+            )
+            db.add(report)
+            db.flush()
+            aggregate = {
+                "aggregate_hash": "auto-close-payroll-regression",
+                "revenue_total": 9000,
+                "department_unallocated_total": 0,
+                "payments_internal": {31: 9000},
+                "departments_internal": {21: 9000},
+                "kpis_internal": {41: 2},
+            }
+
+            with (
+                patch("app.routers.venue_reports._rebuild_report_tip_allocations"),
+                patch("app.routers.venue_reports.rebuild_revenue_entries_for_report"),
+                patch("app.routers.venue_reports.sync_daily_recurring_accruals_for_date"),
+                patch("app.routers.venue_reports._recalculate_payroll_for_dates"),
+                patch("app.routers.venue_reports._enqueue_day_economics_summary_job"),
+                patch("app.routers.venue_reports._enqueue_salary_day_breakdown_job"),
+                patch("app.routers.venue_reports._enqueue_soft_alerts_job"),
+            ):
+                _replace_report_values(db, report, aggregate)
+                _close_imported_report(
+                    db,
+                    connection=connection,
+                    report=report,
+                    aggregate=aggregate,
+                    actor_user_id=user.id,
+                )
+
+            facts = load_report_facts(db, report=report)
+            self.assertEqual(
+                {(value.kind, value.ref_id): value.value_numeric for value in facts.values},
+                {("PAYMENT", 31): 9000, ("DEPT", 21): 9000, ("KPI", 41): 2},
+            )
+            revenue = _load_revenue_metrics(
+                db,
+                venue_id=venue.id,
+                month_start=date(2026, 9, 1),
+                month_end_excl=date(2026, 10, 1),
+            )
+            self.assertEqual(revenue.department_revenue_by_date_minor[21][report.date], 900_000)
+            kpis = _load_kpi_metrics(
+                db,
+                venue_id=venue.id,
+                month_start=date(2026, 9, 1),
+                month_end_excl=date(2026, 10, 1),
+            )
+            self.assertEqual(kpis.values_by_metric_date_slot[41][(report.date, "DAY")], 2)
 
     def test_mapping_api_accepts_only_quantity_kpi_of_current_venue(self):
         with Session(self.engine) as db:
