@@ -1057,6 +1057,10 @@ def _replace_report_values(
                     value_numeric=int(value),
                 )
             )
+    # SessionLocal intentionally uses autoflush=False. The auto-close path
+    # reads these rows immediately to mirror MANUAL facts and recalculate
+    # payroll, so make the replacement visible before either read starts.
+    db.flush()
 
 
 def _close_imported_report(
