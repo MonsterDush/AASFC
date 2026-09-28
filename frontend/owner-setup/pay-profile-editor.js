@@ -327,9 +327,15 @@ export function createPayProfileSetupController(context) {
       }
     }));
 
+    let previousComponentType = String(document.getElementById('inlineComponentType')?.value || 'SALARY_FIXED_MONTH');
     document.getElementById('inlineComponentType')?.addEventListener('change', () => {
       const titleEl = document.getElementById('inlineComponentTitle');
-      if (titleEl && !String(titleEl.value || '').trim()) titleEl.value = defaultPayComponentTitle(document.getElementById('inlineComponentType')?.value || '');
+      const nextType = String(document.getElementById('inlineComponentType')?.value || '');
+      const currentTitle = String(titleEl?.value || '').trim();
+      if (titleEl && (!currentTitle || currentTitle === defaultPayComponentTitle(previousComponentType))) {
+        titleEl.value = defaultPayComponentTitle(nextType);
+      }
+      previousComponentType = nextType;
       syncInlinePayComponentFields();
     });
     document.getElementById('inlineComponentKpiCalculationMode')?.addEventListener('change', syncInlinePayComponentFields);

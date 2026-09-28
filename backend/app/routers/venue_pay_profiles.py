@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.services.payroll.percent_tier_rules import normalize_payload_tiers, sync_component_tiers
 from fastapi import APIRouter
 
@@ -40,6 +42,7 @@ from app.routers.venue_pay_profile_support import (
     _dump_int_ids,
     _validate_weekday_rates,
     _ensure_department_ids_in_venue,
+    _ensure_no_pay_profile_assignment_overlap,
     _get_pay_component_or_404,
     _get_pay_profile_assignment_or_404,
     _get_pay_profile_or_404,
@@ -56,6 +59,7 @@ from app.routers.venue_pay_profile_support import (
 )
 from app.services.payroll.weekday_rates import dump_weekday_rates
 from app.routers.venue_membership_support import _build_user_auth_snapshot_map
+from app.models.position_pay_profile_period import PositionPayProfilePeriod
 
 
 router = APIRouter()
@@ -97,7 +101,48 @@ def list_pay_profiles(
         else {}
     )
 
-    assignments_counts = (
+    today = date.today()
+    direct_active_rows = (
+        db.execute(
+            select(PayProfileAssignment.pay_profile_id, PayProfileAssignment.member_user_id)
+            .where(
+                PayProfileAssignment.venue_id == venue_id,
+                PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                PayProfileAssignment.is_active.is_(True),
+                sa.or_(PayProfileAssignment.start_date.is_(None), PayProfileAssignment.start_date <= today),
+                sa.or_(PayProfileAssignment.end_date.is_(None), PayProfileAssignment.end_date >= today),
+            )
+        ).all()
+        if profile_ids
+        else []
+    )
+    position_active_rows = (
+        db.execute(
+            select(
+                PositionPayProfilePeriod.pay_profile_id,
+                PositionPayProfilePeriod.venue_position_id,
+                PositionPayProfilePeriod.member_user_id,
+            ).where(
+                PositionPayProfilePeriod.venue_id == venue_id,
+                PositionPayProfilePeriod.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                PositionPayProfilePeriod.is_active.is_(True),
+                sa.or_(PositionPayProfilePeriod.valid_from.is_(None), PositionPayProfilePeriod.valid_from <= today),
+                sa.or_(PositionPayProfilePeriod.valid_to.is_(None), PositionPayProfilePeriod.valid_to >= today),
+            )
+        ).all()
+        if profile_ids
+        else []
+    )
+    direct_by_profile: dict[int, set[int]] = {}
+    for profile_id, member_id in direct_active_rows:
+        direct_by_profile.setdefault(int(profile_id), set()).add(int(member_id))
+    positions_by_profile: dict[int, set[int]] = {}
+    position_members_by_profile: dict[int, set[int]] = {}
+    for profile_id, position_id, member_id in position_active_rows:
+        positions_by_profile.setdefault(int(profile_id), set()).add(int(position_id))
+        position_members_by_profile.setdefault(int(profile_id), set()).add(int(member_id))
+
+    direct_historical_counts = (
         {
             int(profile_id): int(count or 0)
             for profile_id, count in db.execute(
@@ -105,8 +150,31 @@ def list_pay_profiles(
                 .where(
                     PayProfileAssignment.venue_id == venue_id,
                     PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                    sa.or_(
+                        PayProfileAssignment.is_active.is_(False),
+                        PayProfileAssignment.end_date < today,
+                    ),
                 )
                 .group_by(PayProfileAssignment.pay_profile_id)
+            ).all()
+        }
+        if profile_ids
+        else {}
+    )
+    position_historical_counts = (
+        {
+            int(profile_id): int(count or 0)
+            for profile_id, count in db.execute(
+                select(PositionPayProfilePeriod.pay_profile_id, func.count(PositionPayProfilePeriod.id))
+                .where(
+                    PositionPayProfilePeriod.venue_id == venue_id,
+                    PositionPayProfilePeriod.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                    sa.or_(
+                        PositionPayProfilePeriod.is_active.is_(False),
+                        PositionPayProfilePeriod.valid_to < today,
+                    ),
+                )
+                .group_by(PositionPayProfilePeriod.pay_profile_id)
             ).all()
         }
         if profile_ids
@@ -117,7 +185,20 @@ def list_pay_profiles(
         _serialize_pay_profile(
             profile,
             components_count=components_counts.get(int(profile.id), 0),
-            assignments_count=assignments_counts.get(int(profile.id), 0),
+            assignments_count=(
+                len(direct_by_profile.get(int(profile.id), set()))
+                + len(positions_by_profile.get(int(profile.id), set()))
+            ),
+            direct_assignments_count=len(direct_by_profile.get(int(profile.id), set())),
+            position_assignments_count=len(positions_by_profile.get(int(profile.id), set())),
+            effective_members_count=len(
+                direct_by_profile.get(int(profile.id), set())
+                | position_members_by_profile.get(int(profile.id), set())
+            ),
+            historical_assignments_count=(
+                direct_historical_counts.get(int(profile.id), 0)
+                + position_historical_counts.get(int(profile.id), 0)
+            ),
         )
         for profile in profiles
     ]
@@ -230,6 +311,15 @@ def create_pay_profile_assignment(
     if vm is None:
         raise HTTPException(status_code=400, detail="Member not found in venue")
 
+    _ensure_no_pay_profile_assignment_overlap(
+        db,
+        venue_id=venue_id,
+        member_user_id=payload.member_user_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        is_active=payload.is_active,
+    )
+
     assignment = PayProfileAssignment(
         venue_id=venue_id,
         pay_profile_id=profile_id,
@@ -267,6 +357,16 @@ def update_pay_profile_assignment(
     new_end_date = payload.end_date if "end_date" in fields_set else assignment.end_date
     if new_start_date and new_end_date and new_end_date < new_start_date:
         raise HTTPException(status_code=400, detail="end_date must be >= start_date")
+    new_is_active = payload.is_active if "is_active" in fields_set and payload.is_active is not None else assignment.is_active
+    _ensure_no_pay_profile_assignment_overlap(
+        db,
+        venue_id=venue_id,
+        member_user_id=int(assignment.member_user_id),
+        start_date=new_start_date,
+        end_date=new_end_date,
+        is_active=bool(new_is_active),
+        exclude_assignment_id=int(assignment.id),
+    )
     if "start_date" in fields_set:
         assignment.start_date = payload.start_date
     if "end_date" in fields_set:

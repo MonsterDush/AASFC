@@ -1110,6 +1110,7 @@ function renderOverview() {
     : (isSetupDone(state.setup) ? "Настройка завершена" : "Все шаги раздела завершены");
   const prepareDone = isSetupPrepareDone(state.setup);
   const extraDisabled = !prepareDone;
+  const setupDone = isSetupDone(state.setup);
 
   root.innerHTML = `
     <div class="itemcard section-card setup-card setup-overview-card">
@@ -1127,6 +1128,8 @@ function renderOverview() {
       </div>
 
       <progress class="setup-progressbar" value="${percent}" max="100" aria-label="Общий прогресс мастера: ${percent}%">${percent}%</progress>
+
+      ${setupDone ? `<div class="setup-inline-note mt-14"><b>Настройка завершена.</b> Базовые и дополнительные шаги сохранены. Можно перейти к ежедневной работе с заведением.</div>` : ``}
 
       <div class="setup-summary">
         <div class="setup-kpi">
@@ -1150,7 +1153,7 @@ function renderOverview() {
 
       <div class="setup-actionbar mt-14">
         <button class="btn" id="btnOverviewVenue" type="button">К заведению</button>
-        <button class="btn subtle" id="btnSkipSetupAll" type="button">Пропустить настройку</button>
+        ${setupDone ? `<button class="btn subtle" id="btnOverviewSchedule" type="button">Открыть график</button><button class="btn subtle" id="btnOverviewPayroll" type="button">Открыть зарплату</button>` : `<button class="btn subtle" id="btnSkipSetupAll" type="button">Пропустить настройку</button>`}
       </div>
     </div>
   `;
@@ -1161,6 +1164,8 @@ function renderOverview() {
     moveToPhase("EXTRA");
   });
   document.getElementById("btnOverviewVenue")?.addEventListener("click", () => navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
+  document.getElementById("btnOverviewSchedule")?.addEventListener("click", () => navTo(`/staff-shifts.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
+  document.getElementById("btnOverviewPayroll")?.addEventListener("click", () => navTo(`/owner-payroll.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
   document.getElementById("btnSkipSetupAll")?.addEventListener("click", async () => {
     const ok = await confirmModal({
       title: "Пропустить настройку?",
@@ -1292,7 +1297,7 @@ function renderStepDetail() {
         <div class="setup-actionbar">
           <button class="btn subtle" id="btnBackToPhase" type="button">← К списку шагов</button>
           <button class="btn subtle" id="btnPrevStep" type="button" ${prevStep ? '' : 'disabled'}>← Назад</button>
-          <button class="btn subtle" id="btnNextStep" type="button" ${nextStep ? '' : 'disabled'}>Дальше →</button>
+          <button class="btn subtle" id="btnNextStep" type="button">${nextStep ? 'Дальше →' : 'К списку шагов'}</button>
         </div>
         <div class="setup-actionbar">
           ${state.selectedPhase === "PREPARE" && isSetupPrepareDone(state.setup) && !isSetupDone(state.setup) ? `<button class="btn primary" id="btnFinishPrepare" type="button">Завершить базовую настройку</button>` : ""}
@@ -1465,7 +1470,7 @@ function wireSetupActions(currentStep, visibleSteps) {
       moveToStep(next.key);
       return;
     }
-    toast('Дальше доступных шагов пока нет', 'warn');
+    moveToPhase(state.selectedPhase);
   });
 
   document.getElementById("btnFinishPrepare")?.addEventListener("click", async () => {

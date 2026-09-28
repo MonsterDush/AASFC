@@ -44,6 +44,13 @@ def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) ->
             target_dates = [str(item) for item in raw_dates if item]
     except Exception:
         target_dates = []
+    details: dict = {}
+    try:
+        raw_details = json.loads(row.details_json) if row.details_json else {}
+        if isinstance(raw_details, dict):
+            details = raw_details
+    except Exception:
+        details = {}
     return {
         "id": int(row.id),
         "period_month": row.period_month.strftime("%Y-%m") if getattr(row, "period_month", None) else None,
@@ -53,6 +60,7 @@ def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) ->
         else None,
         "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
         "target_dates": target_dates,
+        "details": details,
     }
 
 
@@ -132,7 +140,7 @@ def _recalculate_payroll_for_dates(
             continue
         if not force and not _has_closed_report_for_date(db, venue_id=venue_id, target_date=target_date):
             continue
-        calculate_payroll_for_month(
+        calculation = calculate_payroll_for_month(
             db=db,
             venue_id=int(venue_id),
             month=month,
@@ -147,7 +155,13 @@ def _recalculate_payroll_for_dates(
             trigger_reason=str(trigger_reason or "system"),
             triggered_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
             target_dates=month_target_dates,
-            details=details or {},
+            details={
+                **(details or {}),
+                "warning_count": len(calculation.warnings),
+                "warnings": calculation.warnings,
+                "lines_count": len(calculation.lines),
+                "total_amount_minor": int(calculation.run.total_amount_minor or 0),
+            },
         )
         seen.add(month)
         months_done.append(month)

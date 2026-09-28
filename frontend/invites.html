@@ -81,6 +81,10 @@
               <option value="OWNER">Владелец</option>
             </select>
           </label>
+          <label class="invite-field">
+            <span>Должность (необязательно)</span>
+            <select id="positionPreset"><option value="">Без должности</option></select>
+          </label>
         </div>
         <div class="invite-create-actions">
           <button class="btn primary" id="btnInvite">Создать приглашение</button>
@@ -144,6 +148,7 @@
       mountNav,
       getVenueById,
       getMyVenuePermissions,
+      getVenuePositionPresets,
       getMe,
       getStoredDemoUiState,
       isDemoReadonlyUi
@@ -165,6 +170,7 @@
     let venueName = "";
     let canManageStaff = false;
     let canInviteOwners = false;
+    let positionPresets = [];
     const demoState = getStoredDemoUiState();
     const demoReadonly = isDemoReadonlyUi(demoState);
 
@@ -185,6 +191,33 @@
     const phoneWrap = document.getElementById("phoneWrap");
     const btnInvite = document.getElementById("btnInvite");
     const roleSelect = document.getElementById("role");
+    const positionPresetSelect = document.getElementById("positionPreset");
+
+    function renderPositionPresets() {
+      positionPresetSelect.innerHTML = '<option value="">Без должности</option>';
+      positionPresets.filter((item) => item?.is_active !== false).forEach((item, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = item.title || `Должность #${item.venue_position_id || item.id}`;
+        positionPresetSelect.appendChild(option);
+      });
+    }
+
+    function selectedPositionPreset() {
+      const index = Number(positionPresetSelect.value);
+      if (positionPresetSelect.value === '' || !Number.isInteger(index)) return null;
+      const item = positionPresets.filter((row) => row?.is_active !== false)[index];
+      if (!item) return null;
+      return {
+        title: String(item.title || '').trim(),
+        venue_position_id: Number(item.venue_position_id || item.id || 0) || null,
+        rate: Math.max(0, Math.round(Number(item.rate || 0))),
+        percent: Math.max(0, Math.min(100, Math.round(Number(item.percent || 0)))),
+        pay_profile_id: Number(item.pay_profile_id || 0) || null,
+        pay_profile_title: item.pay_profile_title || null,
+        permission_codes: Array.isArray(item.permission_codes) ? item.permission_codes : [],
+      };
+    }
 
     async function refreshPermissions() {
       canManageStaff = false;
@@ -307,6 +340,7 @@
             <div class="invite-card__main">
               <div class="invite-card__title"><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
+              ${i.default_position?.title ? `<div class="muted mt-6">Должность после принятия: <b>${esc(i.default_position.title)}</b></div>` : ''}
               ${linkedTargetHtml(i)}
               <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Открыть приглашение</a></div>
             </div>
@@ -423,7 +457,12 @@
       pending.innerHTML = `<div class="skeleton skeleton--card"></div><div class="skeleton skeleton--card"></div>`;
       members.innerHTML = `<div class="skeleton skeleton--card"></div><div class="skeleton skeleton--card"></div>`;
       try {
-        const data = await api(`/venues/${venueId}/members`);
+        const [data, presets] = await Promise.all([
+          api(`/venues/${venueId}/members`),
+          getVenuePositionPresets(venueId).catch(() => []),
+        ]);
+        positionPresets = Array.isArray(presets) ? presets : (Array.isArray(presets?.items) ? presets.items : []);
+        renderPositionPresets();
         window.__lastJson = data;
         renderPending(data.pending_invites || []);
         renderMembers(data.members || []);
@@ -446,7 +485,7 @@
         toast('Нет прав на приглашение владельца', 'warn');
         return;
       }
-      const body = { invite_channel: channel, venue_role: role, contact_label };
+      const body = { invite_channel: channel, venue_role: role, contact_label, default_position: selectedPositionPreset() };
       if (channel === 'TELEGRAM') {
         const tg = document.getElementById('tg').value.trim();
         if (!tg) { toast('Укажи ник в Telegram', 'warn'); return; }
@@ -464,6 +503,7 @@
         document.getElementById('tg').value = '';
         document.getElementById('phone').value = '';
         document.getElementById('contactLabel').value = '';
+        positionPresetSelect.value = '';
         if (out?.mode === 'member_added' && out?.member) {
           const label = out.member.display_name || out.member.tg_username || out.member.phone || 'Участник';
           inviteResult.innerHTML = `Участник добавлен: <b>${esc(label)}</b> <span class="chip">${esc(roleLabel(out.member.venue_role || role))}</span> <span class="chip">Готово</span>`;

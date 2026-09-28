@@ -165,6 +165,7 @@ def calculate_payroll_for_month(
         month_start=month_start,
         month_end_excl=month_end_excl,
         fallback_assignments=selected_assignments,
+        warnings=(calculation_warnings := []),
     )
     profile_ids = sorted({int(context.profile.id) for context in payroll_contexts})
     components_by_profile = _load_profile_components(db, profile_ids=profile_ids)
@@ -574,4 +575,4 @@ def calculate_payroll_for_month(
     run.lines_count = len(lines)
     db.flush()
 
-    return PayrollCalculationResult(run=run, lines=lines)
+    return PayrollCalculationResult(run=run, lines=lines, warnings=calculation_warnings)

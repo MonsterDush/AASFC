@@ -89,6 +89,7 @@ class PayrollKpiMetrics:
 class PayrollCalculationResult:
     run: PayrollRun
     lines: list[PayrollLine]
+    warnings: list[dict] = field(default_factory=list)
 
 
 @dataclass

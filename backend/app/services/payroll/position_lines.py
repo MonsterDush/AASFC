@@ -22,11 +22,17 @@ def add_position_context_to_aggregate(
     position_titles = sorted((value for value in context.position_titles if value), key=str.casefold)
     profile_active_dates = sorted(getattr(context, "profile_active_dates", set()) or set())
     profile_period_ids = sorted(int(value) for value in getattr(context, "profile_period_ids", set()) or set())
+    assignment_ids = sorted(int(value) for value in getattr(context, "assignment_ids", set()) or set())
+    profile_sources = sorted(getattr(context, "profile_sources", set()) or set())
+    profile_source = profile_sources[0] if len(profile_sources) == 1 else "MIXED"
     for item in breakdown_items:
         item["pay_profile_id"] = int(profile.id)
         item["pay_profile_title"] = profile.title
         item["position_ids"] = position_ids
         item["position_titles"] = position_titles
+        item["profile_source"] = profile_source
+        item["profile_period_ids"] = profile_period_ids
+        item["assignment_ids"] = assignment_ids
 
     member_id = int(member_user.id)
     aggregate = aggregates.setdefault(
@@ -58,6 +64,8 @@ def add_position_context_to_aggregate(
             "position_ids": position_ids,
             "position_titles": position_titles,
             "profile_period_ids": profile_period_ids,
+            "assignment_ids": assignment_ids,
+            "profile_source": profile_source,
             "profile_active_from": profile_active_dates[0].isoformat() if profile_active_dates else None,
             "profile_active_to": profile_active_dates[-1].isoformat() if profile_active_dates else None,
             "profile_active_dates_count": len(profile_active_dates),

@@ -147,10 +147,15 @@ def _ensure_unique_token(db: Session) -> str:
     raise RuntimeError("Failed to generate unique invite token")
 
 
-def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> None:
-    preset = getattr(inv, "default_position_json", None)
+def apply_default_position_preset(
+    db: Session,
+    *,
+    venue_id: int,
+    preset: dict | None,
+    user_id: int,
+) -> bool:
     if not isinstance(preset, dict) or not preset.get("title"):
-        return
+        return False
 
     title = str(preset.get("title")).strip()
     data = {
@@ -180,8 +185,9 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         catalog_position = db.execute(
             select(VenuePosition).where(
                 VenuePosition.id == catalog_position_id,
-                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.venue_id == venue_id,
                 VenuePosition.member_user_id.is_(None),
+                VenuePosition.is_active.is_(True),
             )
         ).scalar_one_or_none()
 
@@ -204,9 +210,10 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
             db.execute(
                 select(VenuePosition)
                 .where(
-                    VenuePosition.venue_id == inv.venue_id,
+                    VenuePosition.venue_id == venue_id,
                     VenuePosition.member_user_id.is_(None),
                     VenuePosition.title == title,
+                    VenuePosition.is_active.is_(True),
                 )
                 .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
             )
@@ -215,11 +222,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         )
 
     if catalog_position is None:
-        catalog_position = VenuePosition(
-            venue_id=inv.venue_id,
-            member_user_id=None,
-        )
-        db.add(catalog_position)
+        return False
 
     for k, v in data.items():
         setattr(catalog_position, k, v)
@@ -230,7 +233,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         db.execute(
             select(VenuePosition)
             .where(
-                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.venue_id == venue_id,
                 VenuePosition.member_user_id == user_id,
                 VenuePosition.title == title,
             )
@@ -241,7 +244,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     )
     if existing_pos is None:
         existing_pos = VenuePosition(
-            venue_id=inv.venue_id,
+            venue_id=venue_id,
             member_user_id=user_id,
         )
         db.add(existing_pos)
@@ -259,8 +262,15 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         effective_from=date.today(),
     )
 
-    _sync_default_pay_profile_assignment(
-        db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id
+    return True
+
+
+def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> bool:
+    return apply_default_position_preset(
+        db,
+        venue_id=int(inv.venue_id),
+        preset=getattr(inv, "default_position_json", None),
+        user_id=user_id,
     )
 
 

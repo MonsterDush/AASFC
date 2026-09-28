@@ -137,19 +137,17 @@ export function createInviteSetupController(context) {
       }
       const selectedPresetId = String(document.getElementById('invitePresetSelect')?.value || '').trim();
       const selectedPreset = getPositionPresets().find((item) => String(item.id) === selectedPresetId) || null;
+      body.default_position = selectedPreset ? {
+        title: selectedPreset.title,
+        venue_position_id: selectedPreset.venue_position_id || null,
+        rate: Number(selectedPreset.rate || 0) || 0,
+        percent: Number(selectedPreset.percent || 0) || 0,
+        pay_profile_id: selectedPreset.pay_profile_id || null,
+        pay_profile_title: selectedPreset.pay_profile_title || null,
+        permission_codes: selectedPreset.permission_codes || [],
+      } : null;
       try {
         const out = await api(`/venues/${encodeURIComponent(state.venueId)}/invites`, { method: 'POST', body });
-        if (out?.invite_id && selectedPreset) {
-          await patchInviteDefaultPosition(state.venueId, out.invite_id, {
-            title: selectedPreset.title,
-            venue_position_id: selectedPreset.venue_position_id || null,
-            rate: Number(selectedPreset.rate || 0) || 0,
-            percent: Number(selectedPreset.percent || 0) || 0,
-            pay_profile_id: selectedPreset.pay_profile_id || null,
-            pay_profile_title: selectedPreset.pay_profile_title || null,
-            permission_codes: selectedPreset.permission_codes || [],
-          });
-        }
         await loadInlineInvites({ force: true });
         await loadSetup({ preserveSelection: true });
         await mountInvitesEditor(getStepByKey('invites') || currentStep);

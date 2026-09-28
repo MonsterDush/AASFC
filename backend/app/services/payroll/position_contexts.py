@@ -33,6 +33,8 @@ class PayrollPositionContext:
     position_titles: set[str] = field(default_factory=set)
     profile_active_dates: set[date] = field(default_factory=set)
     profile_period_ids: set[int] = field(default_factory=set)
+    assignment_ids: set[int] = field(default_factory=set)
+    profile_sources: set[str] = field(default_factory=set)
     uses_effective_periods: bool = False
 
 
@@ -63,13 +65,15 @@ def load_position_payroll_contexts(
     month_start: date,
     month_end_excl: date,
     fallback_assignments: list[tuple],
+    warnings: list[dict] | None = None,
 ) -> list[PayrollPositionContext]:
     """Split metrics by the profile effective for every employee-position date."""
 
-    fallback_by_member = {
-        int(assignment.member_user_id): (assignment, profile, member_user)
-        for assignment, profile, member_user in fallback_assignments
-    }
+    fallback_by_member: dict[int, list[tuple]] = {}
+    for assignment, profile, member_user in fallback_assignments:
+        fallback_by_member.setdefault(int(assignment.member_user_id), []).append(
+            (assignment, profile, member_user)
+        )
     profile_by_id = {int(profile.id): profile for _assignment, profile, _member in fallback_assignments}
     member_by_id = {int(member.id): member for _assignment, _profile, member in fallback_assignments}
 
@@ -164,7 +168,14 @@ def load_position_payroll_contexts(
             return None
         key = (int(member_user_id), int(profile_id))
         if key not in contexts:
-            fallback = fallback_by_member.get(int(member_user_id))
+            fallback = next(
+                (
+                    row
+                    for row in fallback_by_member.get(int(member_user_id), [])
+                    if int(row[1].id) == int(profile_id)
+                ),
+                None,
+            )
             contexts[key] = PayrollPositionContext(
                 assignment=fallback[0] if fallback is not None else None,
                 profile=profile,
@@ -186,6 +197,7 @@ def load_position_payroll_contexts(
             context.position_titles.add(str(position.title).strip())
         context.profile_active_dates.update(active_dates)
         context.profile_period_ids.add(int(period.id))
+        context.profile_sources.add("POSITION_PERIOD")
         context.uses_effective_periods = True
 
     for position, member in active_position_rows:
@@ -198,6 +210,7 @@ def load_position_payroll_contexts(
             context.position_ids.add(int(position.id))
             context.position_titles.add(str(position.title or "").strip())
             context.profile_active_dates.update(month_dates)
+            context.profile_sources.add("POSITION_LEGACY")
 
     for assignment, profile, member in fallback_assignments:
         member_user_id = int(member.id)
@@ -213,6 +226,8 @@ def load_position_payroll_contexts(
                 )
                 if start < end_excl:
                     context.profile_active_dates.update(_dates_between(start, end_excl))
+                    context.assignment_ids.add(int(assignment.id))
+                    context.profile_sources.add("MEMBER_FALLBACK")
 
     shift_rows = db.execute(
         select(
@@ -271,6 +286,25 @@ def load_position_payroll_contexts(
         member_by_id.update({int(member.id): member for member in members})
 
     seen_shifts_by_context: dict[tuple[int, int], set[int]] = {}
+    unresolved_seen: set[tuple[int, int, int]] = set()
+
+    def add_unresolved_warning(row, *, attempted_profile_id: int | None = None) -> None:
+        key = (int(row.member_user_id), int(row.shift_id), int(row.venue_position_id))
+        if warnings is None or key in unresolved_seen:
+            return
+        unresolved_seen.add(key)
+        warnings.append(
+            {
+                "code": "PAY_PROFILE_UNRESOLVED",
+                "member_user_id": int(row.member_user_id),
+                "shift_id": int(row.shift_id),
+                "venue_position_id": int(row.venue_position_id),
+                "shift_date": row.shift_date.isoformat(),
+                "shift_slot": normalize_shift_slot(row.shift_slot),
+                "attempted_pay_profile_id": attempted_profile_id,
+            }
+        )
+
     for row in shift_rows:
         member_user_id = int(row.member_user_id)
         position_id = int(row.venue_position_id)
@@ -287,17 +321,36 @@ def load_position_payroll_contexts(
         profile_id = int(matching_period.pay_profile_id) if matching_period is not None else None
         if profile_id is None and not position_has_periods and row.position_pay_profile_id is not None:
             profile_id = int(row.position_pay_profile_id)
+        matching_fallback = None
         if profile_id is None and not position_has_periods:
-            fallback = fallback_by_member.get(member_user_id)
-            profile_id = int(fallback[1].id) if fallback is not None else None
+            matching_fallback = next(
+                (
+                    item
+                    for item in reversed(fallback_by_member.get(member_user_id, []))
+                    if (item[0].start_date is None or item[0].start_date <= row.shift_date)
+                    and (item[0].end_date is None or item[0].end_date >= row.shift_date)
+                ),
+                None,
+            )
+            profile_id = int(matching_fallback[1].id) if matching_fallback is not None else None
         if profile_id is None:
+            add_unresolved_warning(row)
             continue
         context = ensure_context(member_user_id=member_user_id, profile_id=profile_id)
         if context is None:
+            add_unresolved_warning(row, attempted_profile_id=profile_id)
             continue
         context.position_ids.add(int(row.venue_position_id))
         if row.position_title:
             context.position_titles.add(str(row.position_title).strip())
+        if matching_period is not None:
+            context.profile_sources.add("POSITION_PERIOD")
+            context.profile_period_ids.add(int(matching_period.id))
+        elif row.position_pay_profile_id is not None and not position_has_periods:
+            context.profile_sources.add("POSITION_LEGACY")
+        elif matching_fallback is not None:
+            context.profile_sources.add("MEMBER_FALLBACK")
+            context.assignment_ids.add(int(matching_fallback[0].id))
         key = (member_user_id, profile_id)
         seen_shift_ids = seen_shifts_by_context.setdefault(key, set())
         shift_id = int(row.shift_id)

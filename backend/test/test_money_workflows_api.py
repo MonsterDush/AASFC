@@ -185,6 +185,16 @@ class MoneyWorkflowApiTests(unittest.TestCase):
     def test_payroll_month_range_profiles_and_payment_drafts_reconcile(self):
         profiles = self.json("GET", f"/venues/{self.venue_id}/pay-profiles")
         self.assertEqual(len(profiles), 3)
+        for profile in profiles:
+            self.assertTrue(
+                {
+                    "assignments_count",
+                    "position_assignments_count",
+                    "direct_assignments_count",
+                    "effective_members_count",
+                    "historical_assignments_count",
+                }.issubset(profile)
+            )
         profile_details = [
             self.json("GET", f"/venues/{self.venue_id}/pay-profiles/{profile['id']}") for profile in profiles
         ]
@@ -375,21 +385,17 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertTrue(patched["boost_enabled"])
         self.assertEqual(patched["effective_boost_recalc_mode"], "EXCESS_ONLY")
 
-        assignment = self.json(
+        overlap = self.json(
             "POST",
             f"/venues/{self.venue_id}/pay-profiles/{profile_id}/assignments",
+            expected=409,
             json={
                 "member_user_id": self.staff_id,
                 "start_date": "2035-01-01",
                 "end_date": "2035-12-31",
             },
         )
-        assignment = self.json(
-            "PATCH",
-            f"/venues/{self.venue_id}/pay-profile-assignments/{assignment['id']}",
-            json={"is_active": False},
-        )
-        self.assertFalse(assignment["is_active"])
+        self.assertEqual(overlap["detail"]["code"], "PAY_PROFILE_ASSIGNMENT_OVERLAP")
         detail = self.json("GET", f"/venues/{self.venue_id}/pay-profiles/{profile_id}")
         self.assertEqual(len(detail["components"]), 7)
 

@@ -8,6 +8,7 @@ import {
   moveDashboardAction, moveDashboardWidget, reorderDashboardWidget, resetDashboardLayout,
   saveDashboardLayout, setDashboardWidgetSize, toggleDashboardAction, toggleDashboardWidget,
 } from "/owner-dashboard-config.js?v=20260924-owner-dashboard2";
+import { dashboardDateLabel, dashboardReferenceDate } from "/owner-dashboard-period.js?v=20260928-period1";
 
 const WIDGETS = Object.freeze({
   revenue_today: { title: "Выручка сегодня", target: "turnover", direction: "up" },
@@ -40,6 +41,7 @@ const state = {
   deviceKind: dashboardDeviceKind(), ownerVenues: [], monthData: null, previousData: null, dayData: null,
   economics: null, monthPlan: null, departmentPlan: null, payroll: null, reports: [], integrations: [],
   integrationQuality: [], networkRows: [], financialValuesHidden: false, sourceErrors: [], loadRevision: 0,
+  referenceDate: "",
 };
 
 function todayISO() {
@@ -105,7 +107,7 @@ function hrefFor(target, venueId = state.venueId) {
     integrations: "/owner-integrations.html", plans: "/owner-economics-plans.html",
     day: "/owner-day-economics.html", venue: "/app-venue.html",
   };
-  if (target === "day" || target === "report") query.set("date", todayISO());
+  if (target === "day" || target === "report") query.set("date", state.referenceDate || todayISO());
   return `${paths[target] || paths.summary}?${query.toString()}`;
 }
 
@@ -138,7 +140,8 @@ function widgetView(widgetId) {
   const previous = state.previousData || {};
   const economics = state.economics || {};
   const plan = state.monthPlan || {};
-  if (widgetId === "revenue_today") return { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: "Сегодня", tone: "is-neutral" }, series: [] };
+  const dayContext = state.month === currentMonth() ? "Сегодня" : dashboardDateLabel(state.referenceDate, localeTag());
+  if (widgetId === "revenue_today") return { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: dayContext, tone: "is-neutral" }, series: [] };
   if (widgetId === "revenue_month") return { value: formatMoneyMinor(month.revenue_minor), hint: "С начала выбранного месяца", delta: deltaView(month.revenue_minor, previous.revenue_minor), series: dailySeries("revenue_minor") };
   if (widgetId === "profit_month") return { value: formatMoneyMinor(month.profit_minor), hint: "После расходов и ФОТ", delta: deltaView(month.profit_minor, previous.profit_minor), series: dailySeries("profit_minor") };
   if (widgetId === "expenses_month") return { value: formatMoneyMinor(month.expense_without_payroll_minor), hint: "Подтверждённые, без ФОТ", delta: deltaView(month.expense_without_payroll_minor, previous.expense_without_payroll_minor, { direction: "down" }), series: dailySeries("expense_minor") };
@@ -156,7 +159,7 @@ function widgetView(widgetId) {
     return { value: formatMoneyMinor(forecast), hint: state.month === currentMonth() ? `По темпу за ${elapsed} дн.` : "Фактический результат месяца", delta: deltaView(forecast, plan.profit_plan_minor), series: dailySeries("profit_minor") };
   }
   if (widgetId === "shifts_today") return { value: formatNumber(economics.team?.total_shift_count), hint: `${formatNumber(economics.team?.assigned_user_count)} сотрудник(ов) назначено`, delta: { text: economics.team?.unassigned_shift_count ? `${economics.team.unassigned_shift_count} без сотрудников` : "Смены укомплектованы", tone: economics.team?.unassigned_shift_count ? "is-bad" : "is-good" }, series: [] };
-  if (widgetId === "top_department") return { value: economics.metrics?.top_department_title || "Нет данных", hint: economics.metrics?.top_department_share_bps != null ? `${formatPercentBps(economics.metrics.top_department_share_bps)} выручки дня` : "Из отчёта дня", delta: { text: "Сегодня", tone: "is-neutral" }, series: [] };
+  if (widgetId === "top_department") return { value: economics.metrics?.top_department_title || "Нет данных", hint: economics.metrics?.top_department_share_bps != null ? `${formatPercentBps(economics.metrics.top_department_share_bps)} выручки дня` : "Из отчёта дня", delta: { text: dayContext, tone: "is-neutral" }, series: [] };
   const issueCount = state.integrationQuality.reduce((sum, item) => sum + Number(item.active_issue_count || 0), 0);
   const failed = state.integrationQuality.some((item) => item.health === "FAILED");
   const syncDates = state.integrations.map((item) => item.last_successful_sync_at || item.last_sync_at).filter(Boolean).map((value) => new Date(value)).filter((value) => !Number.isNaN(value.getTime()));
@@ -191,7 +194,11 @@ function createWidgetCard(widgetId) {
   card.dataset.widgetId = widgetId;
   const label = document.createElement("div");
   label.className = "owner-dashboard-widget__label";
-  label.textContent = definition.title;
+  const historicalDay = state.month !== currentMonth()
+    && ["revenue_today", "shifts_today", "top_department"].includes(widgetId);
+  label.textContent = historicalDay
+    ? definition.title.replace("сегодня", `за ${dashboardDateLabel(state.referenceDate, localeTag())}`)
+    : definition.title;
   const value = document.createElement("div");
   value.className = "owner-dashboard-widget__value";
   value.textContent = view.value;
@@ -426,7 +433,7 @@ function operationItems() {
   const economics = state.economics || {};
   const metrics = economics.metrics || {};
   const items = [
-    ["Смен сегодня", economics.team?.total_shift_count], ["Сотрудников назначено", economics.team?.assigned_user_count],
+    [state.month === currentMonth() ? "Смен сегодня" : `Смен за ${dashboardDateLabel(state.referenceDate, localeTag())}`, economics.team?.total_shift_count], ["Сотрудников назначено", economics.team?.assigned_user_count],
     ["Смен без сотрудников", economics.team?.unassigned_shift_count], ["Закрытых отчётов в месяце", state.reports.filter((row) => String(row.status).toUpperCase() === "CLOSED").length],
     ["Выручка на сотрудника", metrics.revenue_per_assigned_minor, "money"], ["Покрытие смен", metrics.assigned_shift_coverage_bps, "percent"],
   ];
@@ -441,6 +448,10 @@ function renderOperations() {
   const grid = document.getElementById("dashboardOperationsGrid");
   const link = document.getElementById("dashboardOperationsLink");
   if (link) link.href = hrefFor("day");
+  const title = document.getElementById("dashboardOperationsTitle");
+  if (title) title.textContent = state.month === currentMonth()
+    ? "Операционка сегодня"
+    : `Операционка за ${dashboardDateLabel(state.referenceDate, localeTag())}`;
   if (!grid) return;
   if (!state.economics) {
     const empty = document.createElement("div"); empty.className = "owner-dashboard-empty"; empty.textContent = "Операционные показатели пока недоступны."; grid.replaceChildren(empty); return;
@@ -514,12 +525,9 @@ async function loadIntegrationQuality(connections) {
 async function loadVenueDashboard(revision) {
   const venueId = state.venueId;
   const previous = previousMonth(state.month);
-  const day = todayISO();
-  const [monthData, previousData, dayData, economics, monthPlan, departmentPlan, payroll, reports, integrations] = await Promise.all([
+  const [monthData, previousData, monthPlan, departmentPlan, payroll, reports, integrations] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(state.month)}&include_series=true`),
     api(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(previous)}&include_series=true`),
-    api(`/venues/${encodeURIComponent(venueId)}/finance/summary?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}`),
-    optional(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(day)}`, "economics"),
     optional(`/venues/${encodeURIComponent(venueId)}/economics/plan-month?month=${encodeURIComponent(state.month)}`, "month-plan"),
     optional(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-month?month=${encodeURIComponent(state.month)}`, "department-plan"),
     optional(`/venues/${encodeURIComponent(venueId)}/payroll?month=${encodeURIComponent(state.month)}`, "payroll"),
@@ -527,6 +535,17 @@ async function loadVenueDashboard(revision) {
     optional(`/venues/${encodeURIComponent(venueId)}/pos-integrations`, "integrations"),
   ]);
   if (revision !== state.loadRevision) return;
+  const day = dashboardReferenceDate(state.month, {
+    today: todayISO(),
+    dailySeries: monthData?.daily_series,
+    reports: Array.isArray(reports) ? reports : [],
+  });
+  const [dayData, economics] = await Promise.all([
+    api(`/venues/${encodeURIComponent(venueId)}/finance/summary?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}`),
+    optional(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(day)}`, "economics"),
+  ]);
+  if (revision !== state.loadRevision) return;
+  state.referenceDate = day;
   state.monthData = monthData; state.previousData = previousData; state.dayData = dayData; state.economics = economics;
   state.monthPlan = monthPlan; state.departmentPlan = departmentPlan; state.payroll = payroll;
   state.reports = Array.isArray(reports) ? reports : []; state.integrations = Array.isArray(integrations) ? integrations : [];
@@ -535,7 +554,8 @@ async function loadVenueDashboard(revision) {
 
 async function loadNetworkDashboard(revision) {
   const previous = previousMonth(state.month);
-  const day = todayISO();
+  const day = dashboardReferenceDate(state.month, { today: todayISO() });
+  state.referenceDate = day;
   const rows = await Promise.all(state.ownerVenues.map(async (venue) => {
     try {
       const [summary, previousSummary, daySummary, plan, integrations] = await Promise.all([

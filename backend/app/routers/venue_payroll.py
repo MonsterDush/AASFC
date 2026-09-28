@@ -214,7 +214,7 @@ def calculate_payroll(
     _require_payroll_calculate(db, venue_id=venue_id, user=user)
 
     try:
-        calculate_payroll_for_month(
+        calculation = calculate_payroll_for_month(
             db=db,
             venue_id=venue_id,
             month=payload.month,
@@ -227,7 +227,13 @@ def calculate_payroll(
             trigger_reason="manual_calculation",
             triggered_by_user_id=int(user.id),
             target_dates=[],
-            details={"source": "manual_payroll_calculate"},
+            details={
+                "source": "manual_payroll_calculate",
+                "warning_count": len(calculation.warnings),
+                "warnings": calculation.warnings,
+                "lines_count": len(calculation.lines),
+                "total_amount_minor": int(calculation.run.total_amount_minor or 0),
+            },
         )
     except ValueError as exc:
         db.rollback()

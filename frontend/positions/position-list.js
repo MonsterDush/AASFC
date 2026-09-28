@@ -10,7 +10,7 @@ export function createPositionList({
   deleteVenuePosition,
   load,
 }) {
-const { memberLabel, posReportsEnabled, posScheduleManage } = domain;
+const { memberLabel, posReportsScope, posScheduleScope } = domain;
 const { openCreateModal, openEditModal } = editor;
 
 function buildPositionGroups() {
@@ -133,10 +133,10 @@ function renderPositions() {
                 Профиль: ${esc(source.pay_profile_title || "не назначен")}
               </span>
               <span class="position-meta-chip">
-                Отчёты: ${posReportsEnabled(source) ? "да" : "нет"}
+                Отчёты: ${posReportsScope(source)}
               </span>
               <span class="position-meta-chip">
-                График: ${posScheduleManage(source) ? "да" : "нет"}
+                График: ${posScheduleScope(source)}
               </span>
             </div>
           </div>
@@ -157,8 +157,8 @@ function renderPositions() {
           <div><b>${esc(who)}</b></div>
           <div class="position-meta-chips">
             <span class="position-meta-chip">Профиль: ${esc(p.pay_profile_title || "не назначен")}</span>
-            <span class="position-meta-chip">Отчёты: ${posReportsEnabled(p) ? "да" : "нет"}</span>
-            <span class="position-meta-chip">График: ${posScheduleManage(p) ? "да" : "нет"}</span>
+            <span class="position-meta-chip">Отчёты: ${posReportsScope(p)}</span>
+            <span class="position-meta-chip">График: ${posScheduleScope(p)}</span>
           </div>
         </div>
         <div class="position-member-row__actions">

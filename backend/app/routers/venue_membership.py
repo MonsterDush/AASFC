@@ -44,9 +44,38 @@ from app.routers.venue_payroll_support import (
     _recalculate_payroll_for_dates,
 )
 from app.services.venue_member_names import normalize_owner_note, owner_display_name
+from app.services.invites import apply_default_position_preset
 
 
 router = APIRouter()
+
+
+def _validate_invite_default_position(db: Session, *, venue_id: int, payload) -> dict | None:
+    if payload is None:
+        return None
+    preset = payload.model_dump()
+    if payload.venue_position_id is not None:
+        position = db.execute(
+            select(VenuePosition).where(
+                VenuePosition.id == int(payload.venue_position_id),
+                VenuePosition.venue_id == int(venue_id),
+                VenuePosition.member_user_id.is_(None),
+                VenuePosition.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if position is None:
+            raise HTTPException(status_code=400, detail="Position not found or archived")
+    if payload.pay_profile_id is not None:
+        profile_ok = db.execute(
+            select(PayProfile.id).where(
+                PayProfile.id == int(payload.pay_profile_id),
+                PayProfile.venue_id == int(venue_id),
+                PayProfile.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if profile_ok is None:
+            raise HTTPException(status_code=400, detail="Pay profile not found in venue")
+    return preset
 
 
 def _detach_member_positions(db: Session, *, venue_id: int, member_user_id: int) -> None:
@@ -103,6 +132,13 @@ def create_invite(
     _require_staff_manage_or_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
     can_manage_owner_members = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    default_position = _validate_invite_default_position(
+        db,
+        venue_id=venue_id,
+        payload=payload.default_position,
+    )
+    if default_position is not None and not can_manage_owner_members:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
 
     role = str(payload.venue_role or "").strip().upper()
     if role not in ("OWNER", "STAFF"):
@@ -149,6 +185,12 @@ def create_invite(
                     )
                 )
 
+            position_applied = apply_default_position_preset(
+                db,
+                venue_id=venue_id,
+                preset=default_position,
+                user_id=int(existing_user.id),
+            )
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
             member_row = type(
@@ -166,6 +208,7 @@ def create_invite(
                 "ok": True,
                 "mode": "member_added",
                 "channel": channel,
+                "default_position_applied": position_applied,
                 "member": {
                     **_serialize_user_brief(
                         member_row, auth_map, owner_note=normalize_owner_note(payload.contact_label)
@@ -228,6 +271,12 @@ def create_invite(
                     )
                 )
 
+            position_applied = apply_default_position_preset(
+                db,
+                venue_id=venue_id,
+                preset=default_position,
+                user_id=int(existing_user.id),
+            )
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
             member_row = type(
@@ -245,6 +294,7 @@ def create_invite(
                 "ok": True,
                 "mode": "member_added",
                 "channel": channel,
+                "default_position_applied": position_applied,
                 "member": {
                     **_serialize_user_brief(
                         member_row, auth_map, owner_note=normalize_owner_note(payload.contact_label)
@@ -266,6 +316,7 @@ def create_invite(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    inv.default_position_json = default_position
     db.commit()
     db.refresh(inv)
     invite_meta = _build_pending_invite_target_map(db, [inv]).get(
@@ -280,6 +331,7 @@ def create_invite(
         "token": inv.invite_token,
         "target_status": invite_meta.get("target_status", "WAITING_SIGNUP"),
         "target_user": invite_meta.get("target_user"),
+        "default_position": inv.default_position_json,
     }
 
 
