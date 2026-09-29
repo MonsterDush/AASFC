@@ -1,9 +1,14 @@
+import time
+
 from fastapi import APIRouter
+
+from app.core.metrics import record_payroll_recalculation
 
 from app.routers.venue_core import (
     Depends,
     HTTPException,
     PayrollRecalculationLog,
+    PayrollRun,
     Query,
     Session,
     User,
@@ -27,6 +32,8 @@ from app.routers.venue_payroll_support import (
     _build_venue_payroll_period_payload,
     _create_payroll_recalculation_log,
     _load_payroll_payload,
+    _payroll_calculation_details,
+    _payroll_preview_payload,
     _payroll_recalculation_logs_table_exists,
     _serialize_payroll_recalculation_log,
 )
@@ -213,13 +220,21 @@ def calculate_payroll(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_payroll_calculate(db, venue_id=venue_id, user=user)
 
+    previous_total_amount_minor = db.execute(
+        select(PayrollRun.total_amount_minor).where(
+            PayrollRun.venue_id == int(venue_id),
+            PayrollRun.period_month == parse_month_start(payload.month),
+        )
+    ).scalar_one_or_none()
+    started_at = time.perf_counter()
     try:
-        calculate_payroll_for_month(
+        calculation = calculate_payroll_for_month(
             db=db,
             venue_id=venue_id,
             month=payload.month,
             calculated_by_user_id=user.id,
         )
+        duration_seconds = time.perf_counter() - started_at
         _create_payroll_recalculation_log(
             db,
             venue_id=int(venue_id),
@@ -227,16 +242,64 @@ def calculate_payroll(
             trigger_reason="manual_calculation",
             triggered_by_user_id=int(user.id),
             target_dates=[],
-            details={"source": "manual_payroll_calculate"},
+            details=_payroll_calculation_details(
+                calculation,
+                previous_total_amount_minor=(
+                    int(previous_total_amount_minor) if previous_total_amount_minor is not None else None
+                ),
+                duration_seconds=duration_seconds,
+                transaction_result="committed",
+                extra={"source": "manual_payroll_calculate"},
+            ),
         )
     except ValueError as exc:
+        record_payroll_recalculation(
+            trigger_reason="manual_calculation",
+            duration_seconds=time.perf_counter() - started_at,
+            result="failed",
+        )
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        record_payroll_recalculation(
+            trigger_reason="manual_calculation",
+            duration_seconds=time.perf_counter() - started_at,
+            result="failed",
+        )
+        db.rollback()
+        raise
 
     db.commit()
+    record_payroll_recalculation(
+        trigger_reason="manual_calculation",
+        duration_seconds=duration_seconds,
+        warnings=calculation.warnings,
+    )
     result = _load_payroll_payload(db, venue_id=venue_id, month=payload.month)
     result = _apply_payroll_member_display_names(db, venue_id=venue_id, user=user, payload=result)
     return sanitize_financial_payload_for_user(user, result)
+
+
+@router.get("/{venue_id}/payroll/preview")
+def preview_payroll(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_payroll_calculate(db, venue_id=venue_id, user=user)
+    try:
+        payload = _payroll_preview_payload(
+            db,
+            venue_id=int(venue_id),
+            month=month,
+            calculated_by_user_id=int(user.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    payload = _apply_payroll_member_display_names(db, venue_id=venue_id, user=user, payload=payload)
+    return sanitize_financial_payload_for_user(user, payload)
 
 
 @router.get("/{venue_id}/payroll")

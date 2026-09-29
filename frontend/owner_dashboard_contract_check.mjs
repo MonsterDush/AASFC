@@ -77,7 +77,7 @@ assert.match(script, /action", item\.action/);
 assert.match(script, /quality-summary/);
 assert.match(script, /economics\/day/);
 assert.match(script, /hasOwnerDashboardAccess\(permSetFromResponse\(permissions\), role/);
-assert.match(html, /owner-dashboard\.js\?v=20260924-dashboardi18n1/);
+assert.match(html, /owner-dashboard\.js\?v=20260928-period1/);
 assert.match(script, /app\.js\?v=20260924-dashboardi18n1/);
 assert.match(app, /app\/navigation\.js\?v=20260924-dashboardi18n1/);
 assert.match(app, /app\/ui-preferences\.js\?v=20260924-dashboardi18n1/);

@@ -1,5 +1,5 @@
 export function createSupplierSetupController(context) {
-  const { toast, confirmModal, api, state, esc, getStepByKey, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, state, esc, getStepByKey, getNextStepKey, moveToStep, loadSetup, clearStepDraft } = context;
 
   async function loadInlineSuppliers({ force = false } = {}) {
     const inlineState = state.inline.suppliers;
@@ -126,6 +126,7 @@ export function createSupplierSetupController(context) {
       try {
         if (inlineState.editor?.id) await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: payload });
         else await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers`, { method: 'POST', body: payload });
+        clearStepDraft('suppliers');
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineSuppliers({ force: true });
         await loadSetup({ preserveSelection: true });

@@ -120,6 +120,19 @@ class NamesAndIntervalScopesTests(TestCase):
         self.assertEqual(membership.owner_note, "Миша старший")
         self.assertEqual(self.employee.short_name, "Михаил Иванов")
 
+    def test_accepting_invite_persists_warning_when_position_preset_is_unavailable(self):
+        invite = SimpleNamespace(
+            venue_id=5,
+            venue_role="STAFF",
+            invited_contact_label=None,
+            default_position_json={"title": "Архивная должность", "venue_position_id": 999},
+        )
+        with patch.object(invites, "_apply_default_position", return_value=False):
+            invites._accept_invite_record(self.db, inv=invite, user_id=3)
+        self.assertEqual(invite.default_position_json["application_status"], "SKIPPED")
+        self.assertIn("не назначена", invite.default_position_json["application_warning"])
+        self.assertFalse(invite._default_position_applied)
+
     def test_local_mention_token_is_valid_without_changing_global_user(self):
         self.assertTrue(
             venue_shifts._shift_comment_has_mention_token(

@@ -34,6 +34,7 @@ from app.routers.venue_pay_profile_support import (
 from app.routers.venue_position_support import (
     _load_position_presets_from_setup,
 )
+from app.routers.venue_payroll_support import _recalculate_affected_payroll_runs
 from app.services.venue_member_names import load_member_display_names, load_owner_notes, owner_display_name
 from app.services.payroll.position_profile_periods import (
     PositionPayProfilePeriodError,
@@ -367,6 +368,20 @@ def create_position(
         )
         if pos.catalog_position_id is None or "title" in payload.model_fields_set:
             pos.catalog_position_id = catalog.id
+    if pos.member_user_id is not None:
+        db.flush()
+        _recalculate_affected_payroll_runs(
+            db,
+            venue_id=venue_id,
+            calculated_by_user_id=int(user.id),
+            trigger_reason="position_pay_profile_created",
+            details={
+                "venue_position_id": int(pos.id),
+                "member_user_id": int(pos.member_user_id),
+                "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,
+            },
+            affected_from=payload.pay_profile_effective_from,
+        )
     db.commit()
     db.refresh(pos)
     return {
@@ -571,6 +586,26 @@ def update_position(
         if pos.catalog_position_id is None or "title" in payload.model_fields_set:
             pos.catalog_position_id = catalog.id
 
+    if cloned_from_catalog or member_changed or profile_changed or old_is_active != bool(pos.is_active):
+        db.flush()
+        _recalculate_affected_payroll_runs(
+            db,
+            venue_id=venue_id,
+            calculated_by_user_id=int(user.id),
+            trigger_reason="position_pay_profile_updated",
+            details={
+                "venue_position_id": int(pos.id),
+                "member_user_id": int(pos.member_user_id) if pos.member_user_id is not None else None,
+                "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,
+                "effective_from": (
+                    payload.pay_profile_effective_from.isoformat()
+                    if payload.pay_profile_effective_from is not None
+                    else None
+                ),
+                "changed_fields": sorted(fields_set),
+            },
+            affected_from=payload.pay_profile_effective_from,
+        )
     db.commit()
     db.refresh(pos)
 
@@ -653,5 +688,17 @@ def delete_position(
             mode = "member_detached"
     else:
         pos.is_active = False
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="position_pay_profile_deleted",
+        details={
+            "venue_position_id": int(pos.id),
+            "member_user_id": int(pos.member_user_id) if pos.member_user_id is not None else None,
+            "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,
+        },
+    )
     db.commit()
     return {"ok": True, "mode": mode}

@@ -1,5 +1,5 @@
 export function createCatalogSetupController(context) {
-  const { toast, confirmModal, api, UNIT_LABEL, CATALOG_CONFIG, state, esc, slugifyCode, ensureUniqueCode, getStepByKey, getInlineCatalogState, buildUnitOptions, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, UNIT_LABEL, CATALOG_CONFIG, state, esc, slugifyCode, ensureUniqueCode, getStepByKey, getInlineCatalogState, buildUnitOptions, getNextStepKey, moveToStep, loadSetup, clearStepDraft } = context;
 
   function renderCatalogListItems(stepKey, items, currentStep) {
     const cfg = CATALOG_CONFIG[stepKey];
@@ -179,6 +179,7 @@ export function createCatalogSetupController(context) {
         const wasEdit = Boolean(inlineState.editor?.id);
         if (wasEdit) await cfg.update(state.venueId, inlineState.editor.id, payload);
         else await cfg.create(state.venueId, payload);
+        clearStepDraft(stepKey);
         inlineState.editor = { mode: "create", id: null };
         await refreshCatalogStepAndSetup(stepKey, currentStep);
         if (!currentStep.completed) {

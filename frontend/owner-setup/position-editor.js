@@ -1,5 +1,5 @@
 export function createPositionSetupController(context) {
-  const { toast, confirmModal, api, state, esc, buildDefaultPermissionsCatalog, ensurePermissionsCatalog, ensurePositionPermissionTemplates, getPositionTemplateById, buildPositionTemplateOptions, renderPositionTemplateSummary, applyPositionTemplateSelection, parsePermissionCodes, getPositionPresets, savePositionPresets, buildPayProfileOptions, getStepByKey, getNextStepKey, moveToStep, loadInlinePayProfiles, loadSetup } = context;
+  const { toast, confirmModal, api, state, esc, buildDefaultPermissionsCatalog, ensurePermissionsCatalog, ensurePositionPermissionTemplates, getPositionTemplateById, buildPositionTemplateOptions, renderPositionTemplateSummary, applyPositionTemplateSelection, parsePermissionCodes, getPositionPresets, savePositionPresets, buildPayProfileOptions, getStepByKey, getNextStepKey, moveToStep, loadInlinePayProfiles, loadSetup, clearStepDraft } = context;
 
   function renderPermissionChecklist(selectedCodes = []) {
     const groups = Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length ? state.permissionsCatalog : buildDefaultPermissionsCatalog();
@@ -159,6 +159,7 @@ export function createPositionSetupController(context) {
       else next.push(payload);
       try {
         await savePositionPresets(next);
+        clearStepDraft('positions');
         state.inline.positions.editorId = null;
         await loadSetup({ preserveSelection: true });
         await mountPositionsEditor(getStepByKey('positions') || currentStep);

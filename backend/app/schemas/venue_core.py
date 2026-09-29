@@ -23,14 +23,6 @@ class VenueUpdateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
 
-class InviteCreateIn(BaseModel):
-    invite_channel: str = "TELEGRAM"  # TELEGRAM | PHONE
-    tg_username: str | None = None
-    phone: str | None = None
-    contact_label: str | None = None
-    venue_role: str = "STAFF"  # OWNER | STAFF
-
-
 class InviteDefaultPositionIn(BaseModel):
     # preset position data to apply after invite is accepted
     title: str = Field(..., min_length=1, max_length=100)
@@ -41,6 +33,15 @@ class InviteDefaultPositionIn(BaseModel):
     pay_profile_title: str | None = Field(default=None, max_length=120)
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
+
+
+class InviteCreateIn(BaseModel):
+    invite_channel: str = "TELEGRAM"  # TELEGRAM | PHONE
+    tg_username: str | None = None
+    phone: str | None = None
+    contact_label: str | None = None
+    venue_role: str = "STAFF"  # OWNER | STAFF
+    default_position: InviteDefaultPositionIn | None = None
 
 
 class InviteDefaultPositionPatchIn(BaseModel):

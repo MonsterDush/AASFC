@@ -126,19 +126,32 @@ def _assignment_overlaps_month(*, assignment: PayProfileAssignment, month_start:
 def _pick_latest_assignments(
     assignments: list[tuple[PayProfileAssignment, PayProfile, User]], *, month_start: date, month_end_excl: date
 ) -> list[tuple[PayProfileAssignment, PayProfile, User]]:
-    selected: dict[int, tuple[date, int, tuple[PayProfileAssignment, PayProfile, User]]] = {}
-    for assignment, profile, member_user in assignments:
-        if not profile.is_active:
-            continue
-        if not _assignment_overlaps_month(
-            assignment=assignment, month_start=month_start, month_end_excl=month_end_excl
-        ):
-            continue
-        key = (assignment.start_date or date.min, int(assignment.id or 0))
-        current = selected.get(int(assignment.member_user_id))
-        if current is None or key > (current[0], current[1]):
-            selected[int(assignment.member_user_id)] = (key[0], key[1], (assignment, profile, member_user))
-    return [item[2] for item in selected.values()]
+    """Return every active assignment that intersects the requested month.
+
+    The historical name is kept as a compatibility export.  Collapsing rows to
+    the latest assignment for the whole month loses an earlier, non-overlapping
+    profile.  The resolver in ``position_contexts`` selects the applicable row
+    for each concrete date instead.
+    """
+
+    selected = [
+        (assignment, profile, member_user)
+        for assignment, profile, member_user in assignments
+        if profile.is_active
+        and _assignment_overlaps_month(
+            assignment=assignment,
+            month_start=month_start,
+            month_end_excl=month_end_excl,
+        )
+    ]
+    return sorted(
+        selected,
+        key=lambda row: (
+            int(row[0].member_user_id),
+            row[0].start_date or date.min,
+            int(row[0].id or 0),
+        ),
+    )
 
 
 def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int, list[PayComponent]]:

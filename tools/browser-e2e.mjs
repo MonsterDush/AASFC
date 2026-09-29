@@ -433,7 +433,11 @@ async function exerciseOwnerMutationSurface(page, venueId) {
     await mutate(
       `${prefix}/pay-profiles/${profileId}/assignments`,
       "POST",
-      { member_user_id: staffUserId, start_date: "2035-01-01" },
+      {
+        member_user_id: staffUserId,
+        start_date: "2025-01-01",
+        end_date: "2025-06-30",
+      },
       "create pay profile assignment",
     ),
     "create pay profile assignment",
@@ -441,7 +445,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/pay-profile-assignments/${assignmentId}`,
     "PATCH",
-    { end_date: "2035-12-31", is_active: false },
+    { end_date: "2025-12-31", is_active: false },
     "update pay profile assignment",
   );
   await expectApi(
