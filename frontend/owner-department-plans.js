@@ -1,5 +1,5 @@
 import { applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId,
-  setActiveVenueId, getMyVenues, getMyVenuePermissions, api, toast, confirmModal } from "/app.js?v=20260930-ui1";
+  setActiveVenueId, getMyVenues, getMyVenuePermissions, api, toast, confirmModal } from "/app.js?v=20260930-ui2";
 import { hasPerm, permSetFromResponse, roleUpper } from "/permissions.js";
 
 const $ = (id) => document.getElementById(id);

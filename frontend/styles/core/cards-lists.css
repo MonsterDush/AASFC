@@ -13,13 +13,13 @@
 
 .sep{height:1px;background:var(--border);border-radius:999px;opacity:.9}
 
-.day-salary{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:900;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:var(--surface2)}
+.day-salary{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:650;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:var(--surface2)}
 
 .nav{position:fixed;z-index:50;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--navBg);backdrop-filter:blur(10px);border-top:1px solid var(--border)}
 .nav .wrap{width:100%;max-width:var(--content-max);margin:0 auto}
 .nav .wrap #nav{display:flex;gap:10px;align-items:stretch;justify-content:space-between;width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;white-space:nowrap;padding-bottom:2px}
 .nav .wrap #nav::-webkit-scrollbar{height:0}
-.nav a,.nav-more__button{flex:0 0 auto;white-space:nowrap;text-align:center;padding:10px 12px;border-radius:14px;border:1px solid var(--border);color:var(--muted);text-decoration:none;font:inherit;font-weight:900;background:var(--surface2)}
+.nav a,.nav-more__button{flex:0 0 auto;white-space:nowrap;text-align:center;padding:10px 12px;border-radius:14px;border:1px solid var(--border);color:var(--muted);text-decoration:none;font:inherit;font-weight:650;background:var(--surface2)}
 .nav-more__button{cursor:pointer}
 .nav a.active,.nav-more__button.active{color:var(--accentText);background:var(--accent);border-color:transparent}
 .nav a.icon{flex:0 0 auto;width:48px;padding:10px 0}
@@ -62,7 +62,7 @@
 .modal__panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px, calc(100vw - 28px));max-height:min(80vh, 720px);overflow:auto;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));z-index:2}
 .modal__head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:12px}
 .modal__head>.btn{flex:0 0 auto;min-width:max-content;white-space:nowrap;overflow-wrap:normal}
-.modal__title{font-weight:900;font-size:18px;letter-spacing:-0.01em}
+.modal__title{font-weight:650;font-size:18px;letter-spacing:-0.01em}
 .modal__body{padding-bottom:2px}
 
 /* Generic list rows (used in catalogs: departments/payment methods/KPI) */

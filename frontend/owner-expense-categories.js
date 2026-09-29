@@ -10,7 +10,7 @@ import {
   getMyVenuePermissions,
   api,
   isDemoUiMode,
-} from "/app.js?v=20260930-ui1";
+} from "/app.js?v=20260930-ui2";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");

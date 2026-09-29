@@ -21,7 +21,7 @@ const controllers = [
 ];
 
 assert.ok(mainSource.split("\n").length < 1_600, "owner-setup.js must remain an orchestration module");
-assert.match(htmlSource, /owner-setup\.js\?v=20260930-ui1/);
+assert.match(htmlSource, /owner-setup\.js\?v=20260930-ui2/);
 assert.match(mainSource, /position-template-ui\.js\?v=20260726-navmore1/);
 assert.doesNotMatch(htmlSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
 assert.doesNotMatch(mainSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);

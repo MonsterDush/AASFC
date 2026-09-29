@@ -12,8 +12,8 @@
 .screen-hero__actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .screen-hero__actions .economics-date-picker{width:auto;min-width:160px}
 .finance-period-card{display:grid;gap:6px}
-.finance-period-card__label{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.finance-period-card__value{font-size:18px;font-weight:900;letter-spacing:-0.02em;line-height:1.18;overflow-wrap:anywhere;word-break:break-word}
+.finance-period-card__label{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.finance-period-card__value{font-size:18px;font-weight:650;letter-spacing:-0.02em;line-height:1.18;overflow-wrap:anywhere;word-break:break-word}
 .finance-stats--payroll{grid-template-columns:repeat(3,minmax(0,1fr))}
 .finance-kpis{display:grid;gap:12px}
 .finance-kpis--primary{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -29,20 +29,20 @@
 .inline-actions--wrap{display:grid;gap:8px}
 .inline-note{font-size:12px;color:var(--muted);line-height:1.45}
 .collapsible-card{border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.02);overflow:hidden}
-.collapsible-card > summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:900;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.collapsible-card > summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .collapsible-card > summary::-webkit-details-marker{display:none}
 .collapsible-card > summary::after{content:'▾';font-size:14px;color:var(--muted);transition:transform .16s ease}
 .collapsible-card[open] > summary::after{transform:rotate(180deg)}
 .collapsible-card__body{padding:0 16px 16px}
 .expense-hero-total{display:grid;gap:6px;min-width:min(280px,100%)}
-.expense-hero-total__label{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.expense-hero-total__value{font-size:30px;font-weight:900;letter-spacing:-0.02em;word-break:break-word}
+.expense-hero-total__label{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.expense-hero-total__value{font-size:30px;font-weight:650;letter-spacing:-0.02em;word-break:break-word}
 .filters-wrap{display:grid;gap:10px}
 .catalog-actions{display:flex;gap:8px;flex-wrap:wrap}
 .help-copy{max-width:720px}
 .state-card{display:grid;gap:8px;align-content:start}
-.state-card__label{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.state-card__value{font-size:16px;font-weight:800;line-height:1.4}
+.state-card__label{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.state-card__value{font-size:16px;font-weight:650;line-height:1.4}
 .row-link-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 @media (max-width:900px){
@@ -81,8 +81,8 @@
 .screen-hero__actions--adaptive .btn{width:100%}
 .section-split-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .hero-summary-card{display:grid;gap:8px;min-width:min(300px,100%)}
-.hero-summary-card__eyebrow{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.hero-summary-card__value{font-size:28px;font-weight:900;letter-spacing:-0.02em;word-break:break-word}
+.hero-summary-card__eyebrow{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hero-summary-card__value{font-size:28px;font-weight:650;letter-spacing:-0.02em;word-break:break-word}
 .hero-summary-card__meta{font-size:13px;color:var(--muted);line-height:1.45}
 .toolbar-meta-grid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .compact-stat-grid{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -93,7 +93,7 @@
 .itemcard--soft{background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)), var(--surface2)}
 .itemcard--clear{background:transparent}
 .form-radio-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.form-radio-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-weight:800;color:var(--text);cursor:pointer}
+.form-radio-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-weight:650;color:var(--text);cursor:pointer}
 .form-radio-chip input{margin:0}
 .screen-hero__meta-grid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .screen-hero__meta-grid .itemcard{height:100%}
@@ -171,14 +171,14 @@
     margin:0 4px 14px;
     color:var(--text);
     font-size:20px;
-    font-weight:900;
+    font-weight:650;
     letter-spacing:-.04em;
     text-decoration:none;
   }
   body.app-shell-enabled .app-nav-brand .logo{width:40px;height:40px}
   body.app-shell-enabled .topbar{min-height:58px;margin-bottom:16px;padding:0}
   body.app-shell-enabled .topbar .logo{display:none}
-  body.app-shell-enabled .topbar .title b{font-size:clamp(28px,2.8vw,40px);font-weight:700;letter-spacing:-.045em}
+  body.app-shell-enabled .topbar .title b{font-size:clamp(28px,2.8vw,40px);font-weight:600;letter-spacing:-.045em}
   body.app-shell-enabled .nav .wrap #nav{
     display:flex;
     flex-direction:column;
@@ -204,7 +204,7 @@
     color:var(--textSecondary);
     text-align:left;
     font-size:14px;
-    font-weight:700;
+    font-weight:600;
   }
   body.app-shell-enabled .nav .app-nav-brand{
     width:auto;
@@ -236,7 +236,7 @@
     margin:10px 10px 3px;
     color:var(--muted);
     font-size:10px;
-    font-weight:900;
+    font-weight:650;
     letter-spacing:.1em;
     text-transform:uppercase;
   }
@@ -265,7 +265,7 @@
     background:#164B8A;
     color:#FFFFFF;
     font-size:11px;
-    font-weight:900;
+    font-weight:650;
   }
   body.app-shell-enabled .app-nav-venue__select{
     min-width:0;
@@ -276,7 +276,7 @@
     color:var(--text);
     font:inherit;
     font-size:12px;
-    font-weight:800;
+    font-weight:650;
   }
   body.app-shell-enabled .card,
   body.app-shell-enabled .itemcard{box-shadow:none}

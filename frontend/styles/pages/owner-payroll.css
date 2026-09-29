@@ -80,7 +80,7 @@
 .payroll-person__metrics span{display:inline-flex;align-items:center;gap:3px;padding:6px 9px;border:1px solid var(--border);border-radius:999px;background:var(--card)}
 .payroll-person__metrics b{color:var(--text);font-variant-numeric:tabular-nums}
 .payroll-person__metrics .payroll-person__metric-average{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
-.payroll-person__amount{flex:0 0 auto;color:var(--text);font-size:21px;font-weight:700;letter-spacing:-.02em;white-space:nowrap}
+.payroll-person__amount{flex:0 0 auto;color:var(--text);font-size:21px;font-weight:600;letter-spacing:-.02em;white-space:nowrap}
 .payroll-person .payroll-breakdown{margin-top:14px}
 .payroll-person .payroll-breakdown summary{display:inline-flex;align-items:center;gap:6px;min-height:36px}
 .payroll-leaderboard-card{display:grid;gap:14px;min-width:0;background:linear-gradient(145deg,var(--card),var(--surface2))}
@@ -89,7 +89,7 @@
 .payroll-leaderboard-skeleton{height:86px}
 .payroll-leaderboard-row{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:start;min-width:0;padding:13px 14px;border:1px solid var(--border);border-radius:16px;background:var(--surfaceTintSoft)}
 .payroll-leaderboard-row:first-child{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--surfaceTintSoft) 82%)}
-.payroll-leaderboard-rank{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--border);border-radius:50%;background:var(--card);color:var(--muted);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.payroll-leaderboard-rank{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--border);border-radius:50%;background:var(--card);color:var(--muted);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .payroll-leaderboard-row:first-child .payroll-leaderboard-rank{border-color:var(--accentSoftBorder);background:var(--accent);color:var(--accentText)}
 .payroll-leaderboard-main{display:grid;gap:8px;min-width:0}
 .payroll-leaderboard-row__head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-width:0}

@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260930-ui1" />
-  <link rel="stylesheet" href="/styles/pages/staff-salary.css?v=20260820-assurance1" />
+  <link rel="stylesheet" href="/styles.css?v=20260930-ui2" />
+  <link rel="stylesheet" href="/styles/pages/staff-salary.css?v=20260930-ui2" />
   <script>
     (() => {
       try {
@@ -54,23 +54,9 @@
     </div>
 
     <section class="card section-card salary-toolbar-card">
-      <div class="salary-period-modes" id="periodModeControls">
-        <button class="btn sm" id="periodMonthBtn" type="button">Месяц</button>
-        <button class="btn sm" id="periodRangeBtn" type="button">Период</button>
-      </div>
-
-      <div class="salary-month-controls month-controls" id="monthControls">
-        <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
-        <b id="monthLabel">…</b>
-        <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
-      </div>
-
-      <div class="salary-range-controls hidden" id="rangeControls">
-        <input class="input maxw-170" id="rangeFrom" type="date" />
-        <span class="muted">—</span>
-        <input class="input maxw-170" id="rangeTo" type="date" />
-        <button class="btn primary sm" id="rangeApply" type="button">Показать</button>
-      </div>
+      <button class="period-menu-trigger" id="salaryPeriodPicker" type="button" data-period-picker data-period-value="this_month" aria-haspopup="menu" aria-expanded="false">
+        <span data-period-label id="monthLabel">Этот месяц</span>
+      </button>
 
       <div class="salary-scope-switch" id="salaryScope">
         <button class="btn sm" id="btnThisVenue" data-scope="venue">Это заведение</button>
@@ -112,9 +98,12 @@
           <div class="section-card__head">
             <div>
               <div class="section-card__eyebrow">Динамика</div>
-              <b id="daysChartTitle">График по дням</b>
+              <div class="block-title-with-info">
+                <b id="daysChartTitle">График по дням</b>
+                <button class="info-button" type="button" aria-label="О графике" aria-expanded="false" data-info-source="#daysChartHint" data-info="">i</button>
+              </div>
             </div>
-            <div class="muted small" id="daysChartHint">Выбери день для подробностей</div>
+            <div class="muted small" id="daysChartHint" hidden>Выбери день для подробностей</div>
           </div>
           <div id="monthChart" class="chart">
             <div class="skeleton"></div>
@@ -125,9 +114,12 @@
           <div class="section-card__head">
             <div>
               <div class="section-card__eyebrow">Детализация</div>
-              <b id="daysListTitle">По дням</b>
+              <div class="block-title-with-info">
+                <b id="daysListTitle">По дням</b>
+                <button class="info-button" type="button" aria-label="О детализации" aria-expanded="false" data-info-source="#daysListHint" data-info="Показывает начисления по каждому дню выбранного периода.">i</button>
+              </div>
             </div>
-            <div class="muted small" id="daysListHint"></div>
+            <div class="muted small" id="daysListHint" hidden></div>
           </div>
           <div id="daysList" class="salary-days-list">
             <div class="skeleton"></div>
@@ -187,6 +179,6 @@
     <div class="toast" id="toast"><div class="toast__text"></div></div>
   </div>
 
-  <script type="module" src="/staff-salary.js?v=20260930-ui1"></script>
+  <script type="module" src="/staff-salary.js?v=20260930-ui2"></script>
 </body>
 </html>

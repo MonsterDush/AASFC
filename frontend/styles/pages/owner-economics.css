@@ -31,7 +31,7 @@
 .finance-comparison-disclosure__summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;cursor:pointer;list-style:none}
 .finance-comparison-disclosure__summary::-webkit-details-marker{display:none}
 .finance-comparison-disclosure__summary>span:first-child{display:grid;gap:3px;min-width:0}
-.finance-comparison-disclosure__summary .muted{font-size:11px;font-weight:700}
+.finance-comparison-disclosure__summary .muted{font-size:11px;font-weight:600}
 .finance-comparison-disclosure[open]>.finance-comparison-disclosure__summary{border-bottom:1px solid var(--border)}
 .finance-comparison-disclosure__body{display:grid;gap:10px;padding:12px 14px 14px}
 .finance-comparison-disclosure .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:min(100%,430px);min-width:300px}

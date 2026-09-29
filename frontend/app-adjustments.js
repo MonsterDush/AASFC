@@ -12,7 +12,7 @@ import {
   isDemoReadonlyUi,
   getDemoMonthLabel,
   coerceDemoMonth,
-} from "/app.js?v=20260930-ui1";
+} from "/app.js?v=20260930-ui2";
 
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm } from "/permissions.js";
@@ -51,8 +51,7 @@ await mountNav({ activeTab: "finance", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
-  prev: document.getElementById("monthPrev"),
-  next: document.getElementById("monthNext"),
+  periodPicker: document.getElementById("adjustmentsPeriodPicker"),
   typeSel: document.getElementById("typeSel"),
   list: document.getElementById("list"),
   btnCreate: document.getElementById("btnCreate"),
@@ -90,6 +89,15 @@ function monthTitle(d) {
   const m = dt.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long" });
   const y = dt.getFullYear();
   return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
+}
+
+function syncPeriodPicker() {
+  if (!el.periodPicker) return;
+  const month = ym(curMonth);
+  el.periodPicker.dataset.periodValue = "custom";
+  el.periodPicker.dataset.periodFrom = `${month}-01`;
+  el.periodPicker.dataset.periodTo = `${month}-${String(new Date(curMonth.getFullYear(), curMonth.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+  if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
 }
 
 const modal = document.getElementById("modal");
@@ -180,7 +188,7 @@ function signedAmount(item) {
 }
 
 function renderList(data) {
-  el.monthLabel.textContent = monthTitle(curMonth);
+  syncPeriodPicker();
 
   if (!hasManageAccess()) {
     el.list.innerHTML = `
@@ -624,7 +632,7 @@ async function openCreate() {
 }
 
 function renderListLoading() {
-  if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
+  syncPeriodPicker();
   if (el.list) {
     el.list.innerHTML = `<div class="app-adjustments-loading"><div class="skeleton"></div><div class="skeleton"></div></div>`;
   }
@@ -657,15 +665,11 @@ async function boot() {
   await refreshList();
 }
 
-el.prev?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth.setDate(1);
-  await refreshList();
-});
-
-el.next?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth.setDate(1);
+el.periodPicker?.addEventListener("axelio:period-change", async (event) => {
+  const selectedMonth = String(event.detail?.month || event.detail?.from || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(selectedMonth)) return;
+  const month = coerceDemoMonth(selectedMonth, { context: "app-adjustments" });
+  curMonth = new Date(`${month}-01T12:00:00`);
   await refreshList();
 });
 

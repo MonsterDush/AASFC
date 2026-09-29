@@ -14,6 +14,7 @@
   gap:14px;
   min-width:0;
 }
+.staff-shifts-toolbar>.period-menu-trigger{width:100%}
 .staff-shifts-month-nav{
   display:grid;
   grid-template-columns:42px minmax(0,1fr) 42px;
@@ -52,7 +53,7 @@
 #calGrid.is-week .cal-cell.is-empty{min-height:56px;max-height:56px;padding:10px;opacity:.85}
 #calGrid.is-week .cal-weektop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0}
 #calGrid.is-week .cal-weektop .cal-weekname{font-size:12px;opacity:.8;line-height:1.1}
-#calGrid.is-week .cal-weektop .cal-weekdate{font-weight:800;line-height:1.15}
+#calGrid.is-week .cal-weektop .cal-weekdate{font-weight:650;line-height:1.15}
 #calGrid.is-week .cal-weektop .cal-daymeta{text-align:right;font-size:12px;opacity:.8;white-space:nowrap}
 #calGrid.is-week .cal-badges{margin-top:0;display:grid!important;grid-auto-flow:row dense;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:8px;row-gap:6px;overflow:hidden;min-width:0;align-content:start}
 #calGrid.is-week .cal-badges>*{min-width:0}
@@ -77,6 +78,7 @@
     border-radius:18px;
     background:var(--surfaceTintSoft);
   }
+  .staff-shifts-toolbar>.period-menu-trigger{flex:1 1 260px;min-width:220px;width:auto}
   .staff-shifts-month-nav{
     flex:1 1 260px;
     min-width:220px;
@@ -101,7 +103,7 @@
   .staff-shifts-page #calGrid{margin-top:14px}
   .staff-shifts-page #calGrid .cal-head,
   .staff-shifts-page #calGrid .cal-body{gap:10px}
-  .staff-shifts-page #calGrid .cal-hcell{padding:8px 0;font-size:13px;font-weight:750}
+  .staff-shifts-page #calGrid .cal-hcell{padding:8px 0;font-size:13px;font-weight:600}
   .staff-shifts-page #calGrid:not(.is-week) .cal-cell{
     min-height:clamp(92px,6.4vw,124px);
     padding:11px;
@@ -220,7 +222,7 @@
   border:1px solid var(--border);
   border-radius:999px;
   font-size:12px;
-  font-weight:750;
+  font-weight:600;
 }
 .shift-availability-person.is-available{border-color:color-mix(in srgb,var(--ok) 46%,var(--border));color:var(--ok)}
 .shift-availability-person.is-unavailable{border-color:color-mix(in srgb,var(--danger) 46%,var(--border));color:var(--danger)}
@@ -230,7 +232,7 @@
   border-top:1px solid var(--border);
 }
 .shift-swap-field{display:grid;gap:6px;min-width:0}
-.shift-swap-field>span{color:var(--muted);font-size:12px;font-weight:750}
+.shift-swap-field>span{color:var(--muted);font-size:12px;font-weight:600}
 .shift-swap-field :is(.input,select,textarea){width:100%;min-width:0}
 .shift-swap-compose__actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
 .shift-swap-request{
@@ -301,7 +303,7 @@
   border-radius:7px;
   background:var(--accentSoftBg);
   color:var(--accent);
-  font-weight:850;
+  font-weight:650;
 }
 .staff-shifts-page .comment__actions{display:flex;justify-content:flex-end;margin-top:7px}
 .staff-shifts-page .comment__reply-button{
@@ -312,7 +314,7 @@
   color:var(--accent);
   font:inherit;
   font-size:12px;
-  font-weight:800;
+  font-weight:650;
   cursor:pointer;
 }
 .staff-shifts-page .comment__reply-button:hover{text-decoration:underline}

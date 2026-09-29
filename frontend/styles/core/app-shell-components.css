@@ -3,7 +3,7 @@ body.app-shell-enabled{font-size:16px;font-weight:400;line-height:1.45}
 body.app-shell-enabled :is(b,strong,h1,h2,h3,h4,.state__title,.modal__title){font-weight:650}
 body.app-shell-enabled :is(.btn,a.link,.nav a,.nav-more__button,label,.badge){font-weight:600}
 body.app-shell-enabled :is(.finance-stat__label,.finance-period-card__label,.state-card__label,.hero-summary-card__eyebrow){font-size:14px;font-weight:600;letter-spacing:.035em}
-body.app-shell-enabled :is(.finance-stat__value,.finance-period-card__value,.expense-hero-total__value,.hero-summary-card__value){font-weight:700}
+body.app-shell-enabled :is(.finance-stat__value,.finance-period-card__value,.expense-hero-total__value,.hero-summary-card__value){font-weight:600}
 body.app-shell-enabled :is(.muted,.page-caption,.finance-stat__meta,.hero-summary-card__meta){font-size:14px}
 .block-title-with-info{display:flex;align-items:center;gap:8px;min-width:0}
 .info-button{display:inline-grid;place-items:center;flex:0 0 24px;width:24px;height:24px;padding:0;border:1px solid var(--border);border-radius:50%;background:transparent;color:var(--muted);font:600 13px/1 var(--sans);cursor:pointer}

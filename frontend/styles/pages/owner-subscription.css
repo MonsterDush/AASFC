@@ -4,7 +4,7 @@
 .subscription-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
 .subscription-title{min-width:0}
 .subscription-title > b{display:block;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
-.subscription-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.subscription-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase}
 .subscription-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
 .subscription-status{display:inline-flex;align-items:center;width:max-content;max-width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);color:var(--muted);font-size:12px;line-height:1.25;overflow-wrap:anywhere}
 .subscription-status--success{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
@@ -26,7 +26,7 @@
 .subscription-history-row--event{background:var(--surfaceTintSoft)}
 .subscription-history-row__head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .subscription-history-row__head b{line-height:1.35}
-.subscription-operation-status{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);color:var(--muted);font-size:11px;font-weight:800;line-height:1.1;white-space:nowrap}
+.subscription-operation-status{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);color:var(--muted);font-size:11px;font-weight:650;line-height:1.1;white-space:nowrap}
 .subscription-operation-status--success{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
 .subscription-operation-status--pending{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);color:var(--statusWarningText)}
 .subscription-operation-status--error{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}

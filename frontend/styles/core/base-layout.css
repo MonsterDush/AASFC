@@ -8,6 +8,9 @@ body{
   margin:0;
   overflow-x:clip;
   font-family:var(--sans);
+  font-size:16px;
+  font-weight:400;
+  line-height:1.45;
   background:var(--bg);
   color:var(--text);
   padding-top:16px;
@@ -30,19 +33,19 @@ body{
 .demo-banner{margin:0 0 10px;padding:0 4px}
 .demo-banner__bar{display:flex;align-items:center;gap:8px;min-height:40px;padding:6px 10px;border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow);overflow-x:auto;overflow-y:hidden;white-space:nowrap;-ms-overflow-style:none;scrollbar-width:none}
 .demo-banner__bar::-webkit-scrollbar{display:none}
-.demo-banner__pill{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;line-height:1;font-weight:700;background:rgba(255,255,255,.02);color:var(--text)}
+.demo-banner__pill{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;line-height:1;font-weight:600;background:rgba(255,255,255,.02);color:var(--text)}
 .demo-banner__pill--brand{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
 .demo-banner__pill--muted{color:var(--muted);font-weight:600}
 .demo-banner__seg{display:inline-flex;align-items:center;gap:4px;padding:2px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03)}
-.demo-banner__segbtn{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:700;line-height:1;min-height:28px;padding:0 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.demo-banner__segbtn{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;line-height:1;min-height:28px;padding:0 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
 .demo-banner__segbtn.is-active{background:var(--accent);color:var(--accentText)}
 .demo-banner__segbtn:disabled{opacity:.6;cursor:not-allowed}
-.demo-banner__link{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border);text-decoration:none;color:var(--text);font-size:12px;font-weight:700;background:rgba(255,255,255,.02)}
+.demo-banner__link{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border);text-decoration:none;color:var(--text);font-size:12px;font-weight:600;background:rgba(255,255,255,.02)}
 .demo-banner__link--primary{border-color:transparent;background:var(--accent);color:var(--accentText)}
 .demo-flow-card{position:relative}
 .demo-flow-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .demo-flow-card__chips{display:flex;flex-wrap:wrap;gap:8px}
-.demo-flow-card__chip{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03);font-size:12px;font-weight:700;color:var(--text)}
+.demo-flow-card__chip{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03);font-size:12px;font-weight:600;color:var(--text)}
 .demo-flow-card__actions{display:flex;flex-wrap:wrap;gap:8px}
 
 .card{min-width:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
