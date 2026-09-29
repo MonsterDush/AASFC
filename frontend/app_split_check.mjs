@@ -134,6 +134,14 @@ const navigation = importedModules["navigation.js"].createNavigation({
   getMyVenues: async () => [{ id: 2, name: "Venue" }],
   getMyVenuePermissions: async () => ({ permissions: [] }),
 });
+assert.deepEqual(
+  importedModules["navigation.js"].filterVisibleNavLinks([
+    { tab: "visible" },
+    { tab: "allowed", allowed: true },
+    { tab: "hidden", allowed: false },
+  ]).map((link) => link.tab),
+  ["visible", "allowed"],
+);
 for (const methodName of moduleContracts[2][2]) assert.equal(typeof navigation[methodName], "function");
 assert.equal(navigation.can("REPORTS_VIEW", { permissions: ["REPORTS_VIEW"] }), true);
 assert.deepEqual(await navigation.getVenueById(2), { id: 2, name: "Venue" });
@@ -142,9 +150,12 @@ const appShellSource = fs.readFileSync(path.join(frontendDir, "app/app-shell.js"
 assert.match(navigationSource, /from "\.\/app-shell\.js\?v=20260929-appshell1"/);
 assert.match(appShellSource, /export function createAppNavIcon/);
 assert.match(appShellSource, /export function mountAppShell/);
+assert.match(appShellSource, /container\.querySelector\('a\[data-tab="settings"\]'\)/);
+assert.match(appShellSource, /container\.insertBefore\(venue, settingsLink\)/);
 for (const mobileMoreContract of [
   "const mobilePrimaryLinkCount = 3",
-  "const overflowLinks = links.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount)",
+  "const visibleLinks = filterVisibleNavLinks(links)",
+  "const overflowLinks = visibleLinks.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount)",
   'button.textContent = t("more")',
   'button.setAttribute("aria-haspopup", "menu")',
   'if (event.key === "Escape" && !menu.hidden)',

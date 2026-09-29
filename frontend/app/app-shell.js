@@ -7,6 +7,10 @@ const NAV_ICON_PATHS = {
   payroll: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8", "M17 8h5", "M19.5 5.5v5"],
   ledger: ["M3 6h18v13H3z", "M3 10h18", "M7 15h4"],
   day: ["M5 4h14v16H5z", "M8 2v4", "M16 2v4", "M5 9h14"],
+  schedule: ["M5 4h14v16H5z", "M8 2v4", "M16 2v4", "M5 9h14", "M8 13h3", "M13 13h3", "M8 17h3"],
+  report: ["M5 3h14v18H5z", "M9 7h6", "M9 11h6", "M9 15h4"],
+  integrations: ["M8 12h8", "M12 8v8", "M5 5h4v4H5z", "M15 15h4v4h-4z"],
+  plans: ["M4 19V5", "M4 19h16", "M8 16v-5", "M12 16V8", "M16 16v-3"],
   settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M12 2v3", "M12 19v3", "M4.9 4.9 7 7", "M17 17l2.1 2.1", "M2 12h3", "M19 12h3", "M4.9 19.1 7 17", "M17 7l2.1-2.1"],
 };
 
@@ -58,7 +62,7 @@ export function mountAppShell({
   const wordmark = document.createElement("span");
   wordmark.textContent = "Axelio";
   brand.append(logo, wordmark);
-  wrap.prepend(brand);
+  container.prepend(brand);
 
   const activeVenue = venues.find((venue) => String(venue.id) === String(activeVenueId)) || venues[0];
   if (activeVenue) {
@@ -90,7 +94,9 @@ export function mountAppShell({
     });
 
     venue.append(avatar, select);
-    wrap.appendChild(venue);
+    const settingsLink = container.querySelector('a[data-tab="settings"]');
+    if (settingsLink) container.insertBefore(venue, settingsLink);
+    else container.appendChild(venue);
   }
 
   document.body.classList.add("app-shell-enabled");

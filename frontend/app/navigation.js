@@ -1,5 +1,9 @@
 import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20260929-appshell1";
 
+export function filterVisibleNavLinks(links = []) {
+  return links.filter((link) => link?.allowed !== false);
+}
+
 export function createNavigation(context) {
   const { normalizePermList, permSetFromResponse, roleUpper, hasAnyPerm, hasPermPrefix, hasStaffDashboardExtras, t, cacheSystemRole, applyTheme, api, ensureLogin, getActiveVenueId, setActiveVenueId, getMe, getMyVenues, getMyVenuePermissions } = context;
 
@@ -125,6 +129,7 @@ export function createNavigation(context) {
       if (link.className && !menu) a.className = link.className;
       if (link.subitem && !menu) a.classList.add("app-nav-subitem");
       if (link.mobile === false && !menu) a.classList.add("nav-desktop-only");
+      if (link.desktop === false && !menu) a.classList.add("nav-mobile-only");
       if (menu) a.classList.add("nav-more__link");
       if (overflow && !menu) a.classList.add("nav-overflow-link");
       a.setAttribute("data-tab", link.tab);
@@ -140,7 +145,9 @@ export function createNavigation(context) {
       return a;
     };
 
-    links.forEach((link) => {
+    const visibleLinks = filterVisibleNavLinks(links);
+
+    visibleLinks.forEach((link) => {
       if (link.section && link.section !== currentSection) {
         const section = document.createElement("div");
         section.className = "app-nav-section";
@@ -155,7 +162,7 @@ export function createNavigation(context) {
       if (isMobileLink) mobileLinkIndex += 1;
     });
 
-    const overflowLinks = links.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount);
+    const overflowLinks = visibleLinks.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount);
     if (!overflowLinks.length) return;
 
     const moreWrap = document.createElement("div");
@@ -296,6 +303,7 @@ export function createNavigation(context) {
   let isOwner = false;
   let canViewReports = false;
   let canShowStaffOverview = false;
+  let permissionSet = new Set();
 
   const activeVenue = activeVenueId ? venues.find(v => String(v.id) === String(activeVenueId)) : null;
   const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || activeVenue?.my_role || "").toUpperCase();
@@ -306,14 +314,14 @@ export function createNavigation(context) {
       const role = roleUpper(permsResp) || roleFromList;
       isOwner = role === "OWNER" || role === "VENUE_OWNER";
 
-      const pset = permSetFromResponse(permsResp);
+      permissionSet = permSetFromResponse(permsResp);
 
       // Report access means: user can open report pages / close shift / see report sections.
       canViewReports =
         isOwner ||
-        hasPermPrefix(pset, "SHIFT_REPORT_") ||
-        hasPermPrefix(pset, "REPORTS_") ||
-        hasAnyPerm(pset, [
+        hasPermPrefix(permissionSet, "SHIFT_REPORT_") ||
+        hasPermPrefix(permissionSet, "REPORTS_") ||
+        hasAnyPerm(permissionSet, [
           "SHIFT_REPORT_VIEW",
           "SHIFT_REPORT_CLOSE",
           "SHIFT_REPORT_EDIT",
@@ -322,7 +330,7 @@ export function createNavigation(context) {
           "REPORTS_VIEW_MONTHLY",
           "REPORTS_VIEW_PNL",
         ]);
-      canShowStaffOverview = !isOwner && hasStaffDashboardExtras(pset, role, String(me?.system_role || ""));
+      canShowStaffOverview = !isOwner && hasStaffDashboardExtras(permissionSet, role, String(me?.system_role || ""));
     } catch {
       isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
       canViewReports = isOwner;
@@ -331,35 +339,58 @@ export function createNavigation(context) {
   }
 
   const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
+  const systemRole = String(me?.system_role || "").trim().toUpperCase();
+  const isSystemAdmin = systemRole === "SUPER_ADMIN" || systemRole === "MODERATOR";
+  const hasAccess = (codes) => isOwner || isSystemAdmin || hasAnyPerm(permissionSet, codes);
+  const canViewVenue = hasAccess(["VENUE_VIEW", "VENUE_SETTINGS_EDIT"]);
+  const canViewOwnerDashboard = hasAccess(["REPORTS_VIEW_PNL", "MONTHLY_SUMMARY_VIEW", "REVENUE_VIEW", "EXPENSE_VIEW", "PAYROLL_VIEW"]);
+  const canViewSummary = hasAccess(["REPORTS_VIEW_PNL", "MONTHLY_SUMMARY_VIEW", "REVENUE_VIEW", "EXPENSE_VIEW", "EXPENSE_ADD", "PAYROLL_VIEW", "PAYROLL_CALCULATE"]);
+  const canViewRevenue = hasAccess(["REVENUE_VIEW"]);
+  const canViewExpenses = hasAccess(["EXPENSE_VIEW", "EXPENSE_ADD"]);
+  const canViewPayroll = hasAccess(["PAYROLL_VIEW", "PAYROLL_CALCULATE"]);
+  const canViewLedger = hasAccess(["FINANCE_LEDGER_VIEW", "REVENUE_VIEW", "EXPENSE_VIEW"]);
+  const canViewDayEconomics = canViewRevenue || canViewExpenses;
 
     const links = [];
 
     if (activeVenueId) {
       if (isOwner) {      // Owner mobile nav stays compact; desktop exposes the full finance map.
-        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true });
-        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", pathOnly: true, mobileActiveTab: "dashboard" });
-        links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary", icon: "summary", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true });
-        links.push({ title: t("revenue"), href: `/owner-turnover.html${qp}`, tab: "summary", icon: "revenue", mobile: false, subitem: true, pathOnly: true });
-        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", subitem: true, pathOnly: true });
-        links.push({ title: t("payroll"), href: `/owner-payroll.html${qp}`, tab: "summary", icon: "payroll", mobile: false, subitem: true, pathOnly: true });
-        links.push({ title: t("ledger"), href: `/owner-finance-ledger.html${qp}`, tab: "venue", icon: "ledger", mobile: false, subitem: true, pathOnly: true });
-        links.push({ title: t("day_economics"), href: `/owner-day-economics.html${qp}`, tab: "summary", icon: "day", mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true, allowed: canViewVenue });
+        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", pathOnly: true, mobileActiveTab: "dashboard", allowed: canViewOwnerDashboard });
+        links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary", icon: "summary", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewSummary });
+        links.push({ title: t("revenue"), href: `/owner-turnover.html${qp}`, tab: "summary", icon: "revenue", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewRevenue });
+        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", section: t("finance_section"), subitem: true, pathOnly: true, allowed: canViewExpenses });
+        links.push({ title: t("payroll"), href: `/owner-payroll.html${qp}`, tab: "summary", icon: "payroll", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewPayroll });
+        links.push({ title: t("ledger"), href: `/owner-finance-ledger.html${qp}`, tab: "venue", icon: "ledger", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewLedger });
+        links.push({ title: t("day_economics"), href: `/owner-day-economics.html${qp}`, tab: "summary", icon: "day", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewDayEconomics });
+        links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "schedule", icon: "schedule", section: t("quick_access_section"), mobile: false, pathOnly: true });
+        links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report", icon: "report", section: t("quick_access_section"), mobile: false, pathOnly: true, allowed: canViewReports });
+        links.push({ title: t("integrations"), href: `/owner-integrations.html${qp}`, tab: "integrations", icon: "integrations", mobile: false, pathOnly: true });
+        links.push({ title: t("plans"), href: `/owner-economics-plans.html${qp}`, tab: "plans", icon: "plans", mobile: false, pathOnly: true });
         links.push({ title: t("settings"), href: "/settings.html", tab: "settings", icon: "settings", section: t("account_section"), pathOnly: true });
       } else {
+        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), mobile: false, pathOnly: true, allowed: canViewVenue });
+        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", section: t("main_section"), mobile: false, pathOnly: true, allowed: canViewOwnerDashboard });
+        links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary", icon: "summary", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewSummary });
+        links.push({ title: t("revenue"), href: `/owner-turnover.html${qp}`, tab: "summary", icon: "revenue", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewRevenue });
+        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewExpenses });
+        links.push({ title: t("payroll"), href: `/owner-payroll.html${qp}`, tab: "summary", icon: "payroll", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewPayroll });
+        links.push({ title: t("ledger"), href: `/owner-finance-ledger.html${qp}`, tab: "venue", icon: "ledger", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewLedger });
+        links.push({ title: t("day_economics"), href: `/owner-day-economics.html${qp}`, tab: "summary", icon: "day", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewDayEconomics });
         // Staff bottom nav:
   // - If NO report access: Schedule + Salaries + Adjustments + Settings
   // - If HAS report access: Schedule + Finance + Reports + Settings
-  links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
+  links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts", icon: "schedule", section: t("quick_access_section") });
 
   if (canViewReports) {
-    links.push({ title: canShowStaffOverview ? t("overview") : t("finance"), href: `${canShowStaffOverview ? "/app-dashboard.html" : "/staff-finance.html"}${qp}`, tab: canShowStaffOverview ? "overview" : "finance" });
-    links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+    links.push({ title: canShowStaffOverview ? t("overview") : t("finance"), href: `${canShowStaffOverview ? "/app-dashboard.html" : "/staff-finance.html"}${qp}`, tab: canShowStaffOverview ? "overview" : "finance", desktop: false });
+    links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report", icon: "report" });
   } else {
     links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
     links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
   }
 
-  links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
+  links.push({ title: "⚙️", href: "/settings.html", tab: "settings", icon: "settings", className: "icon", section: t("account_section") });
       }
     } else {
       // No active venue chosen yet
