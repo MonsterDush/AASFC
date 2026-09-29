@@ -1,5 +1,5 @@
 export function createRecurringExpenseSetupController(context) {
-  const { toast, confirmModal, api, getPaymentMethods, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible } = context;
+  const { toast, confirmModal, api, getPaymentMethods, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible, clearStepDraft } = context;
 
   function formatMoneyMinor(value) {
     return new Intl.NumberFormat('ru-RU', {
@@ -193,6 +193,7 @@ export function createRecurringExpenseSetupController(context) {
       try {
         if (inlineState.editor?.id) await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: payload });
         else await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules`, { method: 'POST', body: payload });
+        clearStepDraft('recurring_expenses');
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineRecurringExpenses({ force: true });
         await loadSetup({ preserveSelection: true });

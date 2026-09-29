@@ -2,7 +2,7 @@ import { intervalPositionLabel, positionScopeEditor, readPositionScope, wirePosi
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 export function createShiftIntervalSetupController(context) {
-  const { toast, confirmModal, api, state, esc, getStepByKey, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, state, esc, getStepByKey, getNextStepKey, moveToStep, loadSetup, clearStepDraft } = context;
 
   async function loadInlineShiftIntervals({ force = false } = {}) {
     const inlineState = state.inline.shift_intervals;
@@ -159,6 +159,7 @@ export function createShiftIntervalSetupController(context) {
         } else {
           await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, position_ids, is_active } });
         }
+        clearStepDraft('shift_intervals');
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineShiftIntervals({ force: true });
         await loadSetup({ preserveSelection: true });

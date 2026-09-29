@@ -154,6 +154,7 @@
       isDemoReadonlyUi
     } from "/app.js?v=20260924-dashboardi18n1";
     import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
+    import { buildDefaultPositionPayload, buildInvitePayload } from "/app/invite-form-contract.js?v=20260929-payrolluat1";
 
     function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
     function escAttr(s){ return esc(s).replace(/"/g, '&quot;'); }
@@ -208,15 +209,7 @@
       if (positionPresetSelect.value === '' || !Number.isInteger(index)) return null;
       const item = positionPresets.filter((row) => row?.is_active !== false)[index];
       if (!item) return null;
-      return {
-        title: String(item.title || '').trim(),
-        venue_position_id: Number(item.venue_position_id || item.id || 0) || null,
-        rate: Math.max(0, Math.round(Number(item.rate || 0))),
-        percent: Math.max(0, Math.min(100, Math.round(Number(item.percent || 0)))),
-        pay_profile_id: Number(item.pay_profile_id || 0) || null,
-        pay_profile_title: item.pay_profile_title || null,
-        permission_codes: Array.isArray(item.permission_codes) ? item.permission_codes : [],
-      };
+      return buildDefaultPositionPayload(item);
     }
 
     async function refreshPermissions() {
@@ -485,7 +478,14 @@
         toast('Нет прав на приглашение владельца', 'warn');
         return;
       }
-      const body = { invite_channel: channel, venue_role: role, contact_label, default_position: selectedPositionPreset() };
+      const body = buildInvitePayload({
+        channel,
+        role,
+        contactLabel: contact_label,
+        telegram: document.getElementById('tg').value,
+        phone: document.getElementById('phone').value,
+        positionPreset: selectedPositionPreset(),
+      });
       if (channel === 'TELEGRAM') {
         const tg = document.getElementById('tg').value.trim();
         if (!tg) { toast('Укажи ник в Telegram', 'warn'); return; }
@@ -516,7 +516,11 @@
           inviteResult.textContent = out?.mode || 'ok';
         }
         inviteResult.classList.add('is-success');
-        toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
+        if (out?.mode === 'member_added' && body.default_position && out?.default_position_applied === false) {
+          toast('Участник добавлен, но должность не назначена: шаблон удалён или архивирован', 'warn');
+        } else {
+          toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
+        }
         await loadMembers();
       } catch (e) {
         toast('Ошибка приглашения: ' + e.message, 'err');

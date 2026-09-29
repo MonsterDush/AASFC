@@ -4,7 +4,7 @@ import json
 from datetime import date, time
 from unittest import TestCase
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -18,6 +18,8 @@ from app.models import (
     PayComponent,
     PayProfile,
     PayProfileAssignment,
+    PayrollRecalculationLog,
+    PayrollRun,
     PositionPayProfilePeriod,
     Shift,
     ShiftAssignment,
@@ -28,6 +30,11 @@ from app.models import (
     VenuePosition,
 )
 from app.services.payroll import calculate_payroll_for_month
+from app.scripts.audit_position_pay_profiles import audit_position_pay_profiles
+from app.routers.venue_payroll_support import (
+    _payroll_preview_payload,
+    _recalculate_affected_payroll_runs,
+)
 
 
 @compiles(JSONB, "sqlite")
@@ -49,6 +56,31 @@ class VenueSetupPayrollUatTests(TestCase):
 
     def tearDown(self):
         self.engine.dispose()
+
+    def test_effective_dated_profile_audit_is_read_only_and_reports_legacy_gap(self):
+        with Session(self.engine) as db:
+            venue_id, _owner_id, _staff_id = self._seed_uat(db)
+            db.commit()
+            before_periods = db.query(PositionPayProfilePeriod).count()
+            clean = audit_position_pay_profiles(db, venue_id=venue_id)
+            self.assertTrue(clean["ok"])
+            self.assertEqual(clean["issues"], [])
+            self.assertEqual(db.query(PositionPayProfilePeriod).count(), before_periods)
+
+            legacy = VenuePosition(
+                venue_id=venue_id,
+                member_user_id=102,
+                pay_profile_id=401,
+                title="Legacy without period",
+                permission_codes="[]",
+                is_active=True,
+            )
+            db.add(legacy)
+            db.flush()
+            audit = audit_position_pay_profiles(db, venue_id=venue_id)
+            self.assertFalse(audit["ok"])
+            self.assertIn("ACTIVE_POSITION_WITHOUT_PROFILE_PERIOD", {item["code"] for item in audit["issues"]})
+            self.assertEqual(db.query(PositionPayProfilePeriod).count(), before_periods)
 
     def _seed_uat(self, db: Session) -> tuple[int, int, int]:
         venue = Venue(id=25, name="codex_test")
@@ -374,6 +406,15 @@ class VenueSetupPayrollUatTests(TestCase):
                         valid_to=None,
                         is_active=True,
                     ),
+                    PayProfileAssignment(
+                        id=703,
+                        venue_id=25,
+                        pay_profile_id=401,
+                        member_user_id=101,
+                        start_date=date(2026, 8, 1),
+                        end_date=date(2026, 8, 31),
+                        is_active=True,
+                    ),
                     ShiftInterval(
                         id=801,
                         venue_id=25,
@@ -450,6 +491,25 @@ class VenueSetupPayrollUatTests(TestCase):
             )
             self.assertEqual(snapshot["metrics"]["shifts_count"], 4)
             self.assertEqual(len(snapshot["position_profiles"]), 2)
+            self.assertEqual(
+                {item["rounding_rule"] for item in snapshot["components"]},
+                {"EXACT_MINOR_UNITS"},
+            )
+            self.assertEqual(
+                [item["profile_active_from"] for item in snapshot["components"]],
+                ["2026-08-01", "2026-08-16"],
+            )
+            self.assertEqual(
+                [item["used_shift_ids"] for item in snapshot["components"]],
+                [[901, 902], [903, 904]],
+            )
+            self.assertTrue(
+                all(
+                    {candidate["profile_source"] for candidate in item["discarded_profile_candidates"]}
+                    == {"MEMBER_FALLBACK", "POSITION_LEGACY"}
+                    for item in snapshot["components"]
+                )
+            )
 
     def test_closed_assigned_shift_without_profile_returns_warning(self):
         with Session(self.engine) as db:
@@ -525,3 +585,84 @@ class VenueSetupPayrollUatTests(TestCase):
                     }
                 ],
             )
+
+    def test_preview_blocks_profile_without_components_and_rolls_back_every_write(self):
+        with Session(self.engine) as db:
+            db.add_all(
+                [
+                    Venue(id=25, name="codex_test"),
+                    User(id=101, short_name="Сотрудник"),
+                    VenueMember(venue_id=25, user_id=101, venue_role="OWNER", is_active=True),
+                    PayProfile(id=401, venue_id=25, title="Пустой профиль", is_active=True),
+                    PayProfileAssignment(
+                        id=501,
+                        venue_id=25,
+                        pay_profile_id=401,
+                        member_user_id=101,
+                        start_date=date(2026, 8, 1),
+                        end_date=date(2026, 8, 31),
+                        is_active=True,
+                    ),
+                ]
+            )
+            db.commit()
+
+            preview = _payroll_preview_payload(
+                db,
+                venue_id=25,
+                month="2026-08",
+                calculated_by_user_id=101,
+            )
+
+            self.assertTrue(preview["is_blocked"])
+            self.assertEqual(
+                [warning["code"] for warning in preview["blocking_warnings"]],
+                ["PAY_PROFILE_WITHOUT_COMPONENTS"],
+            )
+            self.assertEqual(db.execute(select(PayrollRun)).scalars().all(), [])
+
+    def test_profile_rule_change_recalculates_persisted_month_and_records_diagnostics(self):
+        with Session(self.engine) as db:
+            venue_id, owner_id, _staff_id = self._seed_uat(db)
+            first = calculate_payroll_for_month(
+                db=db,
+                venue_id=venue_id,
+                month="2026-08",
+                calculated_by_user_id=owner_id,
+            )
+            db.commit()
+            self.assertEqual(first.run.total_amount_minor, 4_535_000)
+
+            component = db.execute(select(PayComponent).where(PayComponent.id == 501)).scalar_one()
+            component.amount_minor = 6_200_000
+            months = _recalculate_affected_payroll_runs(
+                db,
+                venue_id=venue_id,
+                calculated_by_user_id=owner_id,
+                trigger_reason="pay_component_updated",
+                details={"pay_component_id": int(component.id)},
+            )
+            db.commit()
+
+            run = db.execute(
+                select(PayrollRun).where(
+                    PayrollRun.venue_id == venue_id,
+                    PayrollRun.period_month == date(2026, 8, 1),
+                )
+            ).scalar_one()
+            log = db.execute(
+                select(PayrollRecalculationLog).where(
+                    PayrollRecalculationLog.venue_id == venue_id,
+                    PayrollRecalculationLog.period_month == date(2026, 8, 1),
+                )
+            ).scalar_one()
+            details = json.loads(log.details_json)
+            self.assertEqual(months, ["2026-08"])
+            self.assertEqual(run.total_amount_minor, 7_635_000)
+            self.assertEqual(log.trigger_reason, "pay_component_updated")
+            self.assertEqual(details["previous_total_amount_minor"], 4_535_000)
+            self.assertEqual(details["total_amount_minor"], 7_635_000)
+            self.assertEqual(details["total_delta_minor"], 3_100_000)
+            self.assertEqual(details["release"], "local")
+            self.assertEqual(details["transaction_result"], "committed")
+            self.assertGreaterEqual(details["contexts_count"], 7)

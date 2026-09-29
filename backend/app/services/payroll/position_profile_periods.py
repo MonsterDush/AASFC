@@ -98,8 +98,8 @@ def set_position_pay_profile(
 ) -> PositionPayProfilePeriod | None:
     """Replace a position's payroll profile from one inclusive date.
 
-    Stored payroll lines are intentionally left untouched. A later explicit
-    payroll recalculation will pick up these periods.
+    The caller is responsible for invalidating persisted payroll months after
+    this effective-dated history has been updated.
     """
 
     if position.id is None:

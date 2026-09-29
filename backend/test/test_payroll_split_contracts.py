@@ -114,7 +114,7 @@ class PayrollCalculatorSplitContractTests(TestCase):
         manifest.sort()
         digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False).encode()).hexdigest()
         self.assertEqual(len(manifest), 72)
-        self.assertEqual(digest, "13b9fd9ff53c6c7e1b15856f5b7b76864010b9388f6fab7dd9cbd99aae3aa957")
+        self.assertEqual(digest, "567811d2e91ab86aac08f827be1015ed11edb5bf1a7197a8205f79fc6219d5c3")
 
     def test_modules_remain_bounded_and_facade_reexports_their_contracts(self):
         modules = {

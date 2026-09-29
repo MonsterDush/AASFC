@@ -65,6 +65,37 @@ def record_database_error(operation: str = "request") -> None:
     increment("axelio_database_errors_total", operation=operation)
 
 
+def record_payroll_recalculation(
+    *,
+    trigger_reason: str,
+    duration_seconds: float,
+    warnings: list[dict] | None = None,
+    result: str = "success",
+) -> None:
+    """Record low-cardinality payroll signals for dashboards and alerts."""
+
+    reason = str(trigger_reason or "system")
+    result_label = str(result or "unknown")
+    increment(
+        "axelio_payroll_recalculations_total",
+        trigger_reason=reason,
+        result=result_label,
+    )
+    increment(
+        "axelio_payroll_recalculation_duration_seconds_total",
+        amount=max(0.0, float(duration_seconds)),
+        trigger_reason=reason,
+        result=result_label,
+    )
+    for warning in warnings or []:
+        code = str((warning or {}).get("code") or "UNKNOWN")
+        increment(
+            "axelio_payroll_recalculation_warnings_total",
+            trigger_reason=reason,
+            warning_code=code,
+        )
+
+
 def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 

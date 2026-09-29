@@ -48,10 +48,11 @@ import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPos
 import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260810-setup1";
 import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260729-payroll1";
 import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260720-unified10";
-import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260720-unified10";
+import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260929-payrolluat1";
 import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260906-names-scopes1";
 import { createSupplierSetupController } from "/owner-setup/supplier-editor.js?v=20260720-unified10";
 import { createRecurringExpenseSetupController } from "/owner-setup/recurring-expense-editor.js?v=20260729-slotecon1";
+import { attachSetupDraft, clearSetupDraft } from "/owner-setup/draft-state.js?v=20260929-payrolluat1";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -1080,6 +1081,7 @@ function renderInlineEditorHost(currentStep) {
         <div class="skeleton"></div>
         <div class="skeleton"></div>
       </div>
+      <div class="setup-inline-note" id="setupDraftStatus" aria-live="polite">Несохранённые поля останутся в этой вкладке</div>
     </div>
   `;
 }
@@ -1385,6 +1387,7 @@ const editorContext = {
   recurringModeLabel,
   buildBasisPaymentMethodCheckboxes,
   setVisible,
+  clearStepDraft: (stepKey = state.selectedStepKey) => clearSetupDraft({ venueId: state.venueId, stepKey }),
 };
 const { mountCatalogEditor } = createCatalogSetupController(editorContext);
 const { mountPayProfilesEditor, loadInlinePayProfiles } = createPayProfileSetupController(editorContext);
@@ -1398,29 +1401,24 @@ async function mountInlineEditor(currentStep) {
   if (!shouldUseInlineEditor(currentStep?.key)) return;
   if (currentStep.key === "pay_profiles") {
     await mountPayProfilesEditor(getStepByKey("pay_profiles") || currentStep);
-    return;
-  }
-  if (currentStep.key === "positions") {
+  } else if (currentStep.key === "positions") {
     await mountPositionsEditor(getStepByKey("positions") || currentStep);
-    return;
-  }
-  if (currentStep.key === "invites") {
+  } else if (currentStep.key === "invites") {
     await mountInvitesEditor(getStepByKey("invites") || currentStep);
-    return;
-  }
-  if (currentStep.key === "shift_intervals") {
+  } else if (currentStep.key === "shift_intervals") {
     await mountShiftIntervalsEditor(getStepByKey("shift_intervals") || currentStep);
-    return;
-  }
-  if (currentStep.key === "suppliers") {
+  } else if (currentStep.key === "suppliers") {
     await mountSuppliersEditor(getStepByKey("suppliers") || currentStep);
-    return;
-  }
-  if (currentStep.key === "recurring_expenses") {
+  } else if (currentStep.key === "recurring_expenses") {
     await mountRecurringExpensesEditor(getStepByKey("recurring_expenses") || currentStep);
-    return;
+  } else {
+    await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
   }
-  await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
+  attachSetupDraft({
+    host: document.getElementById("setupInlineEditor"),
+    venueId: state.venueId,
+    stepKey: currentStep.key,
+  });
 }
 
 

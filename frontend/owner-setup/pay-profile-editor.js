@@ -1,5 +1,5 @@
 export function createPayProfileSetupController(context) {
-  const { toast, confirmModal, api, getDepartments, getKpiMetrics, getPayProfiles, getPayProfile, createPayProfile, updatePayProfile, deletePayProfile, createPayComponent, updatePayComponent, deletePayComponent, percentInputFromBps, moneyInputFromMinor, parseMoneyRubToMinor, parsePercentInputToBps, state, defaultPayComponentTitle, payComponentValueLabel, payComponentTypeOptions, buildSimpleOptions, syncInlinePayComponentFields, esc, getVisibleSteps, getStepByKey, getAdjacentUnlockedStep, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, getDepartments, getKpiMetrics, getPayProfiles, getPayProfile, createPayProfile, updatePayProfile, deletePayProfile, createPayComponent, updatePayComponent, deletePayComponent, percentInputFromBps, moneyInputFromMinor, parseMoneyRubToMinor, parsePercentInputToBps, state, defaultPayComponentTitle, payComponentValueLabel, payComponentTypeOptions, buildSimpleOptions, syncInlinePayComponentFields, esc, getVisibleSteps, getStepByKey, getAdjacentUnlockedStep, moveToStep, loadSetup, clearStepDraft } = context;
 
   async function ensurePayProfileAuxData() {
     if (!Array.isArray(state.departments)) {
@@ -260,6 +260,7 @@ export function createPayProfileSetupController(context) {
         let saved = null;
         if (inlineState.editor?.id) saved = await updatePayProfile(state.venueId, inlineState.editor.id, { title, description: description || null, is_active });
         else saved = await createPayProfile(state.venueId, { title, description: description || null, is_active });
+        clearStepDraft('pay_profiles');
         inlineState.editor = { mode: 'create', id: null };
         if (saved?.id) inlineState.selectedProfileId = saved.id;
         await loadInlinePayProfiles({ force: true });
@@ -436,6 +437,7 @@ export function createPayProfileSetupController(context) {
         }
         if (inlineState.componentEditor?.id) await updatePayComponent(state.venueId, inlineState.componentEditor.id, payload);
         else await createPayComponent(state.venueId, profileId, payload);
+        clearStepDraft('pay_profiles');
         inlineState.componentEditor = { mode: 'create', id: null };
         await loadInlinePayProfiles({ force: true });
         await loadInlinePayProfileDetail(profileId, { force: true });

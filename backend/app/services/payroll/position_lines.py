@@ -2,9 +2,35 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.models import PayrollLine
+
+
+def clear_payroll_lines_for_run(db: Session, *, payroll_run_id: int) -> None:
+    identity_map = getattr(db, "identity_map", {})
+    attached_lines = [
+        instance
+        for instance in identity_map.values()
+        if isinstance(instance, PayrollLine) and int(instance.payroll_run_id) == int(payroll_run_id)
+    ]
+    db.execute(delete(PayrollLine).where(PayrollLine.payroll_run_id == int(payroll_run_id)))
+    db.flush()
+    for line in attached_lines:
+        if line in db:
+            db.expunge(line)
+
+
+def _component_rounding_rule(component_type: str | None) -> str:
+    normalized = str(component_type or "").strip().upper()
+    if normalized == "SALARY_FIXED_MONTH":
+        return "CALENDAR_DAY_ALLOCATION_REMAINDER_EARLIEST"
+    if normalized == "SALARY_HOURLY":
+        return "HALF_UP_TO_MINOR_UNIT"
+    if normalized in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
+        return "HALF_UP_TO_MINOR_UNIT"
+    return "EXACT_MINOR_UNITS"
 
 
 def add_position_context_to_aggregate(
@@ -24,7 +50,13 @@ def add_position_context_to_aggregate(
     profile_period_ids = sorted(int(value) for value in getattr(context, "profile_period_ids", set()) or set())
     assignment_ids = sorted(int(value) for value in getattr(context, "assignment_ids", set()) or set())
     profile_sources = sorted(getattr(context, "profile_sources", set()) or set())
+    discarded_profile_candidates = [
+        {"profile_source": source, "pay_profile_id": profile_id}
+        for source, profile_id in sorted(getattr(context, "discarded_profile_candidates", set()) or set())
+    ]
     profile_source = profile_sources[0] if len(profile_sources) == 1 else "MIXED"
+    used_shift_ids = sorted(int(shift.shift_id) for shift in metrics.worked_shifts)
+    used_shift_dates = sorted({shift.shift_date.isoformat() for shift in metrics.worked_shifts})
     for item in breakdown_items:
         item["pay_profile_id"] = int(profile.id)
         item["pay_profile_title"] = profile.title
@@ -33,6 +65,18 @@ def add_position_context_to_aggregate(
         item["profile_source"] = profile_source
         item["profile_period_ids"] = profile_period_ids
         item["assignment_ids"] = assignment_ids
+        item["position_id"] = position_ids[0] if len(position_ids) == 1 else None
+        item["position_title"] = position_titles[0] if len(position_titles) == 1 else None
+        item["profile_period_id"] = profile_period_ids[0] if len(profile_period_ids) == 1 else None
+        item["assignment_id"] = assignment_ids[0] if len(assignment_ids) == 1 else None
+        item["profile_active_from"] = profile_active_dates[0].isoformat() if profile_active_dates else None
+        item["profile_active_to"] = profile_active_dates[-1].isoformat() if profile_active_dates else None
+        item["profile_active_dates_count"] = len(profile_active_dates)
+        item["used_shift_ids"] = used_shift_ids
+        item["used_shift_dates"] = used_shift_dates
+        item["rounding_rule"] = _component_rounding_rule(item.get("component_type"))
+        item["discarded_profile_candidates"] = discarded_profile_candidates
+        item["warnings"] = list(item.get("warnings") or [])
 
     member_id = int(member_user.id)
     aggregate = aggregates.setdefault(
@@ -66,6 +110,7 @@ def add_position_context_to_aggregate(
             "profile_period_ids": profile_period_ids,
             "assignment_ids": assignment_ids,
             "profile_source": profile_source,
+            "discarded_profile_candidates": discarded_profile_candidates,
             "profile_active_from": profile_active_dates[0].isoformat() if profile_active_dates else None,
             "profile_active_to": profile_active_dates[-1].isoformat() if profile_active_dates else None,
             "profile_active_dates_count": len(profile_active_dates),

@@ -242,6 +242,8 @@
       }
       try {
         const out = await api(`/public/invites/${encodeURIComponent(inviteToken)}/accept`, { method: "POST" });
+        const warning = Array.isArray(out?.invite?.warnings) ? out.invite.warnings[0] : null;
+        if (warning) toast(warning, "warn");
         toast("Приглашение принято", "ok");
         const venueId = out?.venue_id;
         if (venueId) {

@@ -294,7 +294,18 @@ def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accept
             )
         )
 
-    _apply_default_position(db, inv=inv, user_id=user_id)
+    position_applied = _apply_default_position(db, inv=inv, user_id=user_id)
+    preset = getattr(inv, "default_position_json", None)
+    if isinstance(preset, dict) and preset.get("title"):
+        persisted_preset = dict(preset)
+        persisted_preset["application_status"] = "APPLIED" if position_applied else "SKIPPED"
+        persisted_preset["application_warning"] = (
+            None
+            if position_applied
+            else "Должность из приглашения не назначена: она удалена, архивирована или недоступна."
+        )
+        inv.default_position_json = persisted_preset
+    inv._default_position_applied = position_applied
 
     inv.accepted_user_id = user_id
     inv.accepted_at = datetime.now(timezone.utc)
@@ -485,6 +496,11 @@ def accept_invite_by_token(db: Session, *, token: str, user: User) -> VenueInvit
 
 def build_public_invite_payload(inv: VenueInvite) -> dict:
     venue: Venue | None = getattr(inv, "venue", None)
+    default_position = inv.default_position_json
+    application_status = (
+        str(default_position.get("application_status") or "").upper() if isinstance(default_position, dict) else ""
+    )
+    application_warning = default_position.get("application_warning") if isinstance(default_position, dict) else None
     return {
         "id": inv.id,
         "venue_id": inv.venue_id,
@@ -503,5 +519,9 @@ def build_public_invite_payload(inv: VenueInvite) -> dict:
         "accepted_via": inv.accepted_via,
         "invite_token": inv.invite_token,
         "invite_link": build_invite_link(inv.invite_token),
-        "default_position": inv.default_position_json,
+        "default_position": default_position,
+        "default_position_applied": (
+            application_status == "APPLIED" if application_status else getattr(inv, "_default_position_applied", None)
+        ),
+        "warnings": [application_warning] if application_warning else [],
     }

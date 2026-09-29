@@ -1,5 +1,7 @@
+import { buildInvitePayload } from "../app/invite-form-contract.js?v=20260929-payrolluat1";
+
 export function createInviteSetupController(context) {
-  const { toast, confirmModal, api, getVenueMembers, patchInviteDefaultPosition, state, esc, fmtDateTime, roleLabel, memberDisplayName, getPositionPresets, buildPresetOptionList, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible } = context;
+  const { toast, confirmModal, api, getVenueMembers, patchInviteDefaultPosition, state, esc, fmtDateTime, roleLabel, memberDisplayName, getPositionPresets, buildPresetOptionList, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible, clearStepDraft } = context;
 
   async function loadInlineInvites({ force = false } = {}) {
     const inlineState = state.inline.invites;
@@ -125,33 +127,36 @@ export function createInviteSetupController(context) {
       const channel = String(document.getElementById('inviteChannel')?.value || 'TELEGRAM').toUpperCase();
       const venue_role = String(document.getElementById('inviteRole')?.value || 'STAFF').toUpperCase();
       const contact_label = String(document.getElementById('inviteContactLabel')?.value || '').trim() || null;
-      const body = { invite_channel: channel, venue_role, contact_label };
+      let telegram = '';
+      let phone = '';
       if (channel === 'PHONE') {
-        const phone = String(document.getElementById('invitePhone')?.value || '').trim();
+        phone = String(document.getElementById('invitePhone')?.value || '').trim();
         if (!phone) return toast('Укажи телефон', 'err');
-        body.phone = phone;
       } else {
-        const tg = String(document.getElementById('inviteTelegram')?.value || '').trim();
-        if (!tg) return toast('Укажи Telegram', 'err');
-        body.tg_username = tg;
+        telegram = String(document.getElementById('inviteTelegram')?.value || '').trim();
+        if (!telegram) return toast('Укажи Telegram', 'err');
       }
       const selectedPresetId = String(document.getElementById('invitePresetSelect')?.value || '').trim();
       const selectedPreset = getPositionPresets().find((item) => String(item.id) === selectedPresetId) || null;
-      body.default_position = selectedPreset ? {
-        title: selectedPreset.title,
-        venue_position_id: selectedPreset.venue_position_id || null,
-        rate: Number(selectedPreset.rate || 0) || 0,
-        percent: Number(selectedPreset.percent || 0) || 0,
-        pay_profile_id: selectedPreset.pay_profile_id || null,
-        pay_profile_title: selectedPreset.pay_profile_title || null,
-        permission_codes: selectedPreset.permission_codes || [],
-      } : null;
+      const body = buildInvitePayload({
+        channel,
+        role: venue_role,
+        contactLabel: contact_label,
+        telegram,
+        phone,
+        positionPreset: selectedPreset,
+      });
       try {
         const out = await api(`/venues/${encodeURIComponent(state.venueId)}/invites`, { method: 'POST', body });
+        clearStepDraft('invites');
         await loadInlineInvites({ force: true });
         await loadSetup({ preserveSelection: true });
         await mountInvitesEditor(getStepByKey('invites') || currentStep);
-        toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
+        if (out?.mode === 'member_added' && body.default_position && out?.default_position_applied === false) {
+          toast('Участник добавлен, но должность не назначена: шаблон удалён или архивирован', 'warn');
+        } else {
+          toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
+        }
       } catch (e) {
         toast(e?.data?.detail || e?.message || 'Не удалось создать приглашение', 'err');
       }

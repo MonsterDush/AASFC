@@ -59,6 +59,7 @@ from app.routers.venue_pay_profile_support import (
 )
 from app.services.payroll.weekday_rates import dump_weekday_rates
 from app.routers.venue_membership_support import _build_user_auth_snapshot_map
+from app.routers.venue_payroll_support import _recalculate_affected_payroll_runs
 from app.models.position_pay_profile_period import PositionPayProfilePeriod
 
 
@@ -104,8 +105,7 @@ def list_pay_profiles(
     today = date.today()
     direct_active_rows = (
         db.execute(
-            select(PayProfileAssignment.pay_profile_id, PayProfileAssignment.member_user_id)
-            .where(
+            select(PayProfileAssignment.pay_profile_id, PayProfileAssignment.member_user_id).where(
                 PayProfileAssignment.venue_id == venue_id,
                 PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
                 PayProfileAssignment.is_active.is_(True),
@@ -192,12 +192,10 @@ def list_pay_profiles(
             direct_assignments_count=len(direct_by_profile.get(int(profile.id), set())),
             position_assignments_count=len(positions_by_profile.get(int(profile.id), set())),
             effective_members_count=len(
-                direct_by_profile.get(int(profile.id), set())
-                | position_members_by_profile.get(int(profile.id), set())
+                direct_by_profile.get(int(profile.id), set()) | position_members_by_profile.get(int(profile.id), set())
             ),
             historical_assignments_count=(
-                direct_historical_counts.get(int(profile.id), 0)
-                + position_historical_counts.get(int(profile.id), 0)
+                direct_historical_counts.get(int(profile.id), 0) + position_historical_counts.get(int(profile.id), 0)
             ),
         )
         for profile in profiles
@@ -259,6 +257,14 @@ def update_pay_profile(
     if "is_active" in fields_set and payload.is_active is not None:
         profile.is_active = payload.is_active
     profile.updated_at = datetime.utcnow()
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_profile_updated",
+        details={"pay_profile_id": int(profile.id), "changed_fields": sorted(fields_set)},
+    )
     db.commit()
     return _load_pay_profile_detail(db, venue_id=venue_id, profile_id=profile_id)
 
@@ -330,6 +336,20 @@ def create_pay_profile_assignment(
         updated_at=datetime.utcnow(),
     )
     db.add(assignment)
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_profile_assignment_created",
+        details={
+            "pay_profile_id": int(profile_id),
+            "pay_profile_assignment_id": int(assignment.id),
+            "member_user_id": int(payload.member_user_id),
+        },
+        affected_from=payload.start_date,
+        affected_to=payload.end_date,
+    )
     db.commit()
     member = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
     auth_map = _build_user_auth_snapshot_map(db, [int(member.id)]) if member is not None else {}
@@ -353,11 +373,15 @@ def update_pay_profile_assignment(
 
     assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
     fields_set = payload.model_fields_set
+    old_start_date = assignment.start_date
+    old_end_date = assignment.end_date
     new_start_date = payload.start_date if "start_date" in fields_set else assignment.start_date
     new_end_date = payload.end_date if "end_date" in fields_set else assignment.end_date
     if new_start_date and new_end_date and new_end_date < new_start_date:
         raise HTTPException(status_code=400, detail="end_date must be >= start_date")
-    new_is_active = payload.is_active if "is_active" in fields_set and payload.is_active is not None else assignment.is_active
+    new_is_active = (
+        payload.is_active if "is_active" in fields_set and payload.is_active is not None else assignment.is_active
+    )
     _ensure_no_pay_profile_assignment_overlap(
         db,
         venue_id=venue_id,
@@ -374,6 +398,24 @@ def update_pay_profile_assignment(
     if "is_active" in fields_set and payload.is_active is not None:
         assignment.is_active = payload.is_active
     assignment.updated_at = datetime.utcnow()
+    db.flush()
+    affected_dates = [
+        value for value in (old_start_date, old_end_date, new_start_date, new_end_date) if value is not None
+    ]
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_profile_assignment_updated",
+        details={
+            "pay_profile_id": int(assignment.pay_profile_id),
+            "pay_profile_assignment_id": int(assignment.id),
+            "member_user_id": int(assignment.member_user_id),
+            "changed_fields": sorted(fields_set),
+        },
+        affected_from=min(affected_dates) if affected_dates else None,
+        affected_to=max(affected_dates) if affected_dates else None,
+    )
     db.commit()
     member = db.execute(select(User).where(User.id == assignment.member_user_id)).scalar_one_or_none()
     auth_map = _build_user_auth_snapshot_map(db, [int(member.id)]) if member is not None else {}
@@ -395,7 +437,24 @@ def delete_pay_profile_assignment(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
+    details = {
+        "pay_profile_id": int(assignment.pay_profile_id),
+        "pay_profile_assignment_id": int(assignment.id),
+        "member_user_id": int(assignment.member_user_id),
+    }
+    affected_from = assignment.start_date
+    affected_to = assignment.end_date
     db.delete(assignment)
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_profile_assignment_deleted",
+        details=details,
+        affected_from=affected_from,
+        affected_to=affected_to,
+    )
     db.commit()
     return {"ok": True}
 
@@ -516,6 +575,14 @@ def create_pay_component(
     )
     sync_component_tiers(component, payload)
     db.add(component)
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_component_created",
+        details={"pay_profile_id": int(profile_id), "pay_component_id": int(component.id)},
+    )
     db.commit()
     return _serialize_pay_component(component)
 
@@ -695,6 +762,18 @@ def update_pay_component(
         weekday_rates=_component_weekday_rates(component),
     )
     component.updated_at = datetime.utcnow()
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_component_updated",
+        details={
+            "pay_profile_id": int(component.pay_profile_id),
+            "pay_component_id": int(component.id),
+            "changed_fields": sorted(fields_set),
+        },
+    )
     db.commit()
     return _serialize_pay_component(component)
 
@@ -710,6 +789,18 @@ def delete_pay_component(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     component = _get_pay_component_or_404(db, venue_id=venue_id, component_id=component_id)
+    details = {
+        "pay_profile_id": int(component.pay_profile_id),
+        "pay_component_id": int(component.id),
+    }
     db.delete(component)
+    db.flush()
+    _recalculate_affected_payroll_runs(
+        db,
+        venue_id=venue_id,
+        calculated_by_user_id=int(user.id),
+        trigger_reason="pay_component_deleted",
+        details=details,
+    )
     db.commit()
     return {"ok": True}

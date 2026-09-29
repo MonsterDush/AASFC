@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, date, timedelta
 import json
+import logging
+import time
 from sqlalchemy import select, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
+from app.core.config import settings
+from app.core.metrics import record_payroll_recalculation
 from app.services.payroll.calculator import (
     calculate_payroll_for_month,
     parse_month_start,
@@ -27,11 +31,113 @@ from app.routers.venue_pay_profile_support import (
 )
 
 
-def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
+_LOG = logging.getLogger("axelio.payroll.recalculation")
+
+
+def _payroll_calculation_details(
+    calculation,
+    *,
+    previous_total_amount_minor: int | None,
+    duration_seconds: float,
+    transaction_result: str,
+    extra: dict | None = None,
+) -> dict:
+    diagnostics = dict(getattr(calculation, "diagnostics", {}) or {})
+    total_amount_minor = int(calculation.run.total_amount_minor or 0)
+    return {
+        **(extra or {}),
+        "release": settings.release_version(),
+        "transaction_result": str(transaction_result or "unknown"),
+        "duration_ms": round(max(0.0, float(duration_seconds)) * 1000, 2),
+        "previous_total_amount_minor": (
+            int(previous_total_amount_minor) if previous_total_amount_minor is not None else None
+        ),
+        "total_amount_minor": total_amount_minor,
+        "total_delta_minor": (
+            total_amount_minor - int(previous_total_amount_minor) if previous_total_amount_minor is not None else None
+        ),
+        "warning_count": len(calculation.warnings),
+        "warnings": calculation.warnings,
+        "lines_count": len(calculation.lines),
+        **diagnostics,
+    }
+
+
+def _payroll_preview_payload(
+    db: Session,
+    *,
+    venue_id: int,
+    month: str,
+    calculated_by_user_id: int | None,
+) -> dict:
+    """Calculate diagnostics inside a savepoint and roll every write back."""
+
+    savepoint = db.begin_nested()
     try:
-        return bool(inspect(db.get_bind()).has_table(PayrollRecalculationLog.__tablename__))
+        calculation = calculate_payroll_for_month(
+            db=db,
+            venue_id=int(venue_id),
+            month=month,
+            calculated_by_user_id=(int(calculated_by_user_id) if calculated_by_user_id is not None else None),
+        )
+        db.flush()
+        calculated_payload = _load_payroll_payload(db, venue_id=int(venue_id), month=month)
+        lines = list(calculated_payload.get("lines") or [])
+        profiles_without_components: dict[int, dict] = {}
+        for line in lines:
+            breakdown = line.get("breakdown") or {}
+            components = list(breakdown.get("components") or [])
+            component_profile_ids = {
+                int(item["pay_profile_id"]) for item in components if item.get("pay_profile_id") is not None
+            }
+            for profile in breakdown.get("position_profiles") or []:
+                profile_id = profile.get("pay_profile_id")
+                if profile_id is None or int(profile_id) in component_profile_ids:
+                    continue
+                profiles_without_components[int(profile_id)] = {
+                    "code": "PAY_PROFILE_WITHOUT_COMPONENTS",
+                    "member_user_id": int(line.get("member_user_id") or 0),
+                    "pay_profile_id": int(profile_id),
+                    "pay_profile_title": profile.get("pay_profile_title"),
+                    "position_ids": list(profile.get("position_ids") or []),
+                    "profile_active_from": profile.get("profile_active_from"),
+                    "profile_active_to": profile.get("profile_active_to"),
+                }
+        blocking_warnings = [
+            *calculation.warnings,
+            *profiles_without_components.values(),
+        ]
+        return {
+            "month": month,
+            "total_amount_minor": int(calculated_payload.get("total_amount_minor") or 0),
+            "lines_count": len(lines),
+            "lines": lines,
+            "warnings": calculation.warnings,
+            "profiles_without_components": list(profiles_without_components.values()),
+            "blocking_warnings": blocking_warnings,
+            "is_blocked": bool(blocking_warnings),
+            "diagnostics": dict(calculation.diagnostics or {}),
+        }
+    finally:
+        savepoint.rollback()
+        for instance in list(db.identity_map.values()):
+            if isinstance(instance, (PayrollRun, PayrollLine)):
+                db.expunge(instance)
+        db.expire_all()
+
+
+def _payroll_table_exists(db: Session, table_name: str) -> bool:
+    try:
+        # Reuse the transaction connection. Inspecting the Engine can check out
+        # and roll back the same DBAPI connection under SQLite/StaticPool,
+        # discarding pending position/profile changes before recalculation.
+        return bool(inspect(db.connection()).has_table(table_name))
     except Exception:
         return True
+
+
+def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
+    return _payroll_table_exists(db, PayrollRecalculationLog.__tablename__)
 
 
 def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
@@ -140,14 +246,49 @@ def _recalculate_payroll_for_dates(
             continue
         if not force and not _has_closed_report_for_date(db, venue_id=venue_id, target_date=target_date):
             continue
-        calculation = calculate_payroll_for_month(
-            db=db,
-            venue_id=int(venue_id),
-            month=month,
-            calculated_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
-        )
+        previous_total_amount_minor = db.execute(
+            select(PayrollRun.total_amount_minor).where(
+                PayrollRun.venue_id == int(venue_id),
+                PayrollRun.period_month == parse_month_start(month),
+            )
+        ).scalar_one_or_none()
+        started_at = time.perf_counter()
+        try:
+            calculation = calculate_payroll_for_month(
+                db=db,
+                venue_id=int(venue_id),
+                month=month,
+                calculated_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
+            )
+        except Exception:
+            duration_seconds = time.perf_counter() - started_at
+            record_payroll_recalculation(
+                trigger_reason=str(trigger_reason or "system"),
+                duration_seconds=duration_seconds,
+                result="failed",
+            )
+            _LOG.exception(
+                "payroll_recalculation_failed",
+                extra={
+                    "venue_id": int(venue_id),
+                    "period_month": month,
+                    "trigger_reason": str(trigger_reason or "system"),
+                    "duration_ms": round(duration_seconds * 1000, 2),
+                },
+            )
+            raise
+        duration_seconds = time.perf_counter() - started_at
         month_start = parse_month_start(month)
         month_target_dates = sorted(day for day in target_dates if day.strftime("%Y-%m") == month)
+        calculation_details = _payroll_calculation_details(
+            calculation,
+            previous_total_amount_minor=(
+                int(previous_total_amount_minor) if previous_total_amount_minor is not None else None
+            ),
+            duration_seconds=duration_seconds,
+            transaction_result="committed",
+            extra=details,
+        )
         _create_payroll_recalculation_log(
             db,
             venue_id=int(venue_id),
@@ -155,17 +296,66 @@ def _recalculate_payroll_for_dates(
             trigger_reason=str(trigger_reason or "system"),
             triggered_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
             target_dates=month_target_dates,
-            details={
-                **(details or {}),
-                "warning_count": len(calculation.warnings),
-                "warnings": calculation.warnings,
-                "lines_count": len(calculation.lines),
-                "total_amount_minor": int(calculation.run.total_amount_minor or 0),
+            details=calculation_details,
+        )
+        record_payroll_recalculation(
+            trigger_reason=str(trigger_reason or "system"),
+            duration_seconds=duration_seconds,
+            warnings=calculation.warnings,
+        )
+        _LOG.info(
+            "payroll_recalculated",
+            extra={
+                "venue_id": int(venue_id),
+                "period_month": month,
+                "trigger_reason": str(trigger_reason or "system"),
+                **calculation_details,
             },
         )
         seen.add(month)
         months_done.append(month)
     return months_done
+
+
+def _recalculate_affected_payroll_runs(
+    db: Session,
+    *,
+    venue_id: int,
+    calculated_by_user_id: int | None,
+    trigger_reason: str,
+    details: dict | None = None,
+    affected_from: date | None = None,
+    affected_to: date | None = None,
+) -> list[str]:
+    """Recalculate persisted months inside an explicitly affected date range."""
+
+    # Some maintenance/legacy schemas can be upgraded in stages. Position and
+    # profile writes must remain available until the payroll tables arrive.
+    if not _payroll_table_exists(db, PayrollRun.__tablename__):
+        return []
+
+    if affected_from is not None and affected_to is not None and affected_to < affected_from:
+        affected_from, affected_to = affected_to, affected_from
+
+    month_filters = [PayrollRun.venue_id == int(venue_id)]
+    if affected_from is not None:
+        month_filters.append(PayrollRun.period_month >= date(affected_from.year, affected_from.month, 1))
+    if affected_to is not None:
+        month_filters.append(PayrollRun.period_month <= date(affected_to.year, affected_to.month, 1))
+    months = list(
+        db.execute(
+            select(PayrollRun.period_month).where(*month_filters).order_by(PayrollRun.period_month.asc())
+        ).scalars()
+    )
+    return _recalculate_payroll_for_dates(
+        db,
+        venue_id=int(venue_id),
+        target_dates=months,
+        calculated_by_user_id=calculated_by_user_id,
+        force=True,
+        trigger_reason=trigger_reason,
+        details=details,
+    )
 
 
 def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:

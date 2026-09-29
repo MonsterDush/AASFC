@@ -35,6 +35,7 @@ class PayrollPositionContext:
     profile_period_ids: set[int] = field(default_factory=set)
     assignment_ids: set[int] = field(default_factory=set)
     profile_sources: set[str] = field(default_factory=set)
+    discarded_profile_candidates: set[tuple[str, int]] = field(default_factory=set)
     uses_effective_periods: bool = False
 
 
@@ -71,9 +72,7 @@ def load_position_payroll_contexts(
 
     fallback_by_member: dict[int, list[tuple]] = {}
     for assignment, profile, member_user in fallback_assignments:
-        fallback_by_member.setdefault(int(assignment.member_user_id), []).append(
-            (assignment, profile, member_user)
-        )
+        fallback_by_member.setdefault(int(assignment.member_user_id), []).append((assignment, profile, member_user))
     profile_by_id = {int(profile.id): profile for _assignment, profile, _member in fallback_assignments}
     member_by_id = {int(member.id): member for _assignment, _profile, member in fallback_assignments}
 
@@ -169,11 +168,7 @@ def load_position_payroll_contexts(
         key = (int(member_user_id), int(profile_id))
         if key not in contexts:
             fallback = next(
-                (
-                    row
-                    for row in fallback_by_member.get(int(member_user_id), [])
-                    if int(row[1].id) == int(profile_id)
-                ),
+                (row for row in fallback_by_member.get(int(member_user_id), []) if int(row[1].id) == int(profile_id)),
                 None,
             )
             contexts[key] = PayrollPositionContext(
@@ -318,20 +313,21 @@ def load_position_payroll_contexts(
             ),
             None,
         )
+        matching_fallback_candidate = next(
+            (
+                item
+                for item in reversed(fallback_by_member.get(member_user_id, []))
+                if (getattr(item[0], "start_date", None) is None or item[0].start_date <= row.shift_date)
+                and (getattr(item[0], "end_date", None) is None or item[0].end_date >= row.shift_date)
+            ),
+            None,
+        )
         profile_id = int(matching_period.pay_profile_id) if matching_period is not None else None
         if profile_id is None and not position_has_periods and row.position_pay_profile_id is not None:
             profile_id = int(row.position_pay_profile_id)
         matching_fallback = None
         if profile_id is None and not position_has_periods:
-            matching_fallback = next(
-                (
-                    item
-                    for item in reversed(fallback_by_member.get(member_user_id, []))
-                    if (item[0].start_date is None or item[0].start_date <= row.shift_date)
-                    and (item[0].end_date is None or item[0].end_date >= row.shift_date)
-                ),
-                None,
-            )
+            matching_fallback = matching_fallback_candidate
             profile_id = int(matching_fallback[1].id) if matching_fallback is not None else None
         if profile_id is None:
             add_unresolved_warning(row)
@@ -346,8 +342,14 @@ def load_position_payroll_contexts(
         if matching_period is not None:
             context.profile_sources.add("POSITION_PERIOD")
             context.profile_period_ids.add(int(matching_period.id))
+            if row.position_pay_profile_id is not None:
+                context.discarded_profile_candidates.add(("POSITION_LEGACY", int(row.position_pay_profile_id)))
+            if matching_fallback_candidate is not None:
+                context.discarded_profile_candidates.add(("MEMBER_FALLBACK", int(matching_fallback_candidate[1].id)))
         elif row.position_pay_profile_id is not None and not position_has_periods:
             context.profile_sources.add("POSITION_LEGACY")
+            if matching_fallback_candidate is not None:
+                context.discarded_profile_candidates.add(("MEMBER_FALLBACK", int(matching_fallback_candidate[1].id)))
         elif matching_fallback is not None:
             context.profile_sources.add("MEMBER_FALLBACK")
             context.assignment_ids.add(int(matching_fallback[0].id))

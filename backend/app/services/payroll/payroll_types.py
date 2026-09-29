@@ -90,6 +90,7 @@ class PayrollCalculationResult:
     run: PayrollRun
     lines: list[PayrollLine]
     warnings: list[dict] = field(default_factory=list)
+    diagnostics: dict = field(default_factory=dict)
 
 
 @dataclass
