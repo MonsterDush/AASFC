@@ -1,3 +1,5 @@
+import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20260929-appshell1";
+
 export function createNavigation(context) {
   const { normalizePermList, permSetFromResponse, roleUpper, hasAnyPerm, hasPermPrefix, hasStaffDashboardExtras, t, cacheSystemRole, applyTheme, api, ensureLogin, getActiveVenueId, setActiveVenueId, getMe, getMyVenues, getMyVenuePermissions } = context;
 
@@ -108,15 +110,29 @@ export function createNavigation(context) {
     container.innerHTML = "";
 
     const mobilePrimaryLinkCount = 3;
+    let mobileLinkIndex = 0;
+    let currentSection = "";
     const appendLink = (parent, link, { menu = false, overflow = false } = {}) => {
       const a = document.createElement("a");
       a.href = link.href;
-      a.textContent = menu && link.tab === "settings" ? t("settings") : link.title;
+      const displayTitle = link.tab === "settings" ? t("settings") : link.title;
+      const icon = createAppNavIcon(link.icon || link.tab);
+      const label = document.createElement("span");
+      label.className = "app-nav-label";
+      label.textContent = displayTitle;
+      a.append(icon, label);
+      a.title = displayTitle;
       if (link.className && !menu) a.className = link.className;
+      if (link.subitem && !menu) a.classList.add("app-nav-subitem");
+      if (link.mobile === false && !menu) a.classList.add("nav-desktop-only");
       if (menu) a.classList.add("nav-more__link");
       if (overflow && !menu) a.classList.add("nav-overflow-link");
       a.setAttribute("data-tab", link.tab);
-      if (link.tab === activeTab) {
+      const currentPath = String(location.pathname || "").toLowerCase();
+      const linkPath = new URL(link.href, location.origin).pathname.toLowerCase();
+      const isActive = currentPath === linkPath || (!link.pathOnly && link.tab === activeTab);
+      if (link.mobileActiveTab === activeTab) a.classList.add("mobile-active");
+      if (isActive) {
         a.classList.add("active");
         a.setAttribute("aria-current", "page");
       }
@@ -124,11 +140,22 @@ export function createNavigation(context) {
       return a;
     };
 
-    links.forEach((link, index) => {
-      appendLink(container, link, { overflow: index >= mobilePrimaryLinkCount });
+    links.forEach((link) => {
+      if (link.section && link.section !== currentSection) {
+        const section = document.createElement("div");
+        section.className = "app-nav-section";
+        section.textContent = link.section;
+        container.appendChild(section);
+        currentSection = link.section;
+      }
+      const isMobileLink = link.mobile !== false;
+      appendLink(container, link, {
+        overflow: isMobileLink && mobileLinkIndex >= mobilePrimaryLinkCount,
+      });
+      if (isMobileLink) mobileLinkIndex += 1;
     });
 
-    const overflowLinks = links.slice(mobilePrimaryLinkCount);
+    const overflowLinks = links.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount);
     if (!overflowLinks.length) return;
 
     const moreWrap = document.createElement("div");
@@ -236,6 +263,7 @@ export function createNavigation(context) {
         ],
         activeTab,
       });
+      mountAppShell({ container, t, setActiveVenueId });
       return { ok: true, me };
     }
 
@@ -307,11 +335,16 @@ export function createNavigation(context) {
     const links = [];
 
     if (activeVenueId) {
-      if (isOwner) {      // Owner bottom nav: Venue / Dashboard / Expenses
-        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });
-        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard" });
-        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
-        links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
+      if (isOwner) {      // Owner mobile nav stays compact; desktop exposes the full finance map.
+        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true });
+        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", pathOnly: true, mobileActiveTab: "dashboard" });
+        links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary", icon: "summary", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("revenue"), href: `/owner-turnover.html${qp}`, tab: "summary", icon: "revenue", mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", subitem: true, pathOnly: true });
+        links.push({ title: t("payroll"), href: `/owner-payroll.html${qp}`, tab: "summary", icon: "payroll", mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("ledger"), href: `/owner-finance-ledger.html${qp}`, tab: "venue", icon: "ledger", mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("day_economics"), href: `/owner-day-economics.html${qp}`, tab: "summary", icon: "day", mobile: false, subitem: true, pathOnly: true });
+        links.push({ title: t("settings"), href: "/settings.html", tab: "settings", icon: "settings", section: t("account_section"), pathOnly: true });
       } else {
         // Staff bottom nav:
   // - If NO report access: Schedule + Salaries + Adjustments + Settings
@@ -335,6 +368,7 @@ export function createNavigation(context) {
     }
 
     renderNavLinks({ container, links, activeTab });
+    mountAppShell({ container, venues, activeVenueId, isOwner, t, setActiveVenueId });
     return { ok: true, me, venues, activeVenueId };
   }
 

@@ -138,9 +138,13 @@ for (const methodName of moduleContracts[2][2]) assert.equal(typeof navigation[m
 assert.equal(navigation.can("REPORTS_VIEW", { permissions: ["REPORTS_VIEW"] }), true);
 assert.deepEqual(await navigation.getVenueById(2), { id: 2, name: "Venue" });
 const navigationSource = fs.readFileSync(path.join(frontendDir, "app/navigation.js"), "utf8");
+const appShellSource = fs.readFileSync(path.join(frontendDir, "app/app-shell.js"), "utf8");
+assert.match(navigationSource, /from "\.\/app-shell\.js\?v=20260929-appshell1"/);
+assert.match(appShellSource, /export function createAppNavIcon/);
+assert.match(appShellSource, /export function mountAppShell/);
 for (const mobileMoreContract of [
   "const mobilePrimaryLinkCount = 3",
-  "const overflowLinks = links.slice(mobilePrimaryLinkCount)",
+  "const overflowLinks = links.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount)",
   'button.textContent = t("more")',
   'button.setAttribute("aria-haspopup", "menu")',
   'if (event.key === "Escape" && !menu.hidden)',

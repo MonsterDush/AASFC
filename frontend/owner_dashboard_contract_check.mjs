@@ -82,7 +82,7 @@ assert.match(script, /app\.js\?v=20260924-dashboardi18n1/);
 assert.match(app, /app\/navigation\.js\?v=20260924-dashboardi18n1/);
 assert.match(app, /app\/ui-preferences\.js\?v=20260924-dashboardi18n1/);
 assert.match(navigation, /title: t\("dashboard"\).*owner-dashboard\.html/s);
-assert.doesNotMatch(navigation, /owner-summary\.html/);
+assert.match(navigation, /owner-summary\.html.*mobile: false/s);
 assert.match(preferences, /dashboard: "Дашборд"/);
 assert.match(preferences, /dashboard: "Dashboard"/);
 assert.match(index, /owner-dashboard\.html/);

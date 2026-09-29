@@ -367,7 +367,7 @@ for (const pageStylePath of new Set(extractedPageStyles.values())) {
     `${pageStylePath} has unbalanced braces`,
   );
 }
-assert.ok(stylesSource.split("\n").length < 2_000, "global style modules unexpectedly grew");
+assert.ok(stylesSource.split("\n").length < 2_200, "global style modules unexpectedly grew");
 assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest unexpectedly grew");
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
@@ -645,6 +645,9 @@ for (const fileName of unifiedCatalogFiles) {
 
 for (const token of [
   "--content-max",
+  "--surface0",
+  "--workspace",
+  "--borderStrong",
   "--page-gutter",
   "--page-gutter-compact",
   "--control-height",

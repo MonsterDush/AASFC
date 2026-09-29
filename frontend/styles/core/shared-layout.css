@@ -122,4 +122,171 @@
   .state__actions .btn{width:100%}
 }
 
+/* ===== Three-layer application shell ===== */
+.app-nav-brand,.app-nav-venue,.app-nav-section{display:none}
+.app-nav-icon{display:none}
 
+@media (min-width:768px){
+  body.app-shell-enabled{
+    --bottom-nav-space:0px;
+    padding:20px 20px 20px 220px;
+    background:var(--surface0);
+  }
+  body.app-shell-enabled > .container{
+    width:100%;
+    max-width:1600px;
+    min-height:calc(100vh - 40px);
+    min-height:calc(100dvh - 40px);
+    margin:0 auto;
+    padding:24px;
+    border-radius:28px;
+    background:var(--workspace);
+  }
+  body.app-shell-enabled .nav{
+    position:fixed;
+    inset:20px auto 20px 20px;
+    z-index:50;
+    width:180px;
+    padding:0;
+    border:0;
+    background:transparent;
+    backdrop-filter:none;
+  }
+  body.app-shell-enabled .nav .wrap{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    height:100%;
+    max-width:none;
+  }
+  body.app-shell-enabled .app-nav-brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-height:48px;
+    margin:0 4px 24px;
+    color:var(--text);
+    font-size:20px;
+    font-weight:900;
+    letter-spacing:-.04em;
+    text-decoration:none;
+  }
+  body.app-shell-enabled .app-nav-brand .logo{width:40px;height:40px}
+  body.app-shell-enabled .topbar{min-height:58px;margin-bottom:16px;padding:0}
+  body.app-shell-enabled .topbar .logo{display:none}
+  body.app-shell-enabled .topbar .title b{font-size:clamp(28px,2.8vw,40px);font-weight:700;letter-spacing:-.045em}
+  body.app-shell-enabled .nav .wrap #nav{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:flex-start;
+    gap:4px;
+    width:100%;
+    overflow:visible;
+    white-space:normal;
+    padding:0;
+  }
+  body.app-shell-enabled .nav a,
+  body.app-shell-enabled .nav-more__button{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    width:100%;
+    min-height:44px;
+    padding:9px 11px;
+    border:0;
+    border-radius:13px;
+    background:transparent;
+    color:var(--textSecondary);
+    text-align:left;
+    font-size:14px;
+    font-weight:700;
+  }
+  body.app-shell-enabled .nav a:hover{background:var(--workspace);color:var(--text)}
+  body.app-shell-enabled .nav a.active{
+    background:#24241F;
+    color:#FFFFFF;
+    box-shadow:none;
+  }
+  body.app-shell-enabled .app-nav-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 20px;
+    width:20px;
+    color:currentColor;
+    font-size:17px;
+    font-weight:500;
+  }
+  body.app-shell-enabled .app-nav-icon svg{display:block;width:18px;height:18px}
+  body.app-shell-enabled .app-nav-label{min-width:0;overflow-wrap:anywhere}
+  body.app-shell-enabled .app-nav-subitem{min-height:38px;padding-left:20px;font-size:12px}
+  body.app-shell-enabled .app-nav-subitem .app-nav-icon{flex-basis:18px;width:18px;font-size:14px}
+  body.app-shell-enabled .app-nav-section{
+    display:block;
+    margin:14px 11px 4px;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body.app-shell-enabled .app-nav-section:first-child{margin-top:0}
+  body.app-shell-enabled .nav-more{display:none}
+  body.app-shell-enabled .app-nav-venue{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    min-height:56px;
+    margin-top:auto;
+    padding:8px;
+    border:1px solid var(--border);
+    border-radius:15px;
+    background:var(--workspace);
+  }
+  body.app-shell-enabled .app-nav-venue__avatar{
+    display:grid;
+    place-items:center;
+    flex:0 0 34px;
+    width:34px;
+    height:34px;
+    border-radius:11px;
+    background:#164B8A;
+    color:#FFFFFF;
+    font-size:11px;
+    font-weight:900;
+  }
+  body.app-shell-enabled .app-nav-venue__select{
+    min-width:0;
+    width:100%;
+    border:0;
+    outline:0;
+    background:transparent;
+    color:var(--text);
+    font:inherit;
+    font-size:12px;
+    font-weight:800;
+  }
+  body.app-shell-enabled .card,
+  body.app-shell-enabled .itemcard{box-shadow:none}
+}
+
+@media (min-width:1200px){
+  body.app-shell-enabled{padding-left:252px}
+  body.app-shell-enabled .nav{width:212px}
+}
+
+@media (max-width:767px){
+  body.app-shell-enabled > .container{
+    min-height:calc(100vh - 12px);
+    min-height:calc(100dvh - 12px);
+    padding:12px;
+    border-radius:24px 24px 0 0;
+    background:var(--workspace);
+  }
+  body.app-shell-enabled .nav-desktop-only,
+  body.app-shell-enabled .app-nav-section{display:none}
+  body.app-shell-enabled .app-nav-icon{display:none}
+  body.app-shell-enabled .nav a.mobile-active{color:var(--accentText);background:var(--accent);border-color:transparent}
+}
