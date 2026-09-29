@@ -15,7 +15,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -740,16 +740,22 @@ async function boot() {
   }
   syncComparisonControls();
 
-  const datePick = document.getElementById("economicsDatePick");
-  if (datePick) {
-    datePick.value = state.date;
-    datePick.onchange = async (e) => {
-      state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
+  const periodPicker = document.getElementById("economicsPeriodPicker");
+  if (periodPicker) {
+    periodPicker.dataset.periodFrom = state.date;
+    periodPicker.dataset.periodTo = state.date;
+    periodPicker.querySelector("[data-period-label]").textContent = state.date;
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      state.date = coerceDemoDate(detail.day || detail.from || todayISO(), { context: "owner-day-economics" });
+      periodPicker.dataset.periodFrom = state.date;
+      periodPicker.dataset.periodTo = state.date;
+      periodPicker.querySelector("[data-period-label]").textContent = detail.label || state.date;
       const ledgerLink = document.getElementById("openLedgerBtn");
       if (ledgerLink) ledgerLink.href = buildLedgerLink();
       updateEconomicsSlotUrl();
       await loadEconomics();
-    };
+    });
   }
 
   const manageBlock = document.getElementById("economicsManageBlock");

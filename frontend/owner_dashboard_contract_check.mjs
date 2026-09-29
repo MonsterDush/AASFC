@@ -25,6 +25,7 @@ const read = (fileName) => fs.readFileSync(path.join(frontendDir, fileName), "ut
 
 assert.equal(DASHBOARD_WIDGET_IDS.length, 11);
 assert.equal(DASHBOARD_ACTION_IDS.length, 9);
+assert.equal(DEFAULT_DASHBOARD_LAYOUT.order.length - DEFAULT_DASHBOARD_LAYOUT.hidden.length, 4);
 assert.deepEqual(normalizeDashboardLayout({ order: ["profit_month", "unknown", "profit_month"], hidden: ["unknown"] }).order, [
   "profit_month", "revenue_today", "revenue_month", "expenses_month", "payroll_month", "margin_month",
   "revenue_plan", "profit_forecast", "shifts_today", "top_department", "integration_health",
@@ -67,7 +68,7 @@ const index = read("index.html");
 const expenses = read("owner-expenses.js");
 const venue = read("app-venue.html");
 assert.match(html, /id="dashboardWidgetGrid"/);
-assert.match(html, /<main class="card owner-dashboard-content">/);
+assert.match(html, /<main class="owner-dashboard-content">/);
 assert.match(html, /id="dashboardConfigList"/);
 assert.match(html, /id="dashboardAttentionList"/);
 assert.match(html, /id="dashboardTrendChart"/);
@@ -77,10 +78,10 @@ assert.match(script, /action", item\.action/);
 assert.match(script, /quality-summary/);
 assert.match(script, /economics\/day/);
 assert.match(script, /hasOwnerDashboardAccess\(permSetFromResponse\(permissions\), role/);
-assert.match(html, /owner-dashboard\.js\?v=20260928-period1/);
-assert.match(script, /app\.js\?v=20260924-dashboardi18n1/);
-assert.match(app, /app\/navigation\.js\?v=20260924-dashboardi18n1/);
-assert.match(app, /app\/ui-preferences\.js\?v=20260924-dashboardi18n1/);
+assert.match(html, /owner-dashboard\.js\?v=20260930-ui1/);
+assert.match(script, /app\.js\?v=20260930-ui1/);
+assert.match(app, /app\/navigation\.js\?v=20260930-ui1/);
+assert.match(app, /app\/ui-preferences\.js\?v=20260930-ui1/);
 assert.match(navigation, /title: t\("dashboard"\).*owner-dashboard\.html/s);
 assert.match(navigation, /owner-summary\.html.*mobile: false/s);
 assert.match(navigation, /staff-shifts\.html.*quick_access_section.*mobile: false/s);

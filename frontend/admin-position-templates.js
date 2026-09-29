@@ -6,7 +6,7 @@ import {
   toast,
   confirmModal,
   api,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 
 applyTelegramTheme();
 mountCommonUI("admin-position-templates");

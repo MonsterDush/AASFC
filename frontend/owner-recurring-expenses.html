@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles.css?v=20260930-ui1" />
   <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
   <script>
     (() => {
@@ -35,12 +35,13 @@
 
     <div class="card finance-toolbar">
       <div class="screen-hero">
-        <div class="screen-hero__head">
-          <div>
+        <div class="finance-titlebar">
+          <div class="finance-titlebar__title">
             <b>Регулярные расходы</b>
-            <div class="page-caption mt-6">Настрой правила, по которым регулярные расходы будут создаваться автоматически.</div>
+            <button class="info-button" type="button" data-info="Настрой правила, по которым регулярные расходы будут создаваться автоматически." aria-label="О регулярных расходах">i</button>
           </div>
-          <div class="screen-hero__actions">
+          <div class="finance-titlebar__actions">
+            <button class="period-menu-trigger" id="rulesPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
             <button class="btn subtle small" id="openExpensesBtn" type="button" data-nav-button>Открыть расходы</button>
             <button class="btn" id="generateRulesBtn">Сгенерировать за месяц</button>
             <button class="btn primary" id="addRuleBtn">Добавить правило</button>
@@ -48,12 +49,8 @@
         </div>
 
         <div class="screen-hero__toolbar">
-          <div class="screen-hero__period">
-            <input class="finance-control" id="rulesMonthPick" type="month" />
-          </div>
           <div class="itemcard hero-summary-card">
-            <div class="hero-summary-card__eyebrow">Месяц генерации</div>
-            <div class="hero-summary-card__meta">Правила применяются к выбранному месяцу и создают неподтверждённые расходы.</div>
+            <div class="block-title-with-info"><div class="hero-summary-card__eyebrow">Месяц генерации</div><button class="info-button" type="button" data-info="Правила применяются к выбранному месяцу и создают неподтверждённые расходы." aria-label="О месяце генерации">i</button></div>
             <div class="hero-summary-card__value" id="rulesState">—</div>
           </div>
         </div>
@@ -114,6 +111,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-recurring-expenses.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/owner-recurring-expenses.js?v=20260930-ui1"></script>
 </body>
 </html>

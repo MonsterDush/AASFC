@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleVersion = "20260825-i18nmodal2";
+const globalStyleVersion = "20260930-ui1";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -22,6 +22,7 @@ const coreStyleFiles = [
   "calendar-reports.css",
   "finance-components.css",
   "shared-layout.css",
+  "app-shell-components.css",
   "overlays-documents.css",
 ];
 const coreStylesDir = path.join(frontendDir, "styles", "core");
@@ -99,7 +100,7 @@ const extractedPageStyles = new Map([
 const pageStyleCacheKeyOverrides = new Map([
   ["admin-invites.html", "20260725-polish4"],
   ["app-dashboard.html", "20260723-polish2"],
-  ["app-venue.html", "20260924-dashboardi18n1"],
+  ["app-venue.html", "20260930-ui1"],
   ["app-venues.html", "20260723-polish2"],
   ["admin-billing.html", "20260726-polish7"],
   ["admin-demo-analytics.html", "20260726-polish7"],
@@ -183,35 +184,35 @@ const inlineFreePages = [
   "staff-adjustments.html",
 ];
 const inlineFreeEntrypoints = new Map([
-  ["admin-position-templates.html", "/admin-position-templates.js?v=20260924-dashboardi18n1"],
-  ["app-adjustments.html", "/app-adjustments.js?v=20260924-dashboardi18n1"],
-  ["owner-departments.html", "/owner-departments.js?v=20260924-dashboardi18n1"],
-  ["owner-day-economics.html", "/owner-day-economics.js?v=20260924-dashboardi18n1"],
-  ["owner-department-plans.html", "/owner-department-plans.js?v=20260924-dashboardi18n1"],
-  ["owner-dashboard.html", "/owner-dashboard.js?v=20260928-period1"],
-  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260924-dashboardi18n1"],
-  ["owner-economics-rules.html", "/owner-economics-rules.js?v=20260924-dashboardi18n1"],
-  ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260924-dashboardi18n1"],
-  ["owner-expenses.html", "/owner-expenses.js?v=20260924-dashboardi18n1"],
-  ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260924-dashboardi18n1"],
-  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260924-dashboardi18n1"],
-  ["owner-integrations.html", "/owner-integrations.js?v=20260924-dashboardi18n1"],
-  ["owner-kpi.html", "/owner-kpi.js?v=20260924-dashboardi18n1"],
-  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260924-dashboardi18n1"],
-  ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260924-dashboardi18n1"],
-  ["owner-payroll.html", "/owner-payroll.js?v=20260929-payrolluat1"],
-  ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260924-dashboardi18n1"],
-  ["owner-quickresto.html", "/owner-quickresto.js?v=20260924-dashboardi18n1"],
-  ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20260924-dashboardi18n1"],
-  ["owner-quickresto-kpi.html", "/owner-quickresto-kpi.js?v=20260924-dashboardi18n1"],
-  ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260924-dashboardi18n1"],
-  ["owner-setup.html", "/owner-setup.js?v=20260929-payrolluat1"],
-  ["owner-summary.html", "/owner-summary.js?v=20260924-dashboardi18n1"],
-  ["owner-suppliers.html", "/owner-suppliers.js?v=20260924-dashboardi18n1"],
-  ["owner-turnover.html", "/owner-turnover.js?v=20260924-dashboardi18n1"],
-  ["shift-intervals.html", "/shift-intervals.js?v=20260924-dashboardi18n1"],
-  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20260924-dashboardi18n1"],
-  ["staff-adjustments.html", "/staff-adjustments.js?v=20260924-dashboardi18n1"],
+  ["admin-position-templates.html", "/admin-position-templates.js?v=20260930-ui1"],
+  ["app-adjustments.html", "/app-adjustments.js?v=20260930-ui1"],
+  ["owner-departments.html", "/owner-departments.js?v=20260930-ui1"],
+  ["owner-day-economics.html", "/owner-day-economics.js?v=20260930-ui1"],
+  ["owner-department-plans.html", "/owner-department-plans.js?v=20260930-ui1"],
+  ["owner-dashboard.html", "/owner-dashboard.js?v=20260930-ui1"],
+  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260930-ui1"],
+  ["owner-economics-rules.html", "/owner-economics-rules.js?v=20260930-ui1"],
+  ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260930-ui1"],
+  ["owner-expenses.html", "/owner-expenses.js?v=20260930-ui1"],
+  ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260930-ui1"],
+  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260930-ui1"],
+  ["owner-integrations.html", "/owner-integrations.js?v=20260930-ui1"],
+  ["owner-kpi.html", "/owner-kpi.js?v=20260930-ui1"],
+  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260930-ui1"],
+  ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260930-ui1"],
+  ["owner-payroll.html", "/owner-payroll.js?v=20260930-ui1"],
+  ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260930-ui1"],
+  ["owner-quickresto.html", "/owner-quickresto.js?v=20260930-ui1"],
+  ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20260930-ui1"],
+  ["owner-quickresto-kpi.html", "/owner-quickresto-kpi.js?v=20260930-ui1"],
+  ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260930-ui1"],
+  ["owner-setup.html", "/owner-setup.js?v=20260930-ui1"],
+  ["owner-summary.html", "/owner-summary.js?v=20260930-ui1"],
+  ["owner-suppliers.html", "/owner-suppliers.js?v=20260930-ui1"],
+  ["owner-turnover.html", "/owner-turnover.js?v=20260930-ui1"],
+  ["shift-intervals.html", "/shift-intervals.js?v=20260930-ui1"],
+  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20260930-ui1"],
+  ["staff-adjustments.html", "/staff-adjustments.js?v=20260930-ui1"],
 ]);
 const inlineFreeModules = [
   "admin-position-templates.js",
@@ -279,6 +280,8 @@ const allowedInlineStyleAttributes = new Map([
   ]],
 ]);
 const allowedStyleSetProperties = new Map([
+  ["app/context-help.js", ["--context-popover-left", "--context-popover-top"]],
+  ["app/period-picker.js", ["--period-menu-left", "--period-menu-top", "--period-menu-max-height"]],
   ["staff-shifts.js", [
     "--filter-menu-width",
     "--filter-menu-max-width",
@@ -367,7 +370,7 @@ for (const pageStylePath of new Set(extractedPageStyles.values())) {
     `${pageStylePath} has unbalanced braces`,
   );
 }
-assert.ok(stylesSource.split("\n").length < 2_200, "global style modules unexpectedly grew");
+assert.ok(stylesSource.split("\n").length < 2_240, "global style modules unexpectedly grew");
 assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest unexpectedly grew");
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
@@ -636,7 +639,7 @@ for (const fileName of unifiedCatalogFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.doesNotMatch(source, /(?:\sstyle\s*=|\.style\s*=)/, `${fileName} regained inline layout styles`);
   const htmlSource = fs.readFileSync(path.join(frontendDir, fileName.replace(/\.js$/, ".html")), "utf8");
-  const cacheKey = "20260924-dashboardi18n1";
+  const cacheKey = "20260930-ui1";
   assert.ok(
     htmlSource.includes(`src="/${fileName}?v=${cacheKey}"`),
     `${fileName} cache key is stale`,

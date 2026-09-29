@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles.css?v=20260930-ui1" />
   <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260810-financepolish1" />
   <script>
     (() => {
@@ -56,18 +56,18 @@
 
     <div class="card finance-toolbar economics-content" id="economicsContent" aria-busy="true">
       <div class="screen-hero">
-        <div class="screen-hero__head">
-          <div>
+        <div class="finance-titlebar">
+          <div class="finance-titlebar__title">
             <b>День как управленческий срез</b>
-            <div class="page-caption mt-6">Здесь собираются выручка, признанные расходы, эффективность смены, план/факт и предупреждения. Экран должен быстро отвечать на вопрос, всё ли в порядке сегодня.</div>
+            <button class="info-button" type="button" data-info="Здесь собираются выручка, признанные расходы, эффективность смены, план/факт и предупреждения. Экран быстро отвечает на вопрос, всё ли в порядке сегодня." aria-label="Об экономике дня">i</button>
           </div>
-          <div class="screen-hero__actions">
+          <div class="finance-titlebar__actions">
             <div id="economicsSlotToggle" class="shift-toggle hidden" aria-label="Срез экономики">
               <button type="button" id="economicsSlotTotal">Итого</button>
               <button type="button" id="economicsSlotDay">День</button>
               <button type="button" id="economicsSlotNight">Ночь</button>
             </div>
-            <input class="economics-date-picker" id="economicsDatePick" type="date" aria-label="Дата" />
+            <button class="period-menu-trigger" id="economicsPeriodPicker" type="button" data-period-picker data-period-value="today" data-period-presets="custom,today,yesterday" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Сегодня</span></button>
             <button class="btn" id="refreshEconomicsBtn">Обновить</button>
           </div>
         </div>
@@ -90,7 +90,7 @@
             </div>
           </div>
           <div class="itemcard finance-period-card">
-            <div class="finance-period-card__label">Срез дня</div>
+            <div class="block-title-with-info"><div class="finance-period-card__label">Срез дня</div><button class="info-button" type="button" data-info="Период, по которому рассчитаны показатели текущего экрана." aria-label="О срезе дня">i</button></div>
             <div class="finance-period-card__value" id="economicsPeriodText">—</div>
             <div class="muted" id="economicsMetaHint">—</div>
           </div>
@@ -274,6 +274,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/owner-day-economics.js?v=20260930-ui1"></script>
 </body>
 </html>

@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
@@ -222,6 +222,13 @@ function syncPickers() {
   showBlock("summaryMonthPick", state.period === "month");
   showBlock("summaryDayPick", state.period === "day");
   showBlock("summaryRangePick", state.period === "range");
+  const picker = document.getElementById("summaryPeriodPicker");
+  if (picker) {
+    picker.dataset.periodFrom = state.from || state.day || "";
+    picker.dataset.periodTo = state.to || state.day || "";
+    const label = picker.querySelector("[data-period-label]");
+    if (label) label.textContent = statePeriodText();
+  }
 }
 
 function currentComparison() {
@@ -294,8 +301,11 @@ function syncUrl() {
 }
 
 function statePeriodText() {
-  if (state.period === "month") return state.month || currentMonth();
-  if (state.period === "day") return state.day || todayISO();
+  if (state.period === "month") {
+    const value = new Date(`${state.month || currentMonth()}-01T12:00:00`);
+    return value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
+  }
+  if (state.period === "day") return new Date(`${state.day || todayISO()}T12:00:00`).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric" });
   normalizeRange();
   return `${state.from} — ${state.to}`;
 }
@@ -1002,6 +1012,36 @@ async function boot() {
   const fromPick = document.getElementById("summaryFromPick");
   const toPick = document.getElementById("summaryToPick");
   const rangeApplyBtn = document.getElementById("summaryRangeApplyBtn");
+  const periodPicker = document.getElementById("summaryPeriodPicker");
+
+  if (periodPicker) {
+    periodPicker.dataset.periodValue = state.period === "month" ? "this_month" : "custom";
+    periodPicker.dataset.periodFrom = state.from || "";
+    periodPicker.dataset.periodTo = state.to || "";
+    const periodLabel = periodPicker.querySelector("[data-period-label]");
+    if (periodLabel) periodLabel.textContent = statePeriodText();
+    periodPicker.addEventListener("axelio:period-change", (event) => {
+      const detail = event.detail || {};
+      if (isDemoUiMode()) {
+        state.period = "month";
+        state.month = coerceDemoMonth(detail.month || state.month || currentMonth(), { context: "owner-summary" });
+      } else if (detail.mode === "month") {
+        state.period = "month";
+        state.month = detail.month || String(detail.from || currentMonth()).slice(0, 7);
+      } else if (detail.mode === "day") {
+        state.period = "day";
+        state.day = detail.day || detail.from || todayISO();
+      } else {
+        const selected = coerceDemoRange(detail.from || todayISO(), detail.to || detail.from || todayISO(), { context: "owner-summary" });
+        state.period = "range";
+        state.from = selected.from;
+        state.to = selected.to;
+      }
+      periodPicker.dataset.periodFrom = detail.from || state.from || "";
+      periodPicker.dataset.periodTo = detail.to || state.to || "";
+      loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+    });
+  }
 
   if (monthPick) {
     monthPick.value = state.month;

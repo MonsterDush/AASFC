@@ -35,7 +35,7 @@
 .finance-comparison-disclosure[open]>.finance-comparison-disclosure__summary{border-bottom:1px solid var(--border)}
 .finance-comparison-disclosure__body{display:grid;gap:10px;padding:12px 14px 14px}
 .finance-comparison-disclosure .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:min(100%,430px);min-width:300px}
-.economics-metric-delta{min-height:18px;color:var(--muted);font-size:12px;font-weight:800;line-height:1.35}
+.economics-metric-delta{min-height:18px;color:var(--muted);font-size:12px;font-weight:600;line-height:1.35}
 .economics-metric-delta.is-good{color:var(--statusSuccessText)}
 .economics-metric-delta.is-bad{color:var(--statusWarningText)}
 .economics-metric-delta.is-neutral{color:var(--muted)}

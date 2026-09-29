@@ -13,7 +13,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -181,13 +181,11 @@ function normalizeRange() {
 }
 
 function syncPickers() {
-  const monthPick = $("monthPick");
-  const dayPick = $("dayPick");
-  const rangePick = $("rangePick");
-
-  setVisible(monthPick, state.period === "month");
-  setVisible(dayPick, state.period === "day" || state.period === "week");
-  setVisible(rangePick, state.period === "range");
+  const picker = $("revenuePeriodPicker");
+  if (!picker) return;
+  picker.dataset.periodFrom = state.from || state.day || "";
+  picker.dataset.periodTo = state.to || state.day || "";
+  picker.querySelector("[data-period-label]").textContent = periodLabel();
 }
 
 function currentComparison() {
@@ -218,14 +216,17 @@ function syncComparisonControls() {
 }
 
 function periodLabel() {
-  if (state.period === "month") return `За ${state.month || currentMonth()}`;
-  if (state.period === "day") return `За ${state.day || todayISO()}`;
+  if (state.period === "month") {
+    const value = new Date(`${state.month || currentMonth()}-01T12:00:00`);
+    return value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
+  }
+  if (state.period === "day") return fmtLongDate(state.day || todayISO());
   if (state.period === "week") {
     const start = startOfWeekISO(state.day || todayISO());
-    return `Неделя ${start} — ${addDaysISO(start, 6)}`;
+    return `${fmtShortDate(start)} — ${fmtShortDate(addDaysISO(start, 6))}`;
   }
   normalizeRange();
-  return `Период ${state.from} — ${state.to}`;
+  return `${fmtShortDate(state.from)} — ${fmtShortDate(state.to)}`;
 }
 
 function syncCaption() {
@@ -545,22 +546,33 @@ function initFromQuery() {
   state.compareTo = q.get("compare_to") || null;
   normalizeRange();
 
-  $("monthPick").value = state.month || currentMonth();
-  $("dayPick").value = state.day;
-  $("fromPick").value = state.from;
-  $("toPick").value = state.to;
-
   setActiveSeg("modeSeg", "mode", state.mode);
-  setActiveSeg("periodSeg", "period", state.period);
+  syncPickers();
   syncCaption();
   syncComparisonControls();
 }
 
 function bindPickers() {
-  $("monthPick").onchange = (e) => { state.month = e.target.value || currentMonth(); load().catch(console.error); };
-  $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
-  $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
-  $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
+  $("revenuePeriodPicker")?.addEventListener("axelio:period-change", (event) => {
+    const detail = event.detail || {};
+    if (detail.mode === "month") {
+      state.period = "month";
+      state.month = detail.month || String(detail.from || "").slice(0, 7) || currentMonth();
+    } else if (detail.mode === "day") {
+      state.period = "day";
+      state.day = detail.day || detail.from || todayISO();
+      state.from = state.day;
+      state.to = state.day;
+    } else {
+      const normalized = normalizeIsoRange(detail.from, detail.to);
+      if (!normalized) return;
+      state.period = "range";
+      state.from = normalized.from;
+      state.to = normalized.to;
+    }
+    syncPickers();
+    load().catch(console.error);
+  });
 
   document.querySelectorAll("#revenueCompareSeg button").forEach((button) => {
     button.onclick = () => {
@@ -665,7 +677,6 @@ async function boot() {
   syncPickers();
   syncComparisonControls();
   applySeg("modeSeg", "mode");
-  applySeg("periodSeg", "period");
   bindPickers();
   await resolveRevenueAccess();
   if (!state.canView) return;

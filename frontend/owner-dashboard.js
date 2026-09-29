@@ -1,7 +1,7 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
   getMyVenues, getMyVenuePermissions, getMe, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 import { hasOwnerDashboardAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260924-dashboardaccess1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,
@@ -199,6 +199,16 @@ function createWidgetCard(widgetId) {
   label.textContent = historicalDay
     ? definition.title.replace("сегодня", `за ${dashboardDateLabel(state.referenceDate, localeTag())}`)
     : definition.title;
+  const labelRow = document.createElement("div");
+  labelRow.className = "block-title-with-info";
+  const info = document.createElement("span");
+  info.className = "info-button";
+  info.setAttribute("role", "button");
+  info.setAttribute("tabindex", "0");
+  info.setAttribute("aria-label", `О показателе «${definition.title}»`);
+  info.setAttribute("aria-expanded", "false");
+  info.dataset.info = view.hint;
+  labelRow.append(label, info);
   const value = document.createElement("div");
   value.className = "owner-dashboard-widget__value";
   value.textContent = view.value;
@@ -208,13 +218,11 @@ function createWidgetCard(widgetId) {
   delta.textContent = view.delta.text;
   const meta = document.createElement("div");
   meta.className = "owner-dashboard-widget__meta";
-  const hint = document.createElement("span");
-  hint.textContent = view.hint;
   const arrow = document.createElement("span");
   arrow.className = "owner-dashboard-widget__arrow";
   arrow.textContent = "→";
-  meta.append(hint, arrow);
-  card.append(label, value, delta);
+  meta.append(arrow);
+  card.append(labelRow, value, delta);
   if (sparkline && size === "wide") card.append(sparkline);
   card.append(meta);
   return card;
@@ -646,8 +654,20 @@ function bindConfigEvents() {
 
 function bindDashboardControls() {
   bindConfigEvents();
-  const monthPick = document.getElementById("dashboardMonthPick");
-  if (monthPick) { monthPick.value = state.month; monthPick.addEventListener("change", async (event) => { state.month = coerceDemoMonth(event.target.value || currentMonth(), { context: "owner-dashboard" }); event.target.value = state.month; document.getElementById("dashboardPeriodLabel").textContent = monthLabel(state.month); renderQuickActions(); await loadDashboard(); }); }
+  const periodPicker = document.getElementById("dashboardPeriodPicker");
+  if (periodPicker) {
+    periodPicker.dataset.periodValue = state.month === currentMonth()
+      ? "this_month"
+      : (state.month === previousMonth(currentMonth()) ? "previous_month" : "custom");
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      state.month = coerceDemoMonth(detail.month || String(detail.from || state.month || currentMonth()).slice(0, 7), { context: "owner-dashboard" });
+      const label = periodPicker.querySelector("[data-period-label]");
+      if (label) label.textContent = monthLabel(state.month);
+      renderQuickActions();
+      await loadDashboard();
+    });
+  }
   const scope = document.getElementById("dashboardScope");
   scope?.addEventListener("change", async (event) => { state.scope = event.target.value === "network" ? "network" : "venue"; await loadDashboard(); });
   document.getElementById("dashboardTrendSwitch")?.addEventListener("click", (event) => { const button = event.target.closest("[data-trend]"); if (!button) return; state.trendMetric = button.dataset.trend; document.querySelectorAll("#dashboardTrendSwitch button").forEach((item) => item.classList.toggle("active", item === button)); renderTrend(); });

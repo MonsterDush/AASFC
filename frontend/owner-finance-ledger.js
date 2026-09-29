@@ -13,7 +13,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20260930-ui1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -365,18 +365,18 @@ function syncUrl() {
 }
 
 function syncPeriodUi() {
-  const rangeMode = state.periodMode === "range";
-  document.querySelectorAll("#ledgerPeriodSeg [data-period]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.period === state.periodMode);
-  });
-  setVisible(document.getElementById("ledgerMonthWrap"), !rangeMode);
-  setVisible(document.getElementById("ledgerDateRange"), rangeMode);
-  const monthPick = document.getElementById("ledgerMonthPick");
-  const from = document.getElementById("ledgerDateFrom");
-  const to = document.getElementById("ledgerDateTo");
-  if (monthPick) monthPick.value = state.month;
-  if (from) from.value = state.dateFrom;
-  if (to) to.value = state.dateTo;
+  const picker = document.getElementById("ledgerPeriodPicker");
+  if (!picker) return;
+  picker.dataset.periodFrom = state.dateFrom || "";
+  picker.dataset.periodTo = state.dateTo || "";
+  const label = picker.querySelector("[data-period-label]");
+  if (!label) return;
+  if (state.periodMode === "month") {
+    const value = new Date(`${state.month || currentMonth()}-01T12:00:00`);
+    label.textContent = value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
+  } else {
+    label.textContent = `${state.dateFrom || "—"} — ${state.dateTo || "—"}`;
+  }
 }
 
 function syncComparisonUi() {
@@ -1201,8 +1201,7 @@ async function deleteTransfer(id) {
 
 async function reload() {
   const venueId = getActiveVenueId();
-  const month = document.getElementById("ledgerMonthPick")?.value || state.month || currentMonth();
-  if (state.periodMode === "month") state.month = month;
+  if (state.periodMode === "month" && !state.month) state.month = currentMonth();
   const visibleRange = primaryRange();
   if (state.operationsDay && visibleRange && (state.operationsDay < visibleRange.from || state.operationsDay > visibleRange.to)) {
     state.operationsDay = null;
@@ -1315,42 +1314,26 @@ async function boot() {
     state.compareTo = automatic?.to || state.compareFrom;
   }
   syncComparisonUi();
-  document.querySelectorAll("#ledgerPeriodSeg [data-period]").forEach((button) => {
-    button.onclick = async () => {
-      const nextMode = button.dataset.period === "range" ? "range" : "month";
-      if (nextMode === state.periodMode) return;
-      state.periodMode = nextMode;
-      if (nextMode === "range") {
-        const range = monthRange(state.month);
-        state.dateFrom = range?.from || state.dateFrom;
-        state.dateTo = range?.to || state.dateTo;
-      }
-      syncPeriodUi();
-      syncComparisonUi();
-      await reload();
-    };
-  });
-  document.getElementById("ledgerMonthPick").onchange = async (event) => {
-    state.month = event.target.value || currentMonth();
-    const range = monthRange(state.month);
-    state.dateFrom = range?.from || state.dateFrom;
-    state.dateTo = range?.to || state.dateTo;
-    await reload();
-  };
-  document.getElementById("ledgerDateFrom").onchange = (event) => { state.dateFrom = event.target.value || state.dateFrom; };
-  document.getElementById("ledgerDateTo").onchange = (event) => { state.dateTo = event.target.value || state.dateTo; };
-  document.getElementById("ledgerDateApply").onclick = async () => {
-    const normalized = normalizeIsoRange(state.dateFrom, state.dateTo);
-    if (!normalized) {
-      toast("Выбери обе даты периода", "warn");
-      return;
+  document.getElementById("ledgerPeriodPicker")?.addEventListener("axelio:period-change", async (event) => {
+    const detail = event.detail || {};
+    if (detail.mode === "month") {
+      state.periodMode = "month";
+      state.month = detail.month || String(detail.from || "").slice(0, 7) || currentMonth();
+      const range = monthRange(state.month);
+      state.dateFrom = range?.from || state.dateFrom;
+      state.dateTo = range?.to || state.dateTo;
+    } else {
+      const normalized = normalizeIsoRange(detail.from, detail.to);
+      if (!normalized) return;
+      state.periodMode = "range";
+      state.dateFrom = normalized.from;
+      state.dateTo = normalized.to;
+      state.month = normalized.from.slice(0, 7);
     }
-    state.dateFrom = normalized.from;
-    state.dateTo = normalized.to;
-    state.month = normalized.from.slice(0, 7);
     syncPeriodUi();
+    syncComparisonUi();
     await reload();
-  };
+  });
   document.getElementById("ledgerPaymentMethodPick").onchange = reload;
   document.getElementById("ledgerKindPick").onchange = reload;
   document.getElementById("ledgerDirectionPick").onchange = reload;
