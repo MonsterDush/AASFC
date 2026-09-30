@@ -700,8 +700,8 @@ packages:
     engines: {node: '>=16.20.0'}
     hasBin: true
 
-  undici@6.28.0:
-    resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
+  undici@6.29.0:
+    resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
     engines: {node: '>=18.17'}
 
   uri-js@4.4.1:
@@ -892,7 +892,7 @@ snapshots:
     dependencies:
       progress: 2.0.3
       proxy-from-env: 1.1.0
-      undici: 6.28.0
+      undici: 6.29.0
       which: 2.0.2
     optionalDependencies:
       '@sentry/cli-darwin': 3.6.2
@@ -1251,7 +1251,7 @@ snapshots:
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
 
-  undici@6.28.0: {}
+  undici@6.29.0: {}
 
   uri-js@4.4.1:
     dependencies:
