@@ -69,13 +69,21 @@
 .economics-rules-form > div:last-child{grid-column:1/-1;display:flex;justify-content:flex-end}
 .economics-rules-loading{grid-column:1/-1;display:grid;gap:10px;min-height:250px}
 
-@media (max-width:760px){
+@media (max-width:1199px){
+  .owner-day-economics-page .finance-kpis--compact{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media (max-width:900px){
   .economics-section-grid,
   .economics-detail-grid,
   .economics-rules-form{grid-template-columns:1fr}
   .economics-section-card--wide,
   .economics-rules-form > .checkline,
   .economics-rules-form > div:last-child{grid-column:auto}
+}
+
+@media (max-width:767px){
+  .owner-day-economics-page .finance-kpis--compact{grid-template-columns:1fr}
 }
 
 @media (max-width:560px){

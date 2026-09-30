@@ -18,7 +18,7 @@ import {
   deleteVenuePosition,
   patchInviteDefaultPosition,
   isDemoUiMode,
-} from "/app.js?v=20260930-ui2";
+} from "/app.js?v=20260930-ui5";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
 import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260726-navmore1";

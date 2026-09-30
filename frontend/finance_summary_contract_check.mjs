@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildFinanceCostStructure,
   buildFinancePeriodComparisonGeometry,
@@ -52,5 +55,16 @@ const structure = buildFinanceCostStructure([
   { key: "payroll", title: "ФОТ", amount_minor: 40_000 },
 ], 100_000);
 assert.deepEqual(structure.map((row) => row.shareBps), [6000, 4000]);
+
+const frontendDir = path.dirname(fileURLToPath(import.meta.url));
+const summarySource = fs.readFileSync(path.join(frontendDir, "owner-summary.js"), "utf8");
+const financeStyles = fs.readFileSync(path.join(frontendDir, "styles/pages/finance-pages.css"), "utf8");
+assert.doesNotMatch(summarySource, /!chart \|\| !legend \|\| !subtitle \|\| !title/);
+assert.match(summarySource, /class="summary-donut"/);
+assert.match(summarySource, /data-cost-hint/);
+assert.match(financeStyles, /\.summary-trend-card\{grid-column:span 2\}/);
+assert.match(financeStyles, /\.summary-donut-segment/);
+assert.match(financeStyles, /\.summary-chart-card\{[^}]*min-height:440px/);
+assert.match(financeStyles, /\.summary-donut-layout\{[^}]*grid-template-columns:1fr/);
 
 console.log("finance summary contract: ok");

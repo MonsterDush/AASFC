@@ -1,7 +1,7 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
   getMyVenues, getMyVenuePermissions, getMe, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260930-ui2";
+} from "/app.js?v=20260930-ui5";
 import { hasOwnerDashboardAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260924-dashboardaccess1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,
@@ -135,18 +135,53 @@ function dailySeries(field) {
     : [];
 }
 
+function financeDataAvailable(summary) {
+  if (state.financialValuesHidden) return true;
+  if (!summary) return false;
+  const fields = [
+    "revenue_minor", "expense_minor", "expense_without_payroll_minor", "payroll_minor",
+    "total_cost_minor", "adjustments_minor", "refunds_minor", "profit_minor",
+  ];
+  if (fields.some((field) => Number(summary?.[field] || 0) !== 0)) return true;
+  if ((summary.cost_structure || []).some((row) => Number(row?.amount_minor || 0) !== 0)) return true;
+  return (summary.daily_series || []).some((row) => fields.some((field) => Number(row?.[field] || 0) !== 0));
+}
+
+function emptyFinanceWidget(hint = "За выбранный период нет финансовых операций") {
+  return {
+    value: "Данных пока нет",
+    hint,
+    delta: { text: "Выберите другой период", tone: "is-neutral" },
+    series: [],
+    empty: true,
+  };
+}
+
 function widgetView(widgetId) {
   const month = state.monthData || {};
   const previous = state.previousData || {};
   const economics = state.economics || {};
   const plan = state.monthPlan || {};
   const dayContext = state.month === currentMonth() ? "Сегодня" : dashboardDateLabel(state.referenceDate, localeTag());
-  if (widgetId === "revenue_today") return { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: dayContext, tone: "is-neutral" }, series: [] };
-  if (widgetId === "revenue_month") return { value: formatMoneyMinor(month.revenue_minor), hint: "С начала выбранного месяца", delta: deltaView(month.revenue_minor, previous.revenue_minor), series: dailySeries("revenue_minor") };
-  if (widgetId === "profit_month") return { value: formatMoneyMinor(month.profit_minor), hint: "После расходов и ФОТ", delta: deltaView(month.profit_minor, previous.profit_minor), series: dailySeries("profit_minor") };
-  if (widgetId === "expenses_month") return { value: formatMoneyMinor(month.expense_without_payroll_minor), hint: "Подтверждённые, без ФОТ", delta: deltaView(month.expense_without_payroll_minor, previous.expense_without_payroll_minor, { direction: "down" }), series: dailySeries("expense_minor") };
-  if (widgetId === "payroll_month") return { value: formatMoneyMinor(month.payroll_minor), hint: "Начисления команды", delta: deltaView(month.payroll_minor, previous.payroll_minor, { direction: "down" }), series: dailySeries("payroll_minor") };
-  if (widgetId === "margin_month") return { value: formatPercentBps(month.margin_bps), hint: "Доля прибыли от выручки", delta: deltaView(month.margin_bps, previous.margin_bps, { money: false }), series: dailySeries("profit_minor") };
+  const hasMonthData = financeDataAvailable(month);
+  if (widgetId === "revenue_today") return financeDataAvailable(state.dayData)
+    ? { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: dayContext, tone: "is-neutral" }, series: [] }
+    : emptyFinanceWidget("За сегодня ещё нет закрытых отчётов");
+  if (widgetId === "revenue_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.revenue_minor), hint: "С начала выбранного месяца", delta: deltaView(month.revenue_minor, previous.revenue_minor), series: dailySeries("revenue_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "profit_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.profit_minor), hint: "После расходов и ФОТ", delta: deltaView(month.profit_minor, previous.profit_minor), series: dailySeries("profit_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "expenses_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.expense_without_payroll_minor), hint: "Подтверждённые, без ФОТ", delta: deltaView(month.expense_without_payroll_minor, previous.expense_without_payroll_minor, { direction: "down" }), series: dailySeries("expense_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "payroll_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.payroll_minor), hint: "Начисления команды", delta: deltaView(month.payroll_minor, previous.payroll_minor, { direction: "down" }), series: dailySeries("payroll_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "margin_month") return hasMonthData
+    ? { value: formatPercentBps(month.margin_bps), hint: "Доля прибыли от выручки", delta: deltaView(month.margin_bps, previous.margin_bps, { money: false }), series: dailySeries("profit_minor") }
+    : emptyFinanceWidget();
   if (widgetId === "revenue_plan") {
     const target = Number(plan.revenue_plan_minor || 0);
     const actual = Number(month.revenue_minor || 0);
@@ -154,6 +189,7 @@ function widgetView(widgetId) {
     return { value: progress === null ? "План не задан" : formatPercentBps(progress), hint: target > 0 ? `${formatMoneyMinor(actual)} из ${formatMoneyMinor(target)}` : "Задайте план на месяц", delta: { text: target > 0 && actual >= target ? "План выполнен" : "План / факт", tone: actual >= target && target > 0 ? "is-good" : "is-neutral" }, series: dailySeries("revenue_minor") };
   }
   if (widgetId === "profit_forecast") {
+    if (!hasMonthData) return emptyFinanceWidget("Для прогноза нужны данные выбранного месяца");
     const elapsed = elapsedDays(state.month);
     const forecast = elapsed > 0 ? Math.round(Number(month.profit_minor || 0) / elapsed * daysInMonth(state.month)) : null;
     return { value: formatMoneyMinor(forecast), hint: state.month === currentMonth() ? `По темпу за ${elapsed} дн.` : "Фактический результат месяца", delta: deltaView(forecast, plan.profit_plan_minor), series: dailySeries("profit_minor") };
@@ -190,6 +226,7 @@ function createWidgetCard(widgetId) {
   const size = state.layout.sizes[widgetId] || "normal";
   const card = document.createElement("a");
   card.className = `itemcard owner-dashboard-widget owner-dashboard-widget--${size}`;
+  card.classList.toggle("is-empty", Boolean(view.empty));
   card.href = hrefFor(definition.target);
   card.dataset.widgetId = widgetId;
   const label = document.createElement("div");
@@ -208,11 +245,15 @@ function createWidgetCard(widgetId) {
   info.setAttribute("aria-label", `О показателе «${definition.title}»`);
   info.setAttribute("aria-expanded", "false");
   info.dataset.info = view.hint;
+  info.textContent = "i";
   labelRow.append(label, info);
   const value = document.createElement("div");
   value.className = "owner-dashboard-widget__value";
   value.textContent = view.value;
   const sparkline = createSparkline(view.series);
+  const visual = document.createElement("div");
+  visual.className = "owner-dashboard-widget__visual";
+  if (sparkline && size === "wide") visual.append(sparkline);
   const delta = document.createElement("div");
   delta.className = `owner-dashboard-widget__delta ${view.delta.tone}`;
   delta.textContent = view.delta.text;
@@ -222,9 +263,7 @@ function createWidgetCard(widgetId) {
   arrow.className = "owner-dashboard-widget__arrow";
   arrow.textContent = "→";
   meta.append(arrow);
-  card.append(labelRow, value, delta);
-  if (sparkline && size === "wide") card.append(sparkline);
-  card.append(meta);
+  card.append(labelRow, value, delta, visual, meta);
   return card;
 }
 
@@ -353,16 +392,15 @@ function dashboardAlerts() {
 }
 
 function renderAttention() {
+  const section = document.getElementById("dashboardAttention");
   const list = document.getElementById("dashboardAttentionList");
   const count = document.getElementById("dashboardAttentionCount");
   const alerts = dashboardAlerts();
   if (count) count.textContent = String(alerts.length);
+  section?.classList.toggle("hidden", !alerts.length);
   if (!list) return;
   if (!alerts.length) {
-    const empty = document.createElement("div");
-    empty.className = "owner-dashboard-empty";
-    empty.textContent = "Критичных задач нет. Данные и смены выглядят нормально.";
-    list.replaceChildren(empty);
+    list.replaceChildren();
     return;
   }
   list.replaceChildren(...alerts.map((item) => {
@@ -397,7 +435,7 @@ function renderTrend() {
   if (!container || !legend) return;
   const rows = Array.isArray(state.monthData?.daily_series) ? state.monthData.daily_series : [];
   const values = rows.map((row) => Number(row?.[trendField()] || 0));
-  if (!rows.length) {
+  if (!rows.length || !financeDataAvailable(state.monthData)) {
     const empty = document.createElement("div");
     empty.className = "owner-dashboard-empty";
     empty.textContent = "Для графика пока нет закрытых отчётов за выбранный месяц.";
@@ -594,9 +632,6 @@ async function loadNetworkDashboard(revision) {
 
 function renderAll() {
   renderWidgets(); renderAttention(); renderTrend(); renderOperations(); renderNetwork(); renderQuickActions();
-  const now = new Date();
-  const freshness = document.getElementById("dashboardFreshness");
-  if (freshness) freshness.textContent = `Обновлено ${now.toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" })}${state.sourceErrors.length ? ` · ${state.sourceErrors.length} источник(а) недоступно` : " · все источники доступны"}`;
 }
 
 async function loadDashboard() {

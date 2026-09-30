@@ -57,8 +57,8 @@ for (const [fileName, factoryName] of moduleContracts) {
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
   const cacheKey = fileName === "navigation.js"
-    ? "20260930-ui2"
-    : (fileName === "ui-preferences.js" ? "20260930-ui2" : "20260719-split1");
+    ? "20260930-ui5"
+    : (fileName === "ui-preferences.js" ? "20260930-ui5" : "20260719-split1");
   assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
@@ -147,9 +147,12 @@ assert.equal(navigation.can("REPORTS_VIEW", { permissions: ["REPORTS_VIEW"] }), 
 assert.deepEqual(await navigation.getVenueById(2), { id: 2, name: "Venue" });
 const navigationSource = fs.readFileSync(path.join(frontendDir, "app/navigation.js"), "utf8");
 const appShellSource = fs.readFileSync(path.join(frontendDir, "app/app-shell.js"), "utf8");
-assert.match(navigationSource, /from "\.\/app-shell\.js\?v=20260929-appshell1"/);
+assert.match(navigationSource, /from "\.\/app-shell\.js\?v=20260930-appshell2"/);
 assert.match(appShellSource, /export function createAppNavIcon/);
 assert.match(appShellSource, /export function mountAppShell/);
+assert.doesNotMatch(appShellSource, /app-nav-venue__avatar/);
+assert.match(appShellSource, /manageOption\.value = "__manage_venues__"/);
+assert.match(appShellSource, /location\.href = "\/app-venues\.html"/);
 assert.match(appShellSource, /container\.querySelector\('a\[data-tab="settings"\]'\)/);
 assert.match(appShellSource, /container\.insertBefore\(venue, settingsLink\)/);
 for (const mobileMoreContract of [
@@ -173,7 +176,7 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260930-ui2["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260930-ui5["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);

@@ -115,25 +115,25 @@
 /* System dark (when user didn't force light) */
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) {
-    --surface0:#090F1D;
-    --surface1:#0B1328;
-    --surface2:#0B1328;
+    --surface0:#182235;
+    --surface1:#111A2B;
+    --surface2:#0C1425;
     --bg:var(--surface0);
     --workspace:var(--surface1);
-    --card:#0E1730;
+    --card:var(--surface2);
 
     --text:#E8ECF5;
     --textSecondary:#CCD4E5;
     --muted:#B3BDD6;
 
-    --border:#1C2C55;
-    --borderStrong:#49618F;
+    --border:rgba(184,197,220,.14);
+    --borderStrong:#56657D;
     --shadow:0 10px 30px rgba(0,0,0,.35);
 
     --accent:#3C78C8;
     --accentText:#081022;
     --accentSoftBg:rgba(60,120,200,.18);
-    --accentSoftBorder:rgba(60,120,200,.45);
+    --accentSoftBorder:rgba(60,120,200,.34);
     --focusRingColor:rgba(60,120,200,.30);
 
     --accentA10:rgba(60,120,200,.10);
@@ -163,9 +163,9 @@
     --dotPast:#6C7A8B;
     --dotInset:rgba(255,255,255,.06);
 
-    --inputBg:rgba(0,0,0,.18);
-    --navBg:rgba(9,15,29,.72);
-    --toastBg:rgba(11,18,32,.68);
+    --inputBg:var(--surface2);
+    --navBg:rgba(24,34,53,.86);
+    --toastBg:rgba(12,20,37,.9);
 
     --shimmer:rgba(255,255,255,.10);
   }
@@ -173,25 +173,25 @@
 
 /* Forced dark */
 :root[data-theme="dark"]{
-  --surface0:#090F1D;
-  --surface1:#0B1328;
-  --surface2:#0B1328;
+  --surface0:#182235;
+  --surface1:#111A2B;
+  --surface2:#0C1425;
   --bg:var(--surface0);
   --workspace:var(--surface1);
-  --card:#0E1730;
+  --card:var(--surface2);
 
   --text:#E8ECF5;
   --textSecondary:#CCD4E5;
   --muted:#B3BDD6;
 
-  --border:#1C2C55;
-  --borderStrong:#49618F;
+  --border:rgba(184,197,220,.14);
+  --borderStrong:#56657D;
   --shadow:0 10px 30px rgba(0,0,0,.35);
 
   --accent:#3C78C8;
   --accentText:#081022;
   --accentSoftBg:rgba(60,120,200,.18);
-  --accentSoftBorder:rgba(60,120,200,.45);
+  --accentSoftBorder:rgba(60,120,200,.34);
   --focusRingColor:rgba(60,120,200,.30);
 
   --accentA10:rgba(60,120,200,.10);
@@ -221,9 +221,9 @@
   --dotPast:#6C7A8B;
   --dotInset:rgba(255,255,255,.06);
 
-  --inputBg:rgba(0,0,0,.18);
-  --navBg:rgba(9,15,29,.72);
-  --toastBg:rgba(11,18,32,.68);
+  --inputBg:var(--surface2);
+  --navBg:rgba(24,34,53,.86);
+  --toastBg:rgba(12,20,37,.9);
 
   --shimmer:rgba(255,255,255,.10);
 }

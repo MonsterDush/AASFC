@@ -70,11 +70,6 @@ export function mountAppShell({
     venue.className = "app-nav-venue";
     venue.setAttribute("data-app-shell-chrome", "venue");
 
-    const avatar = document.createElement("span");
-    avatar.className = "app-nav-venue__avatar";
-    avatar.setAttribute("aria-hidden", "true");
-    avatar.textContent = String(activeVenue.name || "A").trim().slice(0, 2).toUpperCase();
-
     const select = document.createElement("select");
     select.className = "app-nav-venue__select";
     select.setAttribute("aria-label", t("venue"));
@@ -84,16 +79,32 @@ export function mountAppShell({
       option.textContent = item.name || `${t("venue")} #${item.id}`;
       select.appendChild(option);
     });
+
+    if (isOwner) {
+      const divider = document.createElement("option");
+      divider.disabled = true;
+      divider.textContent = "────────";
+      select.appendChild(divider);
+
+      const manageOption = document.createElement("option");
+      manageOption.value = "__manage_venues__";
+      manageOption.textContent = t("manage_venues");
+      select.appendChild(manageOption);
+    }
     select.value = String(activeVenue.id);
     select.addEventListener("change", () => {
       const nextVenueId = select.value;
+      if (nextVenueId === "__manage_venues__") {
+        location.href = "/app-venues.html";
+        return;
+      }
       setActiveVenueId(nextVenueId);
       const url = new URL(location.href);
       url.searchParams.set("venue_id", nextVenueId);
       location.href = `${url.pathname}${url.search}`;
     });
 
-    venue.append(avatar, select);
+    venue.append(select);
     const settingsLink = container.querySelector('a[data-tab="settings"]');
     if (settingsLink) container.insertBefore(venue, settingsLink);
     else container.appendChild(venue);

@@ -15,7 +15,7 @@ import {
   getVenueSettings,
   coerceDemoMonth,
   isDemoUiMode,
-} from "/app.js?v=20260930-ui2";
+} from "/app.js?v=20260930-ui5";
 
 
 import { permSetFromResponse, roleUpper, hasPerm as hasP, hasAnyPerm, hasPermPrefix, isFinancialValuesHidden } from "/permissions.js";

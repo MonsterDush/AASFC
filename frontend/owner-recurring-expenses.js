@@ -12,7 +12,7 @@ import {
   closeModal,
   coerceDemoMonth,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260930-ui2";
+} from "/app.js?v=20260930-ui5";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let access = { canView: false, canManage: false };

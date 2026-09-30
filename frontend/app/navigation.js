@@ -1,4 +1,4 @@
-import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20260929-appshell1";
+import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20260930-appshell2";
 
 export function filterVisibleNavLinks(links = []) {
   return links.filter((link) => link?.allowed !== false);

@@ -9,7 +9,7 @@ import {
   getVenueSettings,
   updateVenueSettings,
   setActiveVenueId,
-} from "/app.js?v=20260930-ui2";
+} from "/app.js?v=20260930-ui5";
 
 applyTelegramTheme();
 mountCommonUI("venue");
