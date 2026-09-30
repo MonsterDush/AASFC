@@ -5,7 +5,6 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import hmac
-import html
 import json
 from typing import Mapping
 from urllib.parse import quote, urlencode
@@ -300,27 +299,13 @@ def build_checkout_fields(
     return fields
 
 
-def build_checkout_post_html(*, payment_url: str, fields: Mapping[str, str]) -> str:
-    action = html.escape(str(payment_url or "").strip(), quote=True)
-    inputs = "\n".join(
-        f'<input type="hidden" name="{html.escape(str(key), quote=True)}" value="{html.escape(str(value), quote=True)}">'
-        for key, value in fields.items()
-    )
-    return f"""<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Переход к оплате · Axelio</title>
-</head>
-<body>
-  <form id="robokassa-form" method="post" action="{action}">
-    {inputs}
-    <noscript><button type="submit">Перейти к оплате</button></noscript>
-  </form>
-  <script>document.getElementById("robokassa-form").submit();</script>
-</body>
-</html>"""
+def build_checkout_redirect_url(*, payment_url: str, fields: Mapping[str, str]) -> str:
+    base_url = str(payment_url or "").strip().rstrip("?")
+    if not base_url:
+        raise ValueError("Robokassa payment URL is missing")
+    separator = "&" if "?" in base_url else "?"
+    params = [(str(key), str(value)) for key, value in fields.items()]
+    return f"{base_url}{separator}{urlencode(params)}"
 
 
 def build_checkout_url(

@@ -170,6 +170,7 @@ jobs:
           node frontend/finance_summary_contract_check.mjs
           node frontend/payroll_analytics_contract_check.mjs
           node frontend/revenue_analytics_contract_check.mjs
+          node frontend/billing_checkout_contract_check.mjs
 
       - name: Browser E2E owner, staff and public demo
         env:

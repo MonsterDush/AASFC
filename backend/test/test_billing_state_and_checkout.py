@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import app.services.billing.manager as manager
 import app.services.billing.robokassa as robokassa
 import app.services.billing.state as state
+import app.routers.billing as billing_router
 from app.models.venue_billing_transaction import VenueBillingTransaction
 
 
@@ -117,20 +118,54 @@ class BillingStateTests(TestCase):
         self.assertEqual(fields["IsTest"], "1")
         self.assertEqual(fields["ExpirationDate"], "2026-04-02T14:00")
 
-    def test_build_checkout_post_html_posts_raw_receipt(self):
+    def test_build_checkout_redirect_url_preserves_raw_receipt(self):
         receipt = robokassa.build_receipt_json(
             amount_minor=299000,
             item_name="Подписка Axelio — доступ на 30 дней",
             tax="none",
         )
-        page = robokassa.build_checkout_post_html(
+        url = robokassa.build_checkout_redirect_url(
             payment_url="https://auth.robokassa.ru/Merchant/Index.aspx",
             fields={"Receipt": receipt, "OutSum": "2990.000000", "InvId": "123"},
         )
-        self.assertIn('method="post"', page)
-        self.assertIn('name="Receipt"', page)
-        self.assertIn("robokassa-form", page)
-        self.assertNotIn("%257B", page)
+        query = parse_qs(urlparse(url).query)
+        self.assertEqual(urlparse(url).netloc, "auth.robokassa.ru")
+        self.assertEqual(query["Receipt"][0], receipt)
+        self.assertEqual(query["OutSum"][0], "2990.000000")
+        self.assertEqual(query["InvId"][0], "123")
+
+    def test_robokassa_pay_redirects_pending_checkout_without_html_form(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=299000,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
+        tx = SimpleNamespace(
+            venue_id=77,
+            status="PENDING",
+            provider_payload_json={
+                "payment_url": "https://auth.robokassa.ru/Merchant/Index.aspx",
+                "checkout_fields": {
+                    "InvId": "123",
+                    "Receipt": receipt,
+                    "SignatureValue": "signed",
+                    "Shp_tx": "123",
+                    "Shp_venueId": "77",
+                },
+            },
+        )
+        with patch.object(billing_router, "get_billing_transaction_by_invoice_id", return_value=tx):
+            response = billing_router.robokassa_pay(InvId="123", db=SimpleNamespace())
+
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["location"]
+        query = parse_qs(urlparse(location).query)
+        self.assertEqual(urlparse(location).netloc, "auth.robokassa.ru")
+        self.assertEqual(query["InvId"][0], "123")
+        self.assertEqual(query["Receipt"][0], receipt)
+        self.assertEqual(query["SignatureValue"][0], "signed")
+        self.assertEqual(query["Shp_tx"][0], "123")
+        self.assertEqual(query["Shp_venueId"][0], "77")
 
     def test_build_checkout_url_remains_backward_compatible(self):
         receipt = robokassa.build_receipt_json(
