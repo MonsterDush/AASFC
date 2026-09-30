@@ -218,6 +218,7 @@
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260924-dashboardi18n1";
+    import { openBillingCheckout } from "/billing-checkout.js?v=20260930-robokassa1";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasOwnerDashboardAccess, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260924-dashboardaccess1";
 
     applyTelegramTheme();
@@ -567,7 +568,7 @@ const titleEl = document.getElementById("title");
 
             const checkoutUrl = String(data?.checkout_url || "").trim();
             if (!checkoutUrl) throw new Error("Не получили ссылку на оплату");
-            location.href = checkoutUrl;
+            if (!await openBillingCheckout(checkoutUrl)) throw new Error("Не получили ссылку на оплату");
             return;
           } catch (e) {
             toast("Не удалось открыть оплату: " + (e?.data?.detail || e?.message || "ошибка"), "err");

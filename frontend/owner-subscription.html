@@ -95,6 +95,7 @@
 <script type="module">
   import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260924-dashboardi18n1';
   import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole, roleUpper } from '/permissions.js?v=20260331-billing2';
+  import { openBillingCheckout } from '/billing-checkout.js?v=20260930-robokassa1';
 
   applyTelegramTheme();
   mountCommonUI('owner-subscription');
@@ -141,7 +142,7 @@
       const data = await api(`/venues/${venueId}/billing/checkout`, { method: 'POST' });
       const checkoutUrl = String(data?.checkout_url || '').trim();
       if (!checkoutUrl) throw new Error('Не получили ссылку на оплату');
-      location.href = checkoutUrl;
+      if (!await openBillingCheckout(checkoutUrl)) throw new Error('Не получили ссылку на оплату');
     } catch (e) {
       toast(e?.data?.detail || e?.message || 'Не удалось открыть оплату', 'err');
     } finally {
