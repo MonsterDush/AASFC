@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import app.services.billing.manager as manager
 import app.services.billing.robokassa as robokassa
@@ -118,7 +118,7 @@ class BillingStateTests(TestCase):
         self.assertEqual(fields["IsTest"], "1")
         self.assertEqual(fields["ExpirationDate"], "2026-04-02T14:00")
 
-    def test_build_checkout_redirect_url_preserves_raw_receipt(self):
+    def test_build_checkout_redirect_url_sends_encoded_receipt_used_by_signature(self):
         receipt = robokassa.build_receipt_json(
             amount_minor=299000,
             item_name="Подписка Axelio — доступ на 30 дней",
@@ -130,7 +130,8 @@ class BillingStateTests(TestCase):
         )
         query = parse_qs(urlparse(url).query)
         self.assertEqual(urlparse(url).netloc, "auth.robokassa.ru")
-        self.assertEqual(query["Receipt"][0], receipt)
+        self.assertEqual(query["Receipt"][0], quote(receipt, safe=""))
+        self.assertEqual(unquote(query["Receipt"][0]), receipt)
         self.assertEqual(query["OutSum"][0], "2990.000000")
         self.assertEqual(query["InvId"][0], "123")
 
@@ -162,7 +163,7 @@ class BillingStateTests(TestCase):
         query = parse_qs(urlparse(location).query)
         self.assertEqual(urlparse(location).netloc, "auth.robokassa.ru")
         self.assertEqual(query["InvId"][0], "123")
-        self.assertEqual(query["Receipt"][0], receipt)
+        self.assertEqual(query["Receipt"][0], quote(receipt, safe=""))
         self.assertEqual(query["SignatureValue"][0], "signed")
         self.assertEqual(query["Shp_tx"][0], "123")
         self.assertEqual(query["Shp_venueId"][0], "77")
@@ -190,7 +191,7 @@ class BillingStateTests(TestCase):
             expiration_date="2026-04-02T14:00",
         )
         query = parse_qs(urlparse(url).query)
-        self.assertEqual(query["Receipt"][0], receipt)
+        self.assertEqual(query["Receipt"][0], quote(receipt, safe=""))
         self.assertIn("SuccessUrl2", query)
         self.assertIn("FailUrl2", query)
         self.assertEqual(query["IsTest"][0], "1")
