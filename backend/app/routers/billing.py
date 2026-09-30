@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ from app.services.billing import (
     apply_checkout_payment_success,
     apply_free_promo_code,
     build_checkout_fields,
-    build_checkout_post_html,
+    build_checkout_redirect_url,
     build_receipt_json,
     compute_promo_preview,
     create_checkout_transaction,
@@ -480,7 +480,7 @@ def _frontend_payment_redirect(
     return f"{base}?{urlencode(query)}"
 
 
-@public_router.get("/billing/robokassa/pay", response_class=HTMLResponse)
+@public_router.get("/billing/robokassa/pay")
 def robokassa_pay(
     InvId: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
@@ -512,11 +512,12 @@ def robokassa_pay(
     if not payment_url:
         payment_url = get_robokassa_config().payment_url
 
-    return HTMLResponse(
-        build_checkout_post_html(
+    return RedirectResponse(
+        url=build_checkout_redirect_url(
             payment_url=payment_url,
             fields={str(key): str(value) for key, value in checkout_fields.items()},
-        )
+        ),
+        status_code=302,
     )
 
 

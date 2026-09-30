@@ -81,7 +81,7 @@ from .promos import (
 )
 from .robokassa import (
     build_checkout_fields,
-    build_checkout_post_html,
+    build_checkout_redirect_url,
     build_checkout_url,
     build_receipt_json,
     calculate_checkout_signature,
@@ -138,7 +138,7 @@ __all__ = [
     "serialize_promo_redemption",
     "update_promo_code",
     "build_checkout_fields",
-    "build_checkout_post_html",
+    "build_checkout_redirect_url",
     "build_checkout_url",
     "build_receipt_json",
     "calculate_checkout_signature",

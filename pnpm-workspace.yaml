@@ -1,6 +1,9 @@
 packages:
   - .
 
+overrides:
+  brace-expansion: 5.0.11
+
 allowBuilds:
   '@sentry/cli': true
   esbuild: true
