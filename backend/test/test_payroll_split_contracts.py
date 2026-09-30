@@ -114,7 +114,7 @@ class PayrollCalculatorSplitContractTests(TestCase):
         manifest.sort()
         digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False).encode()).hexdigest()
         self.assertEqual(len(manifest), 72)
-        self.assertEqual(digest, "cbacce87274d96fe2b55926983194eea035152d54bd57c89b470e6f8edd32583")
+        self.assertEqual(digest, "567811d2e91ab86aac08f827be1015ed11edb5bf1a7197a8205f79fc6219d5c3")
 
     def test_modules_remain_bounded_and_facade_reexports_their_contracts(self):
         modules = {
@@ -177,7 +177,7 @@ class PayrollExtractedHelperBehaviorTests(TestCase):
         self.assertEqual([row["amount_minor"] for row in rows], [20000, 0])
         self.assertEqual([row["minimum_applied"] for row in rows], [True, False])
 
-    def test_latest_overlapping_assignment_is_selected_per_member(self):
+    def test_all_overlapping_assignments_are_preserved_for_date_resolution(self):
         user = SimpleNamespace(id=17)
         profile = SimpleNamespace(id=3, is_active=True)
         older = SimpleNamespace(
@@ -200,8 +200,8 @@ class PayrollExtractedHelperBehaviorTests(TestCase):
             month_start=date(2026, 3, 1),
             month_end_excl=date(2026, 4, 1),
         )
-        self.assertEqual(len(selected), 1)
-        self.assertIs(selected[0][0], newer)
+        self.assertEqual(len(selected), 2)
+        self.assertEqual([row[0] for row in selected], [older, newer])
 
 
 class PayrollMonthOrchestratorTests(TestCase):

@@ -85,8 +85,23 @@ function posReportsEnabled(p) {
   ]);
 }
 
+function posReportsScope(p) {
+  if (posHasAnyPerm(p, [
+    "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN",
+    "REPORTS_VIEW_DAILY", "REPORTS_VIEW_MONTHLY", "REPORTS_VIEW_PNL",
+  ])) return "Все отчёты";
+  if (posHasPerm(p, "SHIFT_REPORT_VIEW")) return "Свои отчёты";
+  return "Нет доступа";
+}
+
 function posScheduleManage(p) {
   return posHasPerm(p, "SHIFTS_MANAGE");
+}
+
+function posScheduleScope(p) {
+  if (posScheduleManage(p)) return "Управление графиком";
+  if (posHasPerm(p, "SHIFTS_VIEW")) return "Свой график";
+  return "Нет доступа";
 }
 
 
@@ -187,7 +202,9 @@ return {
   posHasPerm,
   posHasAnyPerm,
   posReportsEnabled,
+  posReportsScope,
   posScheduleManage,
+  posScheduleScope,
   normalizePositions,
   normalizePositionPresets,
   positionSources,

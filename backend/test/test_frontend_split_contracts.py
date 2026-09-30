@@ -677,7 +677,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260924-dashboardi18n1", html)
+        self.assertIn("/owner-payroll.js?v=20260929-payrolluat1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -952,7 +952,7 @@ class OwnerSetupSplitContractTests(TestCase):
             "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260810-setup1"),
             "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor", "20260729-payroll1"),
             "position-editor.js": ("createPositionSetupController", "mountPositionsEditor", "20260720-unified10"),
-            "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260720-unified10"),
+            "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260929-payrolluat1"),
             "shift-interval-editor.js": (
                 "createShiftIntervalSetupController",
                 "mountShiftIntervalsEditor",
@@ -967,7 +967,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260924-dashboardi18n1", html)
+        self.assertIn("owner-setup.js?v=20260929-payrolluat1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -1004,6 +1004,14 @@ class OwnerSetupSplitContractTests(TestCase):
         recurring = (FRONTEND / "owner-setup" / "recurring-expense-editor.js").read_text(encoding="utf-8")
         self.assertRegex(recurring, r"const \{[^}]*getPaymentMethods[^}]*\} = context;")
         self.assertRegex(main, r"const editorContext = \{[\s\S]*?getPaymentMethods,[\s\S]*?\};")
+
+        invite_editor = (FRONTEND / "owner-setup" / "invite-editor.js").read_text(encoding="utf-8")
+        invites_page = (FRONTEND / "invites.html").read_text(encoding="utf-8")
+        invite_contract = (FRONTEND / "app" / "invite-form-contract.js").read_text(encoding="utf-8")
+        self.assertIn("buildInvitePayload", invite_editor)
+        self.assertIn("buildInvitePayload", invites_page)
+        self.assertIn("export function buildDefaultPositionPayload", invite_contract)
+        self.assertIn("export function buildInvitePayload", invite_contract)
 
 
 class StaffShiftsSplitContractTests(TestCase):

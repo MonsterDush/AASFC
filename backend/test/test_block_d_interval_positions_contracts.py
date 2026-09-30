@@ -39,7 +39,9 @@ class BlockDIntervalPositionContractTests(TestCase):
         self.assertIn('"created_catalog"', positions)
         self.assertIn("catalog_position = None", invites)
         self.assertIn("member_user_id=user_id", invites)
-        self.assertIn("member_user_id=None", invites)
+        self.assertIn("VenuePosition.member_user_id.is_(None)", invites)
+        self.assertIn("VenuePosition.is_active.is_(True)", invites)
+        self.assertIn("return False", invites)
 
     def test_schedule_rejects_wrong_position_and_frontend_filters_candidates(self):
         backend = read("backend/app/routers/venue_shifts.py")

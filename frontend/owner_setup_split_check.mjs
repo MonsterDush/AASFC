@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { collectSetupDraft, restoreSetupDraft, setupDraftStorageKey } from "./owner-setup/draft-state.js";
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const mainPath = path.join(frontendDir, "owner-setup.js");
@@ -13,17 +14,31 @@ const controllers = [
   ["catalog-editor.js", "20260810-setup1", "createCatalogSetupController", ["mountCatalogEditor"]],
   ["pay-profile-editor.js", "20260729-payroll1", "createPayProfileSetupController", ["mountPayProfilesEditor", "loadInlinePayProfiles"]],
   ["position-editor.js", "20260720-unified10", "createPositionSetupController", ["mountPositionsEditor"]],
-  ["invite-editor.js", "20260720-unified10", "createInviteSetupController", ["mountInvitesEditor"]],
+  ["invite-editor.js", "20260929-payrolluat1", "createInviteSetupController", ["mountInvitesEditor"]],
   ["shift-interval-editor.js", "20260906-names-scopes1", "createShiftIntervalSetupController", ["mountShiftIntervalsEditor"]],
   ["supplier-editor.js", "20260720-unified10", "createSupplierSetupController", ["mountSuppliersEditor"]],
   ["recurring-expense-editor.js", "20260729-slotecon1", "createRecurringExpenseSetupController", ["mountRecurringExpensesEditor"]],
 ];
 
 assert.ok(mainSource.split("\n").length < 1_600, "owner-setup.js must remain an orchestration module");
-assert.match(htmlSource, /owner-setup\.js\?v=20260924-dashboardi18n1/);
+assert.match(htmlSource, /owner-setup\.js\?v=20260929-payrolluat1/);
 assert.match(mainSource, /position-template-ui\.js\?v=20260726-navmore1/);
 assert.doesNotMatch(htmlSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
 assert.doesNotMatch(mainSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
+assert.match(mainSource, /attachSetupDraft\(/);
+assert.match(mainSource, /clearStepDraft:/);
+assert.equal(setupDraftStorageKey(21, "positions"), "axelio.setup-draft.v1:21:positions");
+const draftControls = [
+  { id: "draftTitle", type: "text", value: "Бармен" },
+  { name: "permission", type: "checkbox", value: "REPORTS_VIEW", checked: true },
+];
+const draftHost = { querySelectorAll: () => draftControls };
+const draft = collectSetupDraft(draftHost);
+draftControls[0].value = "";
+draftControls[1].checked = false;
+restoreSetupDraft(draftHost, draft);
+assert.equal(draftControls[0].value, "Бармен");
+assert.equal(draftControls[1].checked, true);
 assert.match(mainSource, /<progress class="setup-progressbar"/);
 assert.match(mainSource, /isSetupDone\(state\.setup\) \? "Настройка завершена"/);
 const resumeHelperSource = mainSource.slice(

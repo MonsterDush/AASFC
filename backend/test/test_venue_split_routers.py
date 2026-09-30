@@ -295,6 +295,14 @@ class VenuePayrollRouterTests(TestCase):
             commits = 0
             rollbacks = 0
 
+            class Result:
+                @staticmethod
+                def scalar_one_or_none():
+                    return None
+
+            def execute(self, _statement):
+                return self.Result()
+
             def commit(self):
                 self.commits += 1
 

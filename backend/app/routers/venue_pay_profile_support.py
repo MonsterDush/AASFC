@@ -42,6 +42,8 @@ from app.models.department import Department
 from app.models.pay_profile import PayProfile
 from app.models.pay_profile_assignment import PayProfileAssignment
 from app.models.pay_component import PayComponent
+from app.models.position_pay_profile_period import PositionPayProfilePeriod
+from app.models.venue_position import VenuePosition
 from app.auth.venue_permissions import require_venue_permission
 
 from app.routers.venue_common import (
@@ -121,6 +123,44 @@ def _get_pay_profile_assignment_or_404(db: Session, *, venue_id: int, assignment
     if obj is None:
         raise HTTPException(status_code=404, detail="Pay profile assignment not found")
     return obj
+
+
+def _ensure_no_pay_profile_assignment_overlap(
+    db: Session,
+    *,
+    venue_id: int,
+    member_user_id: int,
+    start_date: date | None,
+    end_date: date | None,
+    is_active: bool,
+    exclude_assignment_id: int | None = None,
+) -> None:
+    if not is_active:
+        return
+    clauses = [
+        PayProfileAssignment.venue_id == int(venue_id),
+        PayProfileAssignment.member_user_id == int(member_user_id),
+        PayProfileAssignment.is_active.is_(True),
+    ]
+    if end_date is not None:
+        clauses.append(sa.or_(PayProfileAssignment.start_date.is_(None), PayProfileAssignment.start_date <= end_date))
+    if start_date is not None:
+        clauses.append(sa.or_(PayProfileAssignment.end_date.is_(None), PayProfileAssignment.end_date >= start_date))
+    stmt = select(PayProfileAssignment).where(*clauses)
+    if exclude_assignment_id is not None:
+        stmt = stmt.where(PayProfileAssignment.id != int(exclude_assignment_id))
+    conflict = db.execute(stmt.order_by(PayProfileAssignment.id.asc()).limit(1)).scalar_one_or_none()
+    if conflict is None:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "PAY_PROFILE_ASSIGNMENT_OVERLAP",
+            "conflicting_assignment_id": int(conflict.id),
+            "start_date": conflict.start_date.isoformat() if conflict.start_date else None,
+            "end_date": conflict.end_date.isoformat() if conflict.end_date else None,
+        },
+    )
 
 
 def _get_member_active_pay_profile_assignment(
@@ -633,7 +673,14 @@ def _serialize_pay_profile_assignment(
 
 
 def _serialize_pay_profile(
-    profile: PayProfile, *, components_count: int | None = None, assignments_count: int | None = None
+    profile: PayProfile,
+    *,
+    components_count: int | None = None,
+    assignments_count: int | None = None,
+    position_assignments_count: int | None = None,
+    direct_assignments_count: int | None = None,
+    effective_members_count: int | None = None,
+    historical_assignments_count: int | None = None,
 ) -> dict:
     payload = {
         "id": int(profile.id),
@@ -648,6 +695,14 @@ def _serialize_pay_profile(
         payload["components_count"] = int(components_count)
     if assignments_count is not None:
         payload["assignments_count"] = int(assignments_count)
+    if position_assignments_count is not None:
+        payload["position_assignments_count"] = int(position_assignments_count)
+    if direct_assignments_count is not None:
+        payload["direct_assignments_count"] = int(direct_assignments_count)
+    if effective_members_count is not None:
+        payload["effective_members_count"] = int(effective_members_count)
+    if historical_assignments_count is not None:
+        payload["historical_assignments_count"] = int(historical_assignments_count)
     return payload
 
 
@@ -676,7 +731,23 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
             PayProfileAssignment.id.desc(),
         )
     ).all()
-    member_auth_map = _build_user_auth_snapshot_map(db, [int(member.id) for _assignment, member in assignment_rows])
+    position_assignment_rows = db.execute(
+        select(PositionPayProfilePeriod, VenuePosition, User)
+        .join(VenuePosition, VenuePosition.id == PositionPayProfilePeriod.venue_position_id)
+        .join(User, User.id == PositionPayProfilePeriod.member_user_id)
+        .where(
+            PositionPayProfilePeriod.venue_id == venue_id,
+            PositionPayProfilePeriod.pay_profile_id == profile_id,
+        )
+        .order_by(
+            PositionPayProfilePeriod.is_active.desc(),
+            PositionPayProfilePeriod.valid_from.desc(),
+            PositionPayProfilePeriod.id.desc(),
+        )
+    ).all()
+    member_ids = [int(member.id) for _assignment, member in assignment_rows]
+    member_ids.extend(int(member.id) for _period, _position, member in position_assignment_rows)
+    member_auth_map = _build_user_auth_snapshot_map(db, member_ids)
     payload = _serialize_pay_profile(profile)
     payload["components"] = [_serialize_pay_component(component) for component in components]
     payload["assignments"] = [
@@ -686,5 +757,22 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
             auth_snapshot=member_auth_map.get(int(member.id)),
         )
         for assignment, member in assignment_rows
+    ]
+    payload["position_assignments"] = [
+        {
+            "id": int(period.id),
+            "venue_position_id": int(position.id),
+            "position_title": position.title,
+            "member_user_id": int(member.id),
+            "valid_from": period.valid_from.isoformat() if period.valid_from else None,
+            "valid_to": period.valid_to.isoformat() if period.valid_to else None,
+            "is_active": bool(period.is_active),
+            "member": {
+                "id": int(member.id),
+                "display_name": _display_name(member, member_auth_map.get(int(member.id))),
+                "tg_username": member.tg_username,
+            },
+        }
+        for period, position, member in position_assignment_rows
     ]
     return payload

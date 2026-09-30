@@ -33,6 +33,11 @@ import {
   payrollLineProfileTitles,
   payrollLineShiftMetrics,
 } from "/app/payroll-analytics.js?v=20260913-profiletitles1";
+import {
+  payrollPreviewPath,
+  recalculationText,
+  renderPayrollDiagnostics,
+} from "/owner-payroll/diagnostics.js?v=20260929-payrolluat1";
 
 let financialValuesHidden = false;
 
@@ -375,6 +380,8 @@ let state = {
   perms: null,
   can: { view: false, calculate: false },
   data: null,
+  payrollPreview: null,
+  payrollPreviewError: null,
   comparisonData: null,
   comparisonError: null,
   compareMode: "auto",
@@ -546,6 +553,16 @@ function renderShell() {
             <div class="finance-stat__meta">Взвешенное среднее по сотрудникам, у которых есть отработанные смены.</div>
           </div>
         </div>
+      </section>
+
+      <section class="card section-card payroll-diagnostics-card hidden" id="payrollDiagnosticsCard" aria-live="polite">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Проверка перед расчётом</b>
+            <div class="muted">Профили, компоненты и закрытые смены выбранного месяца.</div>
+          </div>
+        </div>
+        <div id="payrollDiagnostics"></div>
       </section>
 
       <section class="card section-card payroll-payment-card" id="payrollPaymentCard">
@@ -953,30 +970,6 @@ function renderState() {
   syncUrl();
 }
 
-function recalculationText(latestRecalc, runCalculatedAt) {
-  const reasonMap = {
-    manual_calculation: "ручной расчёт",
-    report_closed: "после закрытия отчёта",
-    report_reopened: "после переоткрытия отчёта",
-    closed_report_updated: "после правки закрытого отчёта",
-    shift_assignment_added: "после назначения",
-    shift_assignment_removed: "после снятия назначения",
-    shift_updated: "после изменения смены",
-    shift_deleted: "после удаления смены",
-    member_removed_from_venue: "после удаления участника",
-    member_left_venue: "после выхода участника",
-    department_month_plan_updated: "после изменения месячного плана департамента",
-    department_day_plan_updated: "после изменения дневного плана департамента",
-    department_day_plans_updated: "после массового изменения дневных планов департамента",
-  };
-  const dt = runCalculatedAt ? new Date(runCalculatedAt) : null;
-  const baseText = dt && !Number.isNaN(dt.getTime())
-    ? `обновлено ${dt.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}`
-    : (latestRecalc?.created_at ? `обновлено ${new Date(latestRecalc.created_at).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}` : "есть перерасчёт");
-  const reason = String(latestRecalc?.trigger_reason || "");
-  return reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
-}
-
 function renderPayrollLeaderboard(analytics) {
   const list = document.getElementById("payrollLeaderboard");
   const subtitle = document.getElementById("payrollLeaderboardSubtitle");
@@ -1063,6 +1056,7 @@ function renderLines() {
     settleMetric(averagePerShift, "—");
     settleMetric(runMeta, "нет доступа");
     renderPayrollLeaderboard(buildPayrollTeamAnalytics([]));
+    renderPayrollDiagnostics(state, { setVisible, esc, formatDateRu });
     return;
   }
 
@@ -1096,6 +1090,7 @@ function renderLines() {
     { money: true, goodWhen: "neutral" },
   );
   renderPayrollLeaderboard(analytics);
+  renderPayrollDiagnostics(state, { setVisible, esc, formatDateRu });
   if (runMeta) {
     if (data.run?.calculated_at) {
       const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
@@ -1275,15 +1270,28 @@ async function load() {
   }
   try {
     const primaryPromise = api(buildPayrollPath());
+    const previewPromise = state.can.calculate && state.periodMode === "month"
+      ? api(payrollPreviewPath(state.venueId, state.month))
+          .then((value) => ({ value }))
+          .catch((error) => ({ error }))
+      : Promise.resolve({ value: null });
     const comparisonPromise = state.compareMode === "none"
       ? Promise.resolve({ value: null })
       : api(buildComparisonPayrollPath())
           .then((value) => ({ value }))
           .catch((error) => ({ error }));
-    const [data, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
+    const [data, comparisonResult, previewResult] = await Promise.all([
+      primaryPromise,
+      comparisonPromise,
+      previewPromise,
+    ]);
     state.data = data;
     state.comparisonData = comparisonResult.value || null;
     state.comparisonError = comparisonResult.error || null;
+    state.payrollPreview = previewResult.value || null;
+    state.payrollPreviewError = previewResult.error
+      ? (previewResult.error?.data?.detail || previewResult.error?.message || "не удалось проверить настройки")
+      : null;
     renderLines();
   } catch (e) {
     const detail = e?.data?.detail || e?.message || "не удалось загрузить";
@@ -1303,6 +1311,14 @@ async function load() {
 
 async function onCalculate() {
   try {
+    const preview = await api(payrollPreviewPath(state.venueId, state.month));
+    state.payrollPreview = preview;
+    state.payrollPreviewError = null;
+    if (preview?.is_blocked) {
+      renderPayrollDiagnostics(state, { setVisible, esc, formatDateRu });
+      toast("Исправьте ошибки профилей перед расчётом", "err");
+      return;
+    }
     await calculatePayroll(state.venueId, state.month);
     toast("Расчёт выполнен", "ok");
     await load();

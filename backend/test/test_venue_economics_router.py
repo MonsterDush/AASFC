@@ -91,6 +91,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             "list_pos_integration_quality_issues",
             "get_pos_integration_quality_issue",
             "get_pos_integration_reconciliation",
+            "preview_payroll",
         }
         base_manifest = [row for row in manifest if row[2] not in new_route_names]
         base_digest = hashlib.sha256(
@@ -200,9 +201,14 @@ class VenueEconomicsRouterContractTests(TestCase):
                 "/pos-integrations/{connection_id}/reconciliations/{reconciliation_id}",
                 "get_pos_integration_reconciliation",
             ),
+            (
+                ("GET",),
+                "/venues/{venue_id}/payroll/preview",
+                "preview_payroll",
+            ),
         }
 
-        self.assertEqual(len(manifest), 195)
+        self.assertEqual(len(manifest), 196)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 
@@ -255,7 +261,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_core.router, 11),
             (venue_positions.router, 5),
             (venue_pay_profiles.router, 11),
-            (venue_payroll.router, 6),
+            (venue_payroll.router, 7),
             (venue_reports.router, 10),
             (venue_revenue_exports.router, 9),
             (venue_adjustments.router, 9),
@@ -278,7 +284,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 118)
+        self.assertEqual(len(native_manifest), 119)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):

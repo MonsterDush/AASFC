@@ -192,7 +192,8 @@ function renderList() {
         ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
       </div>
       <div class="muted">${esc(it.description || "Без описания")}</div>
-      <div class="mono small">Компонентов: ${Number(it.components_count || 0)} · Назначений: ${Number(it.assignments_count || 0)}</div>
+      <div class="mono small">Компонентов: ${Number(it.components_count || 0)}</div>
+      <div class="muted small">Назначен: ${Number(it.effective_members_count || 0)} сотрудникам · ${Number(it.position_assignments_count || 0)} должностям · прямых назначений: ${Number(it.direct_assignments_count || 0)}</div>
     `;
 
     const right = document.createElement("div");

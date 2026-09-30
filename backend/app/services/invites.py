@@ -147,10 +147,15 @@ def _ensure_unique_token(db: Session) -> str:
     raise RuntimeError("Failed to generate unique invite token")
 
 
-def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> None:
-    preset = getattr(inv, "default_position_json", None)
+def apply_default_position_preset(
+    db: Session,
+    *,
+    venue_id: int,
+    preset: dict | None,
+    user_id: int,
+) -> bool:
     if not isinstance(preset, dict) or not preset.get("title"):
-        return
+        return False
 
     title = str(preset.get("title")).strip()
     data = {
@@ -180,8 +185,9 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         catalog_position = db.execute(
             select(VenuePosition).where(
                 VenuePosition.id == catalog_position_id,
-                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.venue_id == venue_id,
                 VenuePosition.member_user_id.is_(None),
+                VenuePosition.is_active.is_(True),
             )
         ).scalar_one_or_none()
 
@@ -204,9 +210,10 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
             db.execute(
                 select(VenuePosition)
                 .where(
-                    VenuePosition.venue_id == inv.venue_id,
+                    VenuePosition.venue_id == venue_id,
                     VenuePosition.member_user_id.is_(None),
                     VenuePosition.title == title,
+                    VenuePosition.is_active.is_(True),
                 )
                 .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
             )
@@ -215,11 +222,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         )
 
     if catalog_position is None:
-        catalog_position = VenuePosition(
-            venue_id=inv.venue_id,
-            member_user_id=None,
-        )
-        db.add(catalog_position)
+        return False
 
     for k, v in data.items():
         setattr(catalog_position, k, v)
@@ -230,7 +233,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         db.execute(
             select(VenuePosition)
             .where(
-                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.venue_id == venue_id,
                 VenuePosition.member_user_id == user_id,
                 VenuePosition.title == title,
             )
@@ -241,7 +244,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     )
     if existing_pos is None:
         existing_pos = VenuePosition(
-            venue_id=inv.venue_id,
+            venue_id=venue_id,
             member_user_id=user_id,
         )
         db.add(existing_pos)
@@ -259,8 +262,15 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         effective_from=date.today(),
     )
 
-    _sync_default_pay_profile_assignment(
-        db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id
+    return True
+
+
+def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> bool:
+    return apply_default_position_preset(
+        db,
+        venue_id=int(inv.venue_id),
+        preset=getattr(inv, "default_position_json", None),
+        user_id=user_id,
     )
 
 
@@ -284,7 +294,18 @@ def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accept
             )
         )
 
-    _apply_default_position(db, inv=inv, user_id=user_id)
+    position_applied = _apply_default_position(db, inv=inv, user_id=user_id)
+    preset = getattr(inv, "default_position_json", None)
+    if isinstance(preset, dict) and preset.get("title"):
+        persisted_preset = dict(preset)
+        persisted_preset["application_status"] = "APPLIED" if position_applied else "SKIPPED"
+        persisted_preset["application_warning"] = (
+            None
+            if position_applied
+            else "Должность из приглашения не назначена: она удалена, архивирована или недоступна."
+        )
+        inv.default_position_json = persisted_preset
+    inv._default_position_applied = position_applied
 
     inv.accepted_user_id = user_id
     inv.accepted_at = datetime.now(timezone.utc)
@@ -475,6 +496,11 @@ def accept_invite_by_token(db: Session, *, token: str, user: User) -> VenueInvit
 
 def build_public_invite_payload(inv: VenueInvite) -> dict:
     venue: Venue | None = getattr(inv, "venue", None)
+    default_position = inv.default_position_json
+    application_status = (
+        str(default_position.get("application_status") or "").upper() if isinstance(default_position, dict) else ""
+    )
+    application_warning = default_position.get("application_warning") if isinstance(default_position, dict) else None
     return {
         "id": inv.id,
         "venue_id": inv.venue_id,
@@ -493,5 +519,9 @@ def build_public_invite_payload(inv: VenueInvite) -> dict:
         "accepted_via": inv.accepted_via,
         "invite_token": inv.invite_token,
         "invite_link": build_invite_link(inv.invite_token),
-        "default_position": inv.default_position_json,
+        "default_position": default_position,
+        "default_position_applied": (
+            application_status == "APPLIED" if application_status else getattr(inv, "_default_position_applied", None)
+        ),
+        "warnings": [application_warning] if application_warning else [],
     }

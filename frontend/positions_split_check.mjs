@@ -119,6 +119,10 @@ assert.deepEqual(domain.parsePermCodes('["SHIFTS_VIEW", "SHIFTS_MANAGE"]'), ["SH
 assert.equal(domain.memberLabel(state.members[0]), "Иванов И.И. · @ivan");
 assert.equal(domain.posReportsEnabled({ permission_codes: ["REPORTS_VIEW_DAILY"] }), true);
 assert.equal(domain.posScheduleManage({ permission_codes: ["SHIFTS_VIEW"] }), false);
+assert.equal(domain.posReportsScope({ permission_codes: ["SHIFT_REPORT_VIEW"] }), "Свои отчёты");
+assert.equal(domain.posReportsScope({ permission_codes: ["REPORTS_VIEW_DAILY"] }), "Все отчёты");
+assert.equal(domain.posScheduleScope({ permission_codes: ["SHIFTS_VIEW"] }), "Свой график");
+assert.equal(domain.posScheduleScope({ permission_codes: ["SHIFTS_MANAGE"] }), "Управление графиком");
 assert.deepEqual(
   domain.normalizePositions({ positions: [{ id: 9, pay_profile_id: "3", permission_codes: '["SHIFTS_VIEW"]' }] }),
   [{ id: 9, pay_profile_id: 3, permission_codes: ["SHIFTS_VIEW"] }],

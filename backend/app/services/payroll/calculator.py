@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
     PayComponent,
     PayProfile,
     PayProfileAssignment,
-    PayrollLine,
     PayrollPaymentSettings,
     PayrollRun,
     User,
@@ -110,7 +109,11 @@ from .percent_calculations import (
     _component_boost_source_type as _component_boost_source_type,
 )
 from .position_contexts import load_position_payroll_contexts
-from .position_lines import add_position_context_to_aggregate, build_payroll_lines_from_position_aggregates
+from .position_lines import (
+    add_position_context_to_aggregate,
+    build_payroll_lines_from_position_aggregates,
+    clear_payroll_lines_for_run,
+)
 
 
 def calculate_payroll_for_month(
@@ -145,7 +148,7 @@ def calculate_payroll_for_month(
             int(calculated_by_user_id) if calculated_by_user_id is not None else run.calculated_by_user_id
         )
         run.calculated_at = datetime.utcnow()
-        db.execute(delete(PayrollLine).where(PayrollLine.payroll_run_id == int(run.id)))
+        clear_payroll_lines_for_run(db, payroll_run_id=int(run.id))
         delete_finance_entries_for_source(db=db, source_type="payroll_run", source_id=int(run.id))
         db.flush()
 
@@ -165,6 +168,7 @@ def calculate_payroll_for_month(
         month_start=month_start,
         month_end_excl=month_end_excl,
         fallback_assignments=selected_assignments,
+        warnings=(calculation_warnings := []),
     )
     profile_ids = sorted({int(context.profile.id) for context in payroll_contexts})
     components_by_profile = _load_profile_components(db, profile_ids=profile_ids)
@@ -574,4 +578,17 @@ def calculate_payroll_for_month(
     run.lines_count = len(lines)
     db.flush()
 
-    return PayrollCalculationResult(run=run, lines=lines)
+    return PayrollCalculationResult(
+        run=run,
+        lines=lines,
+        warnings=calculation_warnings,
+        diagnostics={
+            "contexts_count": len(payroll_contexts),
+            "members_count": len(lines),
+            "shifts_count": sum(int(context.metrics.shifts_count) for context in payroll_contexts),
+            "components_count": sum(
+                len(components_by_profile.get(int(context.profile.id), [])) for context in payroll_contexts
+            ),
+            "profiles_count": len(profile_ids),
+        },
+    )

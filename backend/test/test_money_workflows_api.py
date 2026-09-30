@@ -185,6 +185,16 @@ class MoneyWorkflowApiTests(unittest.TestCase):
     def test_payroll_month_range_profiles_and_payment_drafts_reconcile(self):
         profiles = self.json("GET", f"/venues/{self.venue_id}/pay-profiles")
         self.assertEqual(len(profiles), 3)
+        for profile in profiles:
+            self.assertTrue(
+                {
+                    "assignments_count",
+                    "position_assignments_count",
+                    "direct_assignments_count",
+                    "effective_members_count",
+                    "historical_assignments_count",
+                }.issubset(profile)
+            )
         profile_details = [
             self.json("GET", f"/venues/{self.venue_id}/pay-profiles/{profile['id']}") for profile in profiles
         ]
@@ -235,6 +245,21 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertEqual(partial["date_from"], "2026-09-10")
         self.assertEqual(partial["date_to"], "2026-09-19")
         self.assertEqual(partial["total_amount_minor"], sum(row["amount_minor"] for row in partial["lines"]))
+
+        preview = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/payroll/preview",
+            params={"month": self.month},
+        )
+        self.assertFalse(preview["is_blocked"])
+        self.assertEqual(preview["total_amount_minor"], monthly["total_amount_minor"])
+        self.assertEqual(preview["lines_count"], monthly["lines_count"])
+        after_preview = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/payroll",
+            params={"month": self.month},
+        )
+        self.assertEqual(after_preview["run"]["calculated_at"], monthly["run"]["calculated_at"])
 
         recalculated = self.json(
             "POST",
@@ -375,21 +400,17 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertTrue(patched["boost_enabled"])
         self.assertEqual(patched["effective_boost_recalc_mode"], "EXCESS_ONLY")
 
-        assignment = self.json(
+        overlap = self.json(
             "POST",
             f"/venues/{self.venue_id}/pay-profiles/{profile_id}/assignments",
+            expected=409,
             json={
                 "member_user_id": self.staff_id,
                 "start_date": "2035-01-01",
                 "end_date": "2035-12-31",
             },
         )
-        assignment = self.json(
-            "PATCH",
-            f"/venues/{self.venue_id}/pay-profile-assignments/{assignment['id']}",
-            json={"is_active": False},
-        )
-        self.assertFalse(assignment["is_active"])
+        self.assertEqual(overlap["detail"]["code"], "PAY_PROFILE_ASSIGNMENT_OVERLAP")
         detail = self.json("GET", f"/venues/{self.venue_id}/pay-profiles/{profile_id}")
         self.assertEqual(len(detail["components"]), 7)
 
@@ -514,6 +535,16 @@ class MoneyWorkflowApiTests(unittest.TestCase):
             {(item["check_key"], item["source_type"], item["source_id"]) for item in baseline_reconciliation["issues"]},
         )
 
+        dashboard_before = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/finance/summary",
+            params={"month": self.month},
+        )
+        monthly_before = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/summary/monthly",
+            params={"month": self.month},
+        )
         rule = self.json(
             "POST",
             f"/venues/{self.venue_id}/recurring-expense-rules",
@@ -546,6 +577,31 @@ class MoneyWorkflowApiTests(unittest.TestCase):
         self.assertEqual(repeated["created_count"], 0)
         self.assertEqual(repeated["updated_count"], 1)
         self.assertEqual(repeated["updated"][0]["id"], generated["created"][0]["id"])
+        dashboard_draft = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/finance/summary",
+            params={"month": self.month},
+        )
+        self.assertEqual(dashboard_draft["expense_minor"], dashboard_before["expense_minor"])
+        self.json(
+            "PATCH",
+            f"/venues/{self.venue_id}/expenses/{generated['created'][0]['id']}",
+            json={"status": "CONFIRMED"},
+        )
+        dashboard_after = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/finance/summary",
+            params={"month": self.month},
+        )
+        monthly_after = self.json(
+            "GET",
+            f"/venues/{self.venue_id}/summary/monthly",
+            params={"month": self.month},
+        )
+        self.assertEqual(dashboard_after["expense_minor"] - dashboard_before["expense_minor"], 34_567)
+        self.assertEqual(dashboard_before["profit_minor"] - dashboard_after["profit_minor"], 34_567)
+        self.assertEqual(monthly_after["expense_minor"] - monthly_before["expense_minor"], 34_567)
+        self.assertEqual(monthly_before["profit_minor"] - monthly_after["profit_minor"], 34_567)
 
         self.json("DELETE", f"/venues/{self.venue_id}/balance-adjustments/{adjustment['id']}")
         self.json("DELETE", f"/venues/{self.venue_id}/payment-method-transfers/{transfer['id']}")

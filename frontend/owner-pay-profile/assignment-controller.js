@@ -26,11 +26,38 @@ function renderAssignments() {
     return;
   }
   const items = Array.isArray(state.profile?.assignments) ? state.profile.assignments : [];
-  if (!items.length) {
+  const positionItems = Array.isArray(state.profile?.position_assignments) ? state.profile.position_assignments : [];
+  if (!items.length && !positionItems.length) {
     el.innerHTML = `<div class="muted">Назначений пока нет</div>`;
     return;
   }
   el.innerHTML = "";
+  if (positionItems.length) {
+    const heading = document.createElement("div");
+    heading.className = "muted small mb-8";
+    heading.textContent = "Через должности";
+    el.appendChild(heading);
+  }
+  positionItems.forEach((it) => {
+    const label = memberName(resolveAssignmentMember(it));
+    const range = `${it.valid_from || "без даты начала"} → ${it.valid_to || "без даты окончания"}`;
+    const row = document.createElement("div");
+    row.className = "listrow";
+    row.innerHTML = `
+      <div class="listrow__left">
+        <div class="row gap-8"><b>${esc(label)}</b>${it.is_active ? "" : `<span class="badge">неактивно</span>`}</div>
+        <div>${esc(it.position_title || "Должность")}</div>
+        <div class="mono listrow__meta">${esc(range)}</div>
+      </div>
+    `;
+    el.appendChild(row);
+  });
+  if (items.length) {
+    const heading = document.createElement("div");
+    heading.className = "muted small mt-12 mb-8";
+    heading.textContent = "Прямые назначения без должности";
+    el.appendChild(heading);
+  }
   items.forEach((it) => {
     const label = memberName(resolveAssignmentMember(it));
     const range = `${it.start_date || "без даты начала"} → ${it.end_date || "без даты окончания"}`;
@@ -131,8 +158,8 @@ function openAssignmentEditor({ mode, item = null }) {
   if (!state.can.manage) return;
   const isEdit = mode === "edit";
   openEditModal({
-    title: isEdit ? "Редактировать назначение" : "Новое назначение",
-    hint: "Если даты пустые, профиль считается действующим без ограничений",
+    title: isEdit ? "Редактировать прямое назначение" : "Новое прямое назначение",
+    hint: "Используется только как fallback без разрешимого профиля должности. Если даты пустые, профиль действует без ограничений.",
     bodyHtml: assignmentForm({ mode, item }),
   });
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);

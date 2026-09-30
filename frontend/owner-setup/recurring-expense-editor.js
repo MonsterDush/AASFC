@@ -1,5 +1,14 @@
 export function createRecurringExpenseSetupController(context) {
-  const { toast, confirmModal, api, getPaymentMethods, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible } = context;
+  const { toast, confirmModal, api, getPaymentMethods, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible, clearStepDraft } = context;
+
+  function formatMoneyMinor(value) {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(Number(value || 0) / 100);
+  }
 
   async function loadInlineRecurringExpenses({ force = false } = {}) {
     const inlineState = state.inline.recurring_expenses;
@@ -55,7 +64,7 @@ export function createRecurringExpenseSetupController(context) {
                       <span class="badge">${esc(recurringModeLabel(item.generation_mode))}</span>
                       ${item.is_active === false ? '<span class="badge">выключено</span>' : ''}
                     </div>
-                    <div class="setup-minirow__meta">${esc(item.category?.title || 'Без категории')} · день ${esc(item.day_of_month || 1)} · ${String(item.generation_mode || 'FIXED').toUpperCase() === 'PERCENT' ? `${esc(minorToMoneyInput(item.percent_bps || 0))}%` : `${esc(minorToMoneyInput(item.amount_minor || 0))} ₽`}</div>
+                    <div class="setup-minirow__meta">${esc(item.category?.title || 'Без категории')} · день ${esc(item.day_of_month || 1)} · ${String(item.generation_mode || 'FIXED').toUpperCase() === 'PERCENT' ? `${esc(minorToMoneyInput(item.percent_bps || 0))}%` : esc(formatMoneyMinor(item.amount_minor || 0))}</div>
                     <div class="setup-minirow__meta">${String(item.shift_slot || 'TOTAL').toUpperCase() === 'DAY' ? 'Только день' : String(item.shift_slot || 'TOTAL').toUpperCase() === 'NIGHT' ? 'Только ночь' : 'Все смены поровну'}</div>
                   </div>
                   <div class="setup-minirow__actions">
@@ -76,7 +85,7 @@ export function createRecurringExpenseSetupController(context) {
               <label><span>Поставщик</span><select class="input" id="recurringSupplierId">${buildSelectOptions(suppliers, editing?.supplier_id, 'Без поставщика')}</select></label>
               <label><span>Оплачивать через</span><select class="input" id="recurringPaymentMethodId">${buildSelectOptions(paymentMethods, editing?.payment_method_id, 'Не указано')}</select></label>
               <label><span>Дата старта</span><input class="input" id="recurringStartDate" type="date" value="${esc(editing?.start_date || todayIso())}" /></label>
-              <label><span>Дата окончания</span><input class="input" id="recurringEndDate" type="date" value="${esc(editing?.end_date || '')}" /></label>
+              <label for="recurringEndDate"><span>Дата окончания</span><input class="input" id="recurringEndDate" type="date" value="${esc(editing?.end_date || '')}" aria-describedby="recurringEndDateHint" /><small id="recurringEndDateHint" class="muted">Необязательно. Если пусто, правило действует без даты окончания.</small></label>
               <label><span>День месяца</span><input class="input" id="recurringDayOfMonth" type="number" min="1" max="31" value="${esc(editing?.day_of_month || 1)}" /></label>
               <label><span>Отнести расход</span><select class="input" id="recurringShiftSlot"><option value="TOTAL" ${String(editing?.shift_slot || 'TOTAL').toUpperCase() === 'TOTAL' ? 'selected' : ''}>На все смены поровну</option><option value="DAY" ${String(editing?.shift_slot || '').toUpperCase() === 'DAY' ? 'selected' : ''}>Только день</option><option value="NIGHT" ${String(editing?.shift_slot || '').toUpperCase() === 'NIGHT' ? 'selected' : ''}>Только ночь</option></select></label>
               <label><span>Размазать на месяцев</span><input class="input" id="recurringSpreadMonths" type="number" min="1" max="120" value="${esc(editing?.spread_months || 1)}" /></label>
@@ -147,6 +156,12 @@ export function createRecurringExpenseSetupController(context) {
 
     document.getElementById('recurringGenerationMode')?.addEventListener('change', syncRecurringModeVisibility);
     syncRecurringModeVisibility();
+    const recurringEndDate = document.getElementById('recurringEndDate');
+    const syncRecurringEndDateLabel = () => {
+      if (recurringEndDate) recurringEndDate.setAttribute('aria-label', recurringEndDate.value ? `Дата окончания: ${recurringEndDate.value}` : 'Дата окончания: не выбрана');
+    };
+    recurringEndDate?.addEventListener('change', syncRecurringEndDateLabel);
+    syncRecurringEndDateLabel();
 
     document.getElementById('btnSaveRecurringInline')?.addEventListener('click', async () => {
       if (!(data.categories || []).length) {
@@ -178,6 +193,7 @@ export function createRecurringExpenseSetupController(context) {
       try {
         if (inlineState.editor?.id) await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: payload });
         else await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules`, { method: 'POST', body: payload });
+        clearStepDraft('recurring_expenses');
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineRecurringExpenses({ force: true });
         await loadSetup({ preserveSelection: true });
