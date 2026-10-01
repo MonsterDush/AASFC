@@ -309,9 +309,9 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-donut-segment--4,.owner-summary-page .summary-donut-swatch--4{fill:var(--textSecondary);background:var(--textSecondary)}
 .owner-summary-page .summary-donut-segment--5,.owner-summary-page .summary-donut-swatch--5{fill:var(--muted);background:var(--muted)}
 .owner-summary-page .summary-donut-segment--6,.owner-summary-page .summary-donut-swatch--6{fill:var(--borderStrong);background:var(--borderStrong)}
-.owner-summary-page .summary-donut-center{position:absolute;inset:29%;display:grid;place-content:center;gap:3px;text-align:center;pointer-events:none}
-.owner-summary-page .summary-donut-center span{color:var(--muted);font-size:11px;font-weight:600}
-.owner-summary-page .summary-donut-center b{font-size:13px;line-height:1.2}
+.owner-summary-page .summary-donut-center{position:absolute;inset:29%;display:grid;place-content:center;gap:3px;text-align:center;pointer-events:none;background:var(--card);border-radius:50%}
+.owner-summary-page .summary-donut-center span{color:var(--textSecondary);font-size:11px;font-weight:600}
+.owner-summary-page .summary-donut-center b{color:var(--text);font-size:13px;line-height:1.2}
 .owner-summary-page .summary-donut-legend{display:grid;gap:2px;min-width:0}
 .owner-summary-page .summary-donut-legend__row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0;padding:4px 6px;border-radius:9px;color:var(--text);font-size:11px;text-decoration:none}
 .owner-summary-page a.summary-donut-legend__row:hover,.owner-summary-page a.summary-donut-legend__row:focus{background:var(--surfaceTintSoft);color:var(--accent);outline:none}

@@ -725,7 +725,7 @@ function renderSummaryCostStructure(summary) {
     : "Наведите на сектор или строку. Нажмите, чтобы открыть детализацию.";
   container.innerHTML = `<div class="summary-donut-layout">
     <div class="summary-donut-visual">
-      <svg class="summary-donut" viewBox="0 0 120 120" role="img" aria-label="Структура затрат">${segmentMarkup}</svg>
+      <svg class="summary-donut" viewBox="0 0 120 120" role="group" aria-label="Структура затрат">${segmentMarkup}</svg>
       <div class="summary-donut-center"><span>Всего</span><b>${escapeHtml(fmtMoneyMinor(visibleTotal))}</b></div>
     </div>
     <div class="summary-donut-legend">${legendMarkup}</div>
