@@ -79,7 +79,7 @@
 .payroll-person__metrics{display:flex;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:12px}
 .payroll-person__metrics span{display:inline-flex;align-items:center;gap:3px;padding:6px 9px;border:1px solid var(--border);border-radius:999px;background:var(--card)}
 .payroll-person__metrics b{color:var(--text);font-variant-numeric:tabular-nums}
-.payroll-person__metrics .payroll-person__metric-average{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.payroll-person__metrics .payroll-person__metric-average{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--text)}
 .payroll-person__amount{flex:0 0 auto;color:var(--text);font-size:21px;font-weight:600;letter-spacing:-.02em;white-space:nowrap}
 .payroll-person .payroll-breakdown{margin-top:14px}
 .payroll-person .payroll-breakdown summary{display:inline-flex;align-items:center;gap:6px;min-height:36px}
