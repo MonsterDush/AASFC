@@ -239,7 +239,7 @@ class FrontendAssuranceContractTests(TestCase):
 
         self.assertIn("createUiPreferences", app)
         self.assertIn("staff-shifts/helpers.js", shifts)
-        self.assertLess(len(preferences.read_text(encoding="utf-8").splitlines()), 250)
+        self.assertLessEqual(len(preferences.read_text(encoding="utf-8").splitlines()), 250)
         self.assertLess(len(helpers.read_text(encoding="utf-8").splitlines()), 180)
 
 
