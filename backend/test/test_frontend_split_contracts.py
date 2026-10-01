@@ -882,6 +882,26 @@ class FunctionalFrontendRegressionContractTests(TestCase):
         self.assertIn("api(`/me/venues/${venueId}/members`)", source)
         self.assertNotIn("api(`/venues/${venueId}/members`)", source)
 
+    def test_billing_history_keeps_transactions_in_its_own_scope(self):
+        source = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
+        history = source[source.index("function showBillingHistory()") : source.index("function bindBillingActions()")]
+
+        self.assertIn("const txs = Array.isArray(billingInfo?.transactions)", history)
+        self.assertIn("...txs.map((tx) => ({", history)
+
+    def test_calendar_headers_use_an_opaque_contrast_safe_token(self):
+        styles = (FRONTEND / "styles" / "core" / "calendar-core.css").read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".cal-hcell{font-size:12px;color:var(--textSecondary);text-align:center;padding:6px 0;opacity:1}",
+            styles,
+        )
+
+    def test_salary_total_label_keeps_contrast_on_accent_surface(self):
+        styles = (FRONTEND / "styles" / "pages" / "staff-salary.css").read_text(encoding="utf-8")
+
+        self.assertIn(".salary-summary-row--total > .muted{color:var(--text)}", styles)
+
     def test_admin_position_templates_has_shared_feedback_dom(self):
         source = (FRONTEND / "admin-position-templates.html").read_text(encoding="utf-8")
 

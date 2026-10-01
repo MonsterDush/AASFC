@@ -656,6 +656,7 @@ const titleEl = document.getElementById("title");
         }
 
         function showBillingHistory() {
+          const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
           const events = Array.isArray(billingInfo?.events) ? billingInfo.events : [];
           if (!txs.length && !events.length) {
             openModal("История биллинга", "Пока нет операций по этому заведению.");
@@ -850,7 +851,6 @@ const titleEl = document.getElementById("title");
           const isTrial = !!(billingInfo?.is_trial || perms?.is_trial);
           const trialUntil = billingInfo?.trial_until || perms?.trial_until || paidUntil;
           const planLabel = billingInfo?.plan?.label || "Axelio · 2990 ₽ / 30 дней";
-          const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
 
           let bannerHtml = "";
           if (isTrial && status === "ACTIVE") {

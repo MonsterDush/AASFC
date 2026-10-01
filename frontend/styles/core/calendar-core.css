@@ -2,7 +2,7 @@
 .cal{width:100%}
 .cal-head, .cal-body{display:grid;grid-template-columns:repeat(7, minmax(0, 1fr));gap:8px}
 .cal-head{margin-bottom:6px}
-.cal-hcell{font-size:12px;color:var(--muted);text-align:center;padding:6px 0;opacity:.85}
+.cal-hcell{font-size:12px;color:var(--textSecondary);text-align:center;padding:6px 0;opacity:1}
 
 .cal-cell{
   min-width:0;
@@ -452,4 +452,3 @@
 .paybar__seg.cash{background:var(--accentA45)}
 .paybar__seg.cashless{background:var(--accentA22)}
   :root:not([data-theme="light"]) .paybar__seg.cashless{background:rgba(60,120,200,.28)}
-

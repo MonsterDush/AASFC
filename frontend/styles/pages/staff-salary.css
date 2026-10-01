@@ -21,6 +21,7 @@
 .salary-summary-row{display:grid;gap:5px;padding:11px 12px;border:1px solid var(--border);border-radius:13px;background:var(--surfaceTintSoft)}
 .salary-summary-row b{font-size:17px;font-variant-numeric:tabular-nums}
 .salary-summary-row--total{grid-column:1/-1;border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.salary-summary-row--total > .muted{color:var(--text)}
 .salary-summary-row--total b{color:var(--accent);font-size:21px}
 .salary-source-hint{min-height:34px;margin-top:12px;line-height:1.45}
 .salary-summary-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
