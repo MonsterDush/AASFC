@@ -5,8 +5,21 @@ import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
 import { createNavigation } from "/app/navigation.js?v=20261001-ui16";
 import { createUiPreferences } from "/app/ui-preferences.js?v=20261001-ui16";
 import { enableDemoMetrika, disableDemoMetrika, trackDemoMetrikaEvent } from "/app/demo-metrika.js?v=20260820-demo1";
-import "/app/context-help.js?v=20261001-ui16";
-import "/app/period-picker.js?v=20261001-ui16";
+
+// These are page-level behaviors. Keep them out of the auth bundle so the
+// lightweight login screen does not pay for help popovers and period menus it
+// cannot render. Pages that use the behavior still load it as soon as their
+// markup is available (app.js is imported from the page module at the end of
+// the document).
+if (typeof document !== "undefined") {
+  const pathname = String(document.location?.pathname || "").toLowerCase();
+  if (!pathname.endsWith("/auth.html")) {
+    void import("/app/context-help.js?v=20261001-ui16");
+  }
+  if (document.querySelector("[data-period-picker]")) {
+    void import("/app/period-picker.js?v=20261001-ui16");
+  }
+}
 
 const uiPreferences = createUiPreferences();
 export const { getLang, setLang, t, wa, looksLikeTelegramWebApp, ensureTelegramWebAppLoaded, cacheSystemRole, getCachedSystemRole, isSuperAdminCached, getThemePref, setThemePref, applyTheme, applyTelegramTheme } = uiPreferences;

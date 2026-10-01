@@ -82,6 +82,16 @@ class PageLoaderContractTests(TestCase):
         ):
             self.assertIn(responsive_contract, styles)
 
+    def test_auth_bundle_defers_page_only_ui_modules(self):
+        app = (FRONTEND / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('import "/app/context-help.js', app)
+        self.assertNotIn('import "/app/period-picker.js', app)
+        self.assertIn('pathname.endsWith("/auth.html")', app)
+        self.assertIn('import("/app/context-help.js?v=', app)
+        self.assertIn('document.querySelector("[data-period-picker]")', app)
+        self.assertIn('import("/app/period-picker.js?v=', app)
+
 
 class DemoMetrikaContractTests(TestCase):
     def test_metrika_is_initialized_only_after_authoritative_demo_state(self):
