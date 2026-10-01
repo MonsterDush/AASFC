@@ -20,7 +20,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20261001-ui13";
+} from "/app.js?v=20261001-ui16";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260906-tiers1";
 import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260906-tiers1";

@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleVersion = "20261001-ui13";
+const globalStyleVersion = "20261001-ui16";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -136,35 +136,35 @@ const inlineFreePages = [
   "staff-adjustments.html",
 ];
 const inlineFreeEntrypoints = new Map([
-  ["admin-position-templates.html", "/admin-position-templates.js?v=20261001-ui13"],
-  ["app-adjustments.html", "/app-adjustments.js?v=20261001-ui13"],
-  ["owner-departments.html", "/owner-departments.js?v=20261001-ui13"],
-  ["owner-day-economics.html", "/owner-day-economics.js?v=20261001-ui13"],
-  ["owner-department-plans.html", "/owner-department-plans.js?v=20261001-ui13"],
-  ["owner-dashboard.html", "/owner-dashboard.js?v=20261001-ui13"],
-  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20261001-ui13"],
-  ["owner-economics-rules.html", "/owner-economics-rules.js?v=20261001-ui13"],
-  ["owner-expense-categories.html", "/owner-expense-categories.js?v=20261001-ui13"],
-  ["owner-expenses.html", "/owner-expenses.js?v=20261001-ui13"],
-  ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20261001-ui13"],
-  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20261001-ui13"],
-  ["owner-integrations.html", "/owner-integrations.js?v=20261001-ui13"],
-  ["owner-kpi.html", "/owner-kpi.js?v=20261001-ui13"],
-  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20261001-ui13"],
-  ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20261001-ui13"],
-  ["owner-payroll.html", "/owner-payroll.js?v=20261001-ui13"],
-  ["owner-payment-methods.html", "/owner-payment-methods.js?v=20261001-ui13"],
-  ["owner-quickresto.html", "/owner-quickresto.js?v=20261001-ui13"],
-  ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20261001-ui13"],
-  ["owner-quickresto-kpi.html", "/owner-quickresto-kpi.js?v=20261001-ui13"],
-  ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20261001-ui13"],
-  ["owner-setup.html", "/owner-setup.js?v=20261001-ui13"],
-  ["owner-summary.html", "/owner-summary.js?v=20261001-ui13"],
-  ["owner-suppliers.html", "/owner-suppliers.js?v=20261001-ui13"],
-  ["owner-turnover.html", "/owner-turnover.js?v=20261001-ui13"],
-  ["shift-intervals.html", "/shift-intervals.js?v=20261001-ui13"],
-  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20261001-ui13"],
-  ["staff-adjustments.html", "/staff-adjustments.js?v=20261001-ui13"],
+  ["admin-position-templates.html", "/admin-position-templates.js?v=20261001-ui16"],
+  ["app-adjustments.html", "/app-adjustments.js?v=20261001-ui16"],
+  ["owner-departments.html", "/owner-departments.js?v=20261001-ui16"],
+  ["owner-day-economics.html", "/owner-day-economics.js?v=20261001-ui16"],
+  ["owner-department-plans.html", "/owner-department-plans.js?v=20261001-ui16"],
+  ["owner-dashboard.html", "/owner-dashboard.js?v=20261001-ui16"],
+  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20261001-ui16"],
+  ["owner-economics-rules.html", "/owner-economics-rules.js?v=20261001-ui16"],
+  ["owner-expense-categories.html", "/owner-expense-categories.js?v=20261001-ui16"],
+  ["owner-expenses.html", "/owner-expenses.js?v=20261001-ui16"],
+  ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20261001-ui16"],
+  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20261001-ui16"],
+  ["owner-integrations.html", "/owner-integrations.js?v=20261001-ui16"],
+  ["owner-kpi.html", "/owner-kpi.js?v=20261001-ui16"],
+  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20261001-ui16"],
+  ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20261001-ui16"],
+  ["owner-payroll.html", "/owner-payroll.js?v=20261001-ui16"],
+  ["owner-payment-methods.html", "/owner-payment-methods.js?v=20261001-ui16"],
+  ["owner-quickresto.html", "/owner-quickresto.js?v=20261001-ui16"],
+  ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20261001-ui16"],
+  ["owner-quickresto-kpi.html", "/owner-quickresto-kpi.js?v=20261001-ui16"],
+  ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20261001-ui16"],
+  ["owner-setup.html", "/owner-setup.js?v=20261001-ui16"],
+  ["owner-summary.html", "/owner-summary.js?v=20261001-ui16"],
+  ["owner-suppliers.html", "/owner-suppliers.js?v=20261001-ui16"],
+  ["owner-turnover.html", "/owner-turnover.js?v=20261001-ui16"],
+  ["shift-intervals.html", "/shift-intervals.js?v=20261001-ui16"],
+  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20261001-ui16"],
+  ["staff-adjustments.html", "/staff-adjustments.js?v=20261001-ui16"],
 ]);
 const inlineFreeModules = [
   "admin-position-templates.js",
@@ -591,7 +591,7 @@ for (const fileName of unifiedCatalogFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.doesNotMatch(source, /(?:\sstyle\s*=|\.style\s*=)/, `${fileName} regained inline layout styles`);
   const htmlSource = fs.readFileSync(path.join(frontendDir, fileName.replace(/\.js$/, ".html")), "utf8");
-  const cacheKey = "20261001-ui13";
+  const cacheKey = "20261001-ui16";
   assert.ok(
     htmlSource.includes(`src="/${fileName}?v=${cacheKey}"`),
     `${fileName} cache key is stale`,

@@ -161,6 +161,7 @@ export function createNavigation(context) {
     button.setAttribute("aria-controls", menuId);
     button.setAttribute("aria-expanded", "false");
     if (activeOverflowLink) {
+      moreWrap.classList.add("nav-more--active");
       button.classList.add("active");
     }
     const menu = document.createElement("div");

@@ -55,7 +55,7 @@ export async function showContextHelp(trigger) {
 
 const DESCRIPTION_SELECTORS = [
   "[data-context-description]",
-  ".topbar .title > .muted:not([data-keep-visible])",
+  ".topbar .title > .muted:not([id]):not([data-keep-visible])",
   ".section-card__title > .muted:not([id]):not([data-keep-visible])",
   ".section-card__head > div > .muted:not([id]):not([data-keep-visible])",
   ".section-card__head .section-card__title .muted:not([id]):not([data-keep-visible])",

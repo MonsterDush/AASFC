@@ -14,7 +14,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20261001-ui13";
+} from "/app.js?v=20261001-ui16";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 

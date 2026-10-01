@@ -278,6 +278,7 @@ body.app-shell-enabled > .container > *{min-width:0;max-width:100%}
   body.app-shell-enabled .nav .wrap #nav{display:flex;align-items:center;justify-content:center;gap:4px;width:max-content;max-width:100%;overflow:visible;padding:0}
   body.app-shell-enabled .nav .wrap #nav > a,
   body.app-shell-enabled .nav-more{flex:0 0 44px;width:44px;min-width:44px}
+  body.app-shell-enabled .nav-more.nav-more--active{flex:0 1 auto;width:auto;max-width:150px}
   body.app-shell-enabled .nav .wrap #nav > a,
   body.app-shell-enabled .nav-more__button{display:flex;align-items:center;justify-content:center;gap:0;width:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--muted);font-size:13px;box-shadow:none}
   body.app-shell-enabled .nav .wrap #nav > a:is(.app-nav-brand,.nav-overflow-link){display:none}

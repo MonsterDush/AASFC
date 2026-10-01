@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20261001-ui13";
+} from "/app.js?v=20261001-ui16";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
