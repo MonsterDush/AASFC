@@ -104,6 +104,11 @@ export function promoteContextDescriptions(root = document) {
     }
     if (!title) return;
 
+    // <summary> is already an interactive disclosure control.
+    // Never inject an info button into it (or into one of its descendants),
+    // otherwise accessibility tools report nested-interactive.
+    if (title.closest?.("summary")) return;
+
     if (!description.id) {
       descriptionId += 1;
       description.id = `contextDescription${descriptionId}`;
