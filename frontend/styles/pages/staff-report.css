@@ -2,6 +2,7 @@
 .staff-report-content{display:grid;gap:14px}
 .staff-report-calendar-card{min-width:0;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 80%)}
 .staff-report-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,auto);align-items:center;gap:14px}
+.staff-report-toolbar>.period-menu-trigger{width:100%}
 .staff-report-month{display:grid;grid-template-columns:42px minmax(160px,240px) 42px;align-items:center;gap:8px;text-align:center;font-size:22px}
 .staff-report-month #monthLabel{min-width:0;line-height:1.1;white-space:nowrap}
 .staff-report-month-button{width:42px;min-height:42px;padding:0;font-size:12px}
@@ -71,5 +72,5 @@
   .staff-report-calendar .cal-cell{min-height:56px;padding:5px}
 }
 .rep-unallocated{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:10px 12px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accentSoftBg)}
-.rep-unallocated b,.rep-unallocated span{font-size:12px;font-weight:900}
+.rep-unallocated b,.rep-unallocated span{font-size:12px;font-weight:600}
 .rep-unallocated small{grid-column:1/-1;color:var(--muted);font-size:10px;line-height:1.4}

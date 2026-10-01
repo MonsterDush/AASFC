@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-dashboard.css?v=20260925-owner-dashboard3" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/owner-dashboard.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -33,23 +33,23 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <main class="card owner-dashboard-content">
+    <main class="owner-dashboard-content">
       <section class="owner-dashboard-head" aria-labelledby="dashboardTitle">
-        <div>
-          <div class="owner-dashboard-eyebrow">Мои показатели</div>
+        <div class="block-title-with-info owner-dashboard-head__title">
           <h1 id="dashboardTitle">Что происходит сейчас</h1>
-          <div class="muted" id="dashboardPeriodLabel">Текущий месяц</div>
+          <button class="info-button" type="button" aria-label="О дашборде" aria-expanded="false" data-info="Ключевые показатели, задачи, смены и состояние интеграций выбранного заведения.">i</button>
         </div>
         <div class="owner-dashboard-head__actions">
           <select class="finance-control hidden" id="dashboardScope" aria-label="Охват дашборда">
             <option value="venue">Текущее заведение</option>
             <option value="network">Все заведения</option>
           </select>
-          <input class="finance-control" id="dashboardMonthPick" type="month" aria-label="Месяц дашборда" />
+          <button class="period-menu-trigger" id="dashboardPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false">
+            <span data-period-label id="dashboardPeriodLabel">Текущий месяц</span>
+          </button>
           <button class="btn subtle" id="configureDashboardBtn" type="button" aria-expanded="false" aria-controls="dashboardConfig">Настроить</button>
         </div>
       </section>
-      <div class="owner-dashboard-freshness muted" id="dashboardFreshness" aria-live="polite">Данные обновляются…</div>
 
       <section class="itemcard owner-dashboard-config hidden" id="dashboardConfig" aria-labelledby="dashboardConfigTitle">
         <div class="owner-dashboard-config__head">
@@ -84,37 +84,15 @@
 
       <section class="card owner-dashboard-attention" id="dashboardAttention" aria-labelledby="dashboardAttentionTitle">
         <div class="owner-dashboard-section-head">
-          <div>
-            <b id="dashboardAttentionTitle">Требует внимания</b>
-            <div class="muted mt-4">События, которые могут повлиять на деньги или работу смены</div>
-          </div>
+          <div class="block-title-with-info"><b id="dashboardAttentionTitle">Требует внимания</b><button class="info-button" type="button" aria-label="О важных событиях" aria-expanded="false" data-info="События, которые могут повлиять на деньги или работу смены.">i</button></div>
           <span class="badge" id="dashboardAttentionCount">0</span>
         </div>
         <div class="owner-dashboard-attention__list mt-12" id="dashboardAttentionList" aria-live="polite"></div>
       </section>
 
-      <section class="card owner-dashboard-trend" id="dashboardTrend" aria-labelledby="dashboardTrendTitle">
-        <div class="owner-dashboard-section-head">
-          <div>
-            <b id="dashboardTrendTitle">Динамика месяца</b>
-            <div class="muted mt-4">Закрытые отчёты и признанные затраты по дням</div>
-          </div>
-          <div class="seg owner-dashboard-trend__switch" id="dashboardTrendSwitch" aria-label="Показатель графика">
-            <button type="button" class="active" data-trend="revenue">Выручка</button>
-            <button type="button" data-trend="profit">Прибыль</button>
-            <button type="button" data-trend="cost">Затраты</button>
-          </div>
-        </div>
-        <div class="owner-dashboard-trend__chart mt-12" id="dashboardTrendChart" role="img" aria-label="График динамики за месяц"></div>
-        <div class="owner-dashboard-trend__legend muted mt-8" id="dashboardTrendLegend"></div>
-      </section>
-
       <section class="card owner-dashboard-operations" id="dashboardOperations" aria-labelledby="dashboardOperationsTitle">
         <div class="owner-dashboard-section-head">
-          <div>
-            <b id="dashboardOperationsTitle">Операционка сегодня</b>
-            <div class="muted mt-4">Смена, команда и показатели из отчёта дня</div>
-          </div>
+          <div class="block-title-with-info"><b id="dashboardOperationsTitle">Операционка сегодня</b><button class="info-button" type="button" aria-label="Об операционных показателях" aria-expanded="false" data-info="Смена, команда и показатели из отчёта дня.">i</button></div>
           <a class="btn sm subtle" id="dashboardOperationsLink" href="#">Открыть день</a>
         </div>
         <div class="owner-dashboard-operations-grid mt-12" id="dashboardOperationsGrid"></div>
@@ -122,10 +100,7 @@
 
       <section class="card owner-dashboard-network hidden" id="dashboardNetwork" aria-labelledby="dashboardNetworkTitle">
         <div class="owner-dashboard-section-head">
-          <div>
-            <b id="dashboardNetworkTitle">Заведения сети</b>
-            <div class="muted mt-4">Сравнение по выручке, прибыли и состоянию данных</div>
-          </div>
+          <div class="block-title-with-info"><b id="dashboardNetworkTitle">Заведения сети</b><button class="info-button" type="button" aria-label="О сравнении заведений" aria-expanded="false" data-info="Сравнение заведений по выручке, прибыли и состоянию данных.">i</button></div>
         </div>
         <div class="owner-dashboard-network__list mt-12" id="dashboardNetworkList"></div>
       </section>
@@ -134,10 +109,7 @@
         <div class="owner-dashboard-actions__head">
           <div>
             <div class="owner-dashboard-actions__icon" aria-hidden="true">↗</div>
-            <div>
-              <b id="quickActionsTitle">Быстрые действия</b>
-              <div class="muted mt-4">Частые операции без поиска по меню</div>
-            </div>
+            <div class="block-title-with-info"><b id="quickActionsTitle">Быстрые действия</b><button class="info-button" type="button" aria-label="О быстрых действиях" aria-expanded="false" data-info="Частые операции без поиска по меню.">i</button></div>
           </div>
         </div>
         <div class="owner-dashboard-actions-grid mt-12" id="dashboardActions"></div>
@@ -157,6 +129,6 @@
       <div class="modal__body"></div>
     </div>
   </div>
-  <script type="module" src="/owner-dashboard.js?v=20260928-period1"></script>
+  <script type="module" src="/owner-dashboard.js?v=20261001-ui16"></script>
 </body>
 </html>

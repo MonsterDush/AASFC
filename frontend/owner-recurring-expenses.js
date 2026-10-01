@@ -12,7 +12,7 @@ import {
   closeModal,
   coerceDemoMonth,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let access = { canView: false, canManage: false };
@@ -431,15 +431,17 @@ async function boot() {
 
   await loadAccess();
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-recurring-expenses" });
-  const monthPick = document.getElementById("rulesMonthPick");
-  if (monthPick) {
-    monthPick.value = state.month;
-    monthPick.onchange = (e) => {
-      state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-recurring-expenses" });
+  const periodPicker = document.getElementById("rulesPeriodPicker");
+  if (periodPicker) {
+    periodPicker.querySelector("[data-period-label]").textContent = state.month;
+    periodPicker.addEventListener("axelio:period-change", (event) => {
+      const detail = event.detail || {};
+      state.month = coerceDemoMonth(detail.month || String(detail.from || "").slice(0, 7) || currentMonth(), { context: "owner-recurring-expenses" });
+      periodPicker.querySelector("[data-period-label]").textContent = detail.label || state.month;
       if (openExpensesBtn) openExpensesBtn.href = buildExpensesMonthLink(state.month);
       if (openGeneratedExpensesBtn) openGeneratedExpensesBtn.href = buildExpensesMonthLink(state.month);
       renderRules();
-    };
+    });
   }
   const addRuleBtn = document.getElementById("addRuleBtn");
   const generateRulesBtn = document.getElementById("generateRulesBtn");

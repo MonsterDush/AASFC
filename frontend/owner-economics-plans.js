@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { roleUpper } from "/permissions.js";
 
 const state = {
@@ -543,20 +543,22 @@ async function boot() {
       state.date = e.target.value || todayISO();
       if (state.month !== monthISO(state.date)) {
         state.month = monthISO(state.date);
-        const monthPick = document.getElementById("plansMonthPick");
-        if (monthPick) monthPick.value = state.month;
+        const periodLabel = document.querySelector("#plansPeriodPicker [data-period-label]");
+        if (periodLabel) periodLabel.textContent = state.month;
       }
       await loadData();
     };
   }
 
-  const monthPick = document.getElementById("plansMonthPick");
-  if (monthPick) {
-    monthPick.value = state.month;
-    monthPick.onchange = async (e) => {
-      state.month = e.target.value || monthISO(state.date);
+  const periodPicker = document.getElementById("plansPeriodPicker");
+  if (periodPicker) {
+    periodPicker.querySelector("[data-period-label]").textContent = state.month;
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      state.month = detail.month || String(detail.from || "").slice(0, 7) || monthISO(state.date);
+      periodPicker.querySelector("[data-period-label]").textContent = detail.label || state.month;
       await loadData();
-    };
+    });
   }
 
   document.querySelectorAll('input[name="planMode"]').forEach((radio) => {

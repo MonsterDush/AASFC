@@ -19,7 +19,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import {
   formatComparisonRange,
   normalizeIsoRange,
@@ -94,6 +94,18 @@ function currentMonth() {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-expenses" });
+}
+
+function previousMonth(month = currentMonth()) {
+  const [year, monthNumber] = String(month || "").split("-").map(Number);
+  const value = new Date(year, monthNumber - 2, 1, 12);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(month) {
+  const value = new Date(`${month}-01T12:00:00`);
+  if (Number.isNaN(value.getTime())) return month;
+  return value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
 }
 
 function todayISO() {
@@ -1047,14 +1059,20 @@ async function boot() {
   state.compareFrom = params.get("compare_from") || "";
   state.compareTo = params.get("compare_to") || "";
   syncComparisonControls();
-  const monthPick = document.getElementById("expensesMonthPick");
-  if (monthPick) {
-    monthPick.value = state.month;
-    monthPick.onchange = async (e) => {
-      state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-expenses" });
+  const periodPicker = document.getElementById("expensesPeriodPicker");
+  if (periodPicker) {
+    const periodLabel = periodPicker.querySelector("[data-period-label]");
+    periodPicker.dataset.periodValue = state.month === currentMonth()
+      ? "this_month"
+      : (state.month === previousMonth() ? "previous_month" : "custom");
+    if (periodLabel) periodLabel.textContent = monthLabel(state.month);
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      state.month = coerceDemoMonth(detail.month || String(detail.from || state.month || currentMonth()).slice(0, 7), { context: "owner-expenses" });
+      if (periodLabel) periodLabel.textContent = monthLabel(state.month);
       syncLedgerLink();
       await loadExpenses();
-    };
+    });
   }
 
   document.querySelectorAll("#expensesCompareSeg button").forEach((button) => {

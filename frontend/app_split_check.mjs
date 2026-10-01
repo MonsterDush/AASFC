@@ -57,8 +57,8 @@ for (const [fileName, factoryName] of moduleContracts) {
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
   const cacheKey = fileName === "navigation.js"
-    ? "20260924-dashboardi18n1"
-    : (fileName === "ui-preferences.js" ? "20260924-dashboardi18n1" : "20260719-split1");
+    ? "20261001-ui16"
+    : (fileName === "ui-preferences.js" ? "20261001-ui16" : "20260719-split1");
   assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
@@ -134,14 +134,35 @@ const navigation = importedModules["navigation.js"].createNavigation({
   getMyVenues: async () => [{ id: 2, name: "Venue" }],
   getMyVenuePermissions: async () => ({ permissions: [] }),
 });
+assert.deepEqual(
+  importedModules["navigation.js"].filterVisibleNavLinks([
+    { tab: "visible" },
+    { tab: "allowed", allowed: true },
+    { tab: "hidden", allowed: false },
+  ]).map((link) => link.tab),
+  ["visible", "allowed"],
+);
 for (const methodName of moduleContracts[2][2]) assert.equal(typeof navigation[methodName], "function");
 assert.equal(navigation.can("REPORTS_VIEW", { permissions: ["REPORTS_VIEW"] }), true);
 assert.deepEqual(await navigation.getVenueById(2), { id: 2, name: "Venue" });
 const navigationSource = fs.readFileSync(path.join(frontendDir, "app/navigation.js"), "utf8");
+const appShellSource = fs.readFileSync(path.join(frontendDir, "app/app-shell.js"), "utf8");
+assert.match(navigationSource, /from "\.\/app-shell\.js\?v=20261001-appshell3"/);
+assert.match(appShellSource, /export function createAppNavIcon/);
+assert.match(appShellSource, /export function mountAppShell/);
+assert.doesNotMatch(appShellSource, /app-nav-venue__avatar/);
+assert.match(appShellSource, /manageOption\.value = "__manage_venues__"/);
+assert.match(appShellSource, /location\.href = "\/app-venues\.html"/);
+assert.match(appShellSource, /container\.querySelector\('a\[data-tab="settings"\]'\)/);
+assert.match(appShellSource, /container\.insertBefore\(venue, settingsLink\)/);
 for (const mobileMoreContract of [
-  "const mobilePrimaryLinkCount = 3",
-  "const overflowLinks = links.slice(mobilePrimaryLinkCount)",
-  'button.textContent = t("more")',
+  "const visibleLinks = filterVisibleNavLinks(links)",
+  "const preferredMobileLinks = visibleLinks.filter((link) => link.mobilePrimary)",
+  "const mobilePrimarySet = new Set(mobilePrimaryLinks)",
+  "const overflowLinks = visibleLinks.filter((link) => !mobilePrimarySet.has(link))",
+  "const activeOverflowLink = overflowLinks.find(isLinkActive)",
+  'moreWrap.classList.add("nav-more--active")',
+  'button.setAttribute("aria-label", moreTitle)',
   'button.setAttribute("aria-haspopup", "menu")',
   'if (event.key === "Escape" && !menu.hidden)',
 ]) {
@@ -158,7 +179,7 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260924-dashboardi18n1["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20261001-ui16["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);

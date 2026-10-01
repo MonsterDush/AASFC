@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/admin-demo-analytics.css?v=20260726-polish7" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/admin-demo-analytics.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -40,50 +40,14 @@
     <section class="card demo-analytics-filter-card">
       <div class="row demo-analytics-header">
         <div class="demo-analytics-header-main">
-          <div class="section-title"><b>Фильтр периода</b></div>
-          <div class="demo-analytics-note mt-6">Данные берутся только из DEMO telemetry и показываются отдельно от остальных админских экранов.</div>
+          <div class="block-title-with-info"><b>Период аналитики</b><button class="info-button" type="button" aria-label="Об источнике данных" aria-expanded="false" data-info="Данные берутся только из DEMO telemetry и показываются отдельно от остальных админских экранов.">i</button></div>
         </div>
         <div class="demo-analytics-badge" id="periodBadge">—</div>
       </div>
       <div class="demo-analytics-controls mt-12">
-        <div class="demo-analytics-field">
-          <label for="rangeType">Срез</label>
-          <select id="rangeType">
-            <option value="month">Месяц</option>
-            <option value="quarter">Квартал</option>
-            <option value="year">Год</option>
-            <option value="period">Период</option>
-          </select>
-        </div>
-        <div class="demo-analytics-field">
-          <label for="yearInput">Год</label>
-          <input id="yearInput" type="number" min="2020" max="2100" />
-        </div>
-        <div class="demo-analytics-field" id="monthField">
-          <label for="monthInput">Месяц</label>
-          <select id="monthInput"></select>
-        </div>
-        <div class="demo-analytics-field hidden" id="quarterField">
-          <label for="quarterInput">Квартал</label>
-          <select id="quarterInput">
-            <option value="1">1 квартал</option>
-            <option value="2">2 квартал</option>
-            <option value="3">3 квартал</option>
-            <option value="4">4 квартал</option>
-          </select>
-        </div>
-        <div class="demo-analytics-field hidden" id="fromField">
-          <label for="fromInput">Дата от</label>
-          <input id="fromInput" type="date" />
-        </div>
-        <div class="demo-analytics-field hidden" id="toField">
-          <label for="toInput">Дата до</label>
-          <input id="toInput" type="date" />
-        </div>
-      </div>
-      <div class="row demo-analytics-actions mt-12">
-        <button class="btn" id="applyBtn" type="button">Показать</button>
-        <button class="btn subtle" id="resetBtn" type="button">Сбросить</button>
+        <button class="period-menu-trigger" id="demoAnalyticsPeriodPicker" type="button" data-period-picker data-period-value="this_month" aria-haspopup="menu" aria-expanded="false">
+          <span data-period-label>Этот месяц</span>
+        </button>
       </div>
     </section>
 
@@ -140,7 +104,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20260924-dashboardi18n1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20261001-ui16";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -166,17 +130,7 @@
 
   await mountNav({ activeTab: "admin-demo" });
 
-  const monthNames = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
-  const rangeType = document.getElementById("rangeType");
-  const yearInput = document.getElementById("yearInput");
-  const monthInput = document.getElementById("monthInput");
-  const quarterInput = document.getElementById("quarterInput");
-  const fromInput = document.getElementById("fromInput");
-  const toInput = document.getElementById("toInput");
-  const monthField = document.getElementById("monthField");
-  const quarterField = document.getElementById("quarterField");
-  const fromField = document.getElementById("fromField");
-  const toField = document.getElementById("toField");
+  const periodPicker = document.getElementById("demoAnalyticsPeriodPicker");
   const periodBadge = document.getElementById("periodBadge");
   const kpisBlock = document.getElementById("kpisBlock");
   const funnelBlock = document.getElementById("funnelBlock");
@@ -200,7 +154,6 @@
     try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day:"2-digit", month:"short" }); }
     catch { return String(iso); }
   }
-  function monthLabel(value){ const idx = Number(value || 1) - 1; return monthNames[idx] || String(value); }
   function setHtml(el, html){
     if (!el) return;
     el.classList.remove("demo-analytics-state", "demo-analytics-state--loading");
@@ -212,44 +165,27 @@
     return Math.max(0, Math.min(100, (Number(value || 0) / safeMax) * 100));
   }
 
-  monthInput.innerHTML = monthNames.map((name, idx) => `<option value="${idx+1}">${name}</option>`).join("");
-
-  function syncControls(){
-    const mode = String(rangeType.value || "month");
-    monthField.classList.toggle("hidden", mode !== "month");
-    quarterField.classList.toggle("hidden", mode !== "quarter");
-    fromField.classList.toggle("hidden", mode !== "period");
-    toField.classList.toggle("hidden", mode !== "period");
-  }
+  let dateFrom = "";
+  let dateTo = "";
 
   function setDefaults(){
     const now = new Date();
-    yearInput.value = String(now.getUTCFullYear());
-    monthInput.value = String(now.getUTCMonth() + 1);
-    quarterInput.value = String(Math.floor(now.getUTCMonth() / 3) + 1);
     const firstDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    fromInput.value = firstDay.toISOString().slice(0,10);
-    toInput.value = now.toISOString().slice(0,10);
-    rangeType.value = "month";
-    syncControls();
+    const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+    dateFrom = firstDay.toISOString().slice(0,10);
+    dateTo = lastDay.toISOString().slice(0,10);
+    if (periodPicker) {
+      periodPicker.dataset.periodValue = "this_month";
+      periodPicker.dataset.periodFrom = dateFrom;
+      periodPicker.dataset.periodTo = dateTo;
+    }
   }
 
   function buildQuery(){
     const params = new URLSearchParams();
-    const mode = String(rangeType.value || "month");
-    params.set("range", mode);
-    if (mode === "month") {
-      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
-      params.set("month", String(monthInput.value || new Date().getUTCMonth() + 1));
-    } else if (mode === "quarter") {
-      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
-      params.set("quarter", String(quarterInput.value || 1));
-    } else if (mode === "year") {
-      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
-    } else {
-      if (fromInput.value) params.set("date_from", fromInput.value);
-      if (toInput.value) params.set("date_to", toInput.value);
-    }
+    params.set("range", "period");
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
     return params.toString();
   }
 
@@ -479,9 +415,11 @@
     }
   }
 
-  rangeType.addEventListener("change", syncControls);
-  document.getElementById("applyBtn")?.addEventListener("click", loadAnalytics);
-  document.getElementById("resetBtn")?.addEventListener("click", () => { setDefaults(); loadAnalytics(); });
+  periodPicker?.addEventListener("axelio:period-change", async (event) => {
+    dateFrom = String(event.detail?.from || event.detail?.day || "");
+    dateTo = String(event.detail?.to || event.detail?.day || dateFrom);
+    await loadAnalytics();
+  });
 
   setDefaults();
   await loadAnalytics();

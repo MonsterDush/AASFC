@@ -11,7 +11,7 @@ import {
   createDepartment,
   updateDepartment,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 
 const root = document.getElementById("root");
 

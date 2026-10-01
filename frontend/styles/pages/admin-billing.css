@@ -11,7 +11,7 @@
 .billing-table-row{margin-top:10px;background:var(--surfaceTintSoft)}
 .billing-list>.billing-table-row:first-child{margin-top:12px}
 .status-chip,.issue-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px}
-.issue-chip.critical{font-weight:700}
+.issue-chip.critical{font-weight:600}
 .issue-chip.warning{font-weight:600}
 .admin-billing-page .section-title{margin:0 0 8px}
 .admin-billing-page input[type="search"],.admin-billing-page select{min-width:180px}

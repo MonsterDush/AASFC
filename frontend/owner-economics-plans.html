@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260908-plansnav1" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -44,13 +44,13 @@
 
     <div class="card finance-toolbar">
       <div class="screen-hero">
-        <div class="screen-hero__head">
-          <div>
+        <div class="finance-titlebar">
+          <div class="finance-titlebar__title">
             <b>Управление планами</b>
-            <div class="page-caption mt-6">Задайте общий план на месяц, шаблоны по дням недели или отдельный план на выбранную дату. В верхней карточке всегда показан итоговый план на день.</div>
+            <button class="info-button" type="button" data-info="Задайте общий план на месяц, шаблоны по дням недели или отдельный план на выбранную дату. В верхней карточке всегда показан итоговый план на день." aria-label="Об управлении планами">i</button>
           </div>
-          <div class="screen-hero__actions">
-            <input class="finance-control" id="plansMonthPick" type="month" />
+          <div class="finance-titlebar__actions">
+            <button class="period-menu-trigger" id="plansPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
             <input class="finance-control" id="plansDatePick" type="date" />
             <button class="btn subtle" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
           </div>
@@ -58,7 +58,7 @@
 
         <div class="screen-hero__meta-grid">
           <div class="itemcard finance-period-card">
-            <div class="finance-period-card__label">Эффективный план на дату</div>
+            <div class="block-title-with-info"><div class="finance-period-card__label">Эффективный план на дату</div><button class="info-button" type="button" data-info="Итоговый план с учётом месячного значения, шаблона дня недели и точечной настройки даты." aria-label="Об эффективном плане">i</button></div>
             <div class="finance-period-card__value" id="effectivePlanSourceBadge">—</div>
             <div class="muted" id="effectivePlanHint">—</div>
             <div class="muted mt-8" id="effectivePlanUsage">—</div>
@@ -155,6 +155,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-economics-plans.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/owner-economics-plans.js?v=20261001-ui16"></script>
 </body>
 </html>

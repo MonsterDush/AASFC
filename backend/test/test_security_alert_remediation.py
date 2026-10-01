@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import json
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -8,7 +10,7 @@ from pydantic import ValidationError
 
 from app.core.upload_storage import confined_upload_storage_path, new_upload_storage_path
 from app.routers.admin_demo import DemoBootstrapIn, DemoExportIn, DemoResetIn
-from app.services.demo.fixture import BACKEND_ROOT, _resolve_fixture_path
+from app.services.demo.fixture import BACKEND_ROOT, _resolve_fixture_path, load_demo_fixture
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -36,11 +38,21 @@ class DemoFixturePathSecurityTests(TestCase):
     def test_custom_fixture_path_is_json_inside_backend(self):
         allowed = _resolve_fixture_path("tmp/security-fixture.json")
         self.assertEqual(allowed, (BACKEND_ROOT / "tmp/security-fixture.json").resolve())
+        compressed = _resolve_fixture_path("tmp/security-fixture.json.gz")
+        self.assertEqual(compressed, (BACKEND_ROOT / "tmp/security-fixture.json.gz").resolve())
 
         with self.assertRaises(ValueError):
             _resolve_fixture_path("../outside.json")
         with self.assertRaises(ValueError):
             _resolve_fixture_path("tmp/security-fixture.txt")
+
+    def test_gzip_fixture_can_be_loaded(self):
+        with tempfile.TemporaryDirectory(dir=BACKEND_ROOT) as tmp_dir:
+            path = Path(tmp_dir) / "security-fixture.json.gz"
+            with gzip.open(path, "wt", encoding="utf-8") as fixture_file:
+                json.dump({"meta": {"version": 1}, "tables": {}}, fixture_file)
+
+            self.assertEqual(load_demo_fixture(fixture_path=str(path)), {"meta": {"version": 1}, "tables": {}})
 
     def test_admin_payloads_forbid_custom_fixture_paths(self):
         for schema in (DemoExportIn, DemoResetIn, DemoBootstrapIn):

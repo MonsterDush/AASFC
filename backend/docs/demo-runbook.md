@@ -197,8 +197,9 @@ python -m app.scripts.export_demo_fixture
 ## Если reset fixture падает
 1. Проверить, существует ли fixture-файл.
 2. Проверить, что `DEMO_FIXTURE_PATH` указан корректно.
-3. Проверить, что JSON не повреждён.
-4. Проверить, что restore-логика умеет восстановить типы:
+3. По умолчанию fixture хранится в `app/demo/demo_fixture.json.gz`; загрузчик также принимает обычный `.json` для локальных override-файлов.
+4. Проверить, что JSON не повреждён (для gzip — `gzip -t <path>`).
+5. Проверить, что restore-логика умеет восстановить типы:
    - date
    - datetime
    - time

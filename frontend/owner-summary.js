@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
@@ -222,6 +222,13 @@ function syncPickers() {
   showBlock("summaryMonthPick", state.period === "month");
   showBlock("summaryDayPick", state.period === "day");
   showBlock("summaryRangePick", state.period === "range");
+  const picker = document.getElementById("summaryPeriodPicker");
+  if (picker) {
+    picker.dataset.periodFrom = state.from || state.day || "";
+    picker.dataset.periodTo = state.to || state.day || "";
+    const label = picker.querySelector("[data-period-label]");
+    if (label) label.textContent = statePeriodText();
+  }
 }
 
 function currentComparison() {
@@ -294,8 +301,11 @@ function syncUrl() {
 }
 
 function statePeriodText() {
-  if (state.period === "month") return state.month || currentMonth();
-  if (state.period === "day") return state.day || todayISO();
+  if (state.period === "month") {
+    const value = new Date(`${state.month || currentMonth()}-01T12:00:00`);
+    return value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
+  }
+  if (state.period === "day") return new Date(`${state.day || todayISO()}T12:00:00`).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric" });
   normalizeRange();
   return `${state.from} — ${state.to}`;
 }
@@ -503,7 +513,7 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
   const legend = document.getElementById("summaryTrendLegend");
   const subtitle = document.getElementById("summaryTrendSubtitle");
   const title = document.getElementById("summaryTrendTitle");
-  if (!chart || !legend || !subtitle || !title) return;
+  if (!chart || !legend || !title) return;
 
   syncTrendMetricControls();
   const metric = state.trendMetric;
@@ -516,10 +526,12 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
   const comparisonText = comparisonSummary?.period_start && comparisonSummary?.period_end
     ? `${comparisonSummary.period_start} — ${comparisonSummary.period_end}`
     : "";
-  title.textContent = `${isEnglishLocale() ? "Trend" : "Динамика"}: ${metricTitle.toLowerCase()}`;
-  subtitle.textContent = comparisonPoints.length
-    ? `${periodText} против ${comparisonText} — сопоставление по порядковому дню`
-    : `${periodText} — по дням`;
+  title.textContent = isEnglishLocale() ? "Revenue, costs and profit trend" : "Динамика выручки, затрат и прибыли";
+  if (subtitle) {
+    subtitle.textContent = comparisonPoints.length
+      ? `${periodText} против ${comparisonText} — сопоставление по порядковому дню`
+      : `${periodText} — по дням`;
+  }
   legend.innerHTML = [
     `<span><i class="summary-legend-swatch" aria-hidden="true"></i>Текущий период</span>`,
     ...(comparisonPoints.length ? [`<span><i class="summary-legend-swatch summary-legend-swatch--comparison" aria-hidden="true"></i>Сравниваемый период</span>`] : []),
@@ -623,7 +635,7 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
 function renderSummaryCostStructure(summary) {
   const container = document.getElementById("summaryCostStructure");
   const subtitle = document.getElementById("summaryStructureSubtitle");
-  if (!container || !subtitle) return;
+  if (!container) return;
   const sourceRows = (Array.isArray(summary?.cost_structure) ? summary.cost_structure : []).filter((row) => (
     String(row?.key || "") === "payroll" ? financeAccess.canViewPayroll : financeAccess.canViewExpenses
   ));
@@ -632,7 +644,7 @@ function renderSummaryCostStructure(summary) {
   const periodText = summary?.period_start && summary?.period_end
     ? `${summary.period_start} — ${summary.period_end}`
     : statePeriodText();
-  subtitle.textContent = `${periodText} · подтверждённые расходы и распределённый ФОТ`;
+  if (subtitle) subtitle.textContent = `${periodText} · подтверждённые расходы и распределённый ФОТ`;
   if (financialValuesHidden) {
     container.innerHTML = `<div class="summary-chart-empty">${escapeHtml(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
     return;
@@ -662,25 +674,71 @@ function renderSummaryCostStructure(summary) {
     qp.set("month", String(summary?.period_start || state.month || currentMonth()).slice(0, 7));
     return `/owner-expenses.html?${qp.toString()}`;
   };
-  container.innerHTML = rows.map((row) => {
-    const sharePercent = Math.max(0, Math.min(100, row.shareBps / 100));
-    const fillWidth = row.amountMinor > 0 ? Math.max(1.5, sharePercent) : 0;
-    const rowClass = row.key === "payroll" ? " summary-cost-row--payroll" : "";
+  const point = (radius, angle) => {
+    const radians = ((angle - 90) * Math.PI) / 180;
+    return { x: 60 + radius * Math.cos(radians), y: 60 + radius * Math.sin(radians) };
+  };
+  const arcPath = (startAngle, endAngle) => {
+    const safeEnd = Math.min(startAngle + 359.999, endAngle);
+    const outerStart = point(50, startAngle);
+    const outerEnd = point(50, safeEnd);
+    const innerEnd = point(31, safeEnd);
+    const innerStart = point(31, startAngle);
+    const largeArc = safeEnd - startAngle > 180 ? 1 : 0;
+    return [
+      `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+      `A 50 50 0 ${largeArc} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+      `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+      `A 31 31 0 ${largeArc} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+      "Z",
+    ].join(" ");
+  };
+  let cursor = 0;
+  const chartRows = rows.map((row, index) => {
+    const startAngle = cursor * 3.6;
+    cursor += Math.max(0, Math.min(100, row.shareBps / 100));
+    const endAngle = cursor * 3.6;
     const drilldown = buildDrilldown(row);
-    const tag = drilldown ? "a" : "div";
-    const detailsLabel = isEnglishLocale() ? "Open details" : "Открыть детализацию";
-    const href = drilldown ? ` href="${escapeHtml(drilldown)}" aria-label="${detailsLabel}: ${escapeHtml(row.title)}"` : "";
-    return `<${tag} class="summary-cost-row${rowClass}"${href}>
-      <div class="summary-cost-head">
-        <span class="summary-cost-label">${escapeHtml(row.title)}</span>
-        <span class="summary-cost-value">${escapeHtml(fmtMoneyMinor(row.amountMinor))} · ${escapeHtml(fmtPercentBps(row.shareBps))}</span>
-      </div>
-      <svg class="summary-cost-svg" viewBox="0 0 100 9" preserveAspectRatio="none" aria-hidden="true">
-        <rect class="summary-cost-track" x="0" y="0" width="100" height="9" rx="4.5"></rect>
-        <rect class="summary-cost-fill" x="0" y="0" width="${fillWidth.toFixed(2)}" height="9" rx="4.5"></rect>
-      </svg>
+    const actionText = drilldown
+      ? (row.key === "payroll" ? "Нажмите, чтобы открыть начисления." : "Нажмите, чтобы открыть расходы этой категории.")
+      : "Здесь объединены остальные статьи расходов.";
+    const hint = `${row.title}: ${fmtMoneyMinor(row.amountMinor)} · ${fmtPercentBps(row.shareBps)}. ${actionText}`;
+    return { ...row, index, startAngle, endAngle, drilldown, hint };
+  });
+  const segmentMarkup = chartRows.map((row) => {
+    const path = `<path class="summary-donut-segment summary-donut-segment--${row.index + 1}" d="${arcPath(row.startAngle, row.endAngle)}"><title>${escapeHtml(row.hint)}</title></path>`;
+    return row.drilldown
+      ? `<a href="${escapeHtml(row.drilldown)}" class="summary-donut-target" data-cost-hint="${escapeHtml(row.hint)}" aria-label="${escapeHtml(row.hint)}">${path}</a>`
+      : `<g class="summary-donut-target" data-cost-hint="${escapeHtml(row.hint)}" tabindex="0" role="img" aria-label="${escapeHtml(row.hint)}">${path}</g>`;
+  }).join("");
+  const legendMarkup = chartRows.map((row) => {
+    const tag = row.drilldown ? "a" : "div";
+    const href = row.drilldown ? ` href="${escapeHtml(row.drilldown)}"` : "";
+    return `<${tag} class="summary-donut-legend__row"${href} data-cost-hint="${escapeHtml(row.hint)}">
+      <i class="summary-donut-swatch summary-donut-swatch--${row.index + 1}" aria-hidden="true"></i>
+      <span class="summary-donut-legend__label">${escapeHtml(row.title)}</span>
+      <b>${escapeHtml(fmtPercentBps(row.shareBps))}</b>
     </${tag}>`;
   }).join("");
+  const defaultHint = isEnglishLocale()
+    ? "Hover or focus a segment. Click it to open details."
+    : "Наведите на сектор или строку. Нажмите, чтобы открыть детализацию.";
+  container.innerHTML = `<div class="summary-donut-layout">
+    <div class="summary-donut-visual">
+      <svg class="summary-donut" viewBox="0 0 120 120" role="group" aria-label="Структура затрат">${segmentMarkup}</svg>
+      <div class="summary-donut-center"><span>Всего</span><b>${escapeHtml(fmtMoneyMinor(visibleTotal))}</b></div>
+    </div>
+    <div class="summary-donut-legend">${legendMarkup}</div>
+  </div>
+  <div class="summary-donut-hint" aria-live="polite">${escapeHtml(defaultHint)}</div>`;
+  const hint = container.querySelector(".summary-donut-hint");
+  container.querySelectorAll("[data-cost-hint]").forEach((target) => {
+    const showHint = () => { if (hint) hint.textContent = target.dataset.costHint || defaultHint; };
+    target.addEventListener("mouseenter", showHint);
+    target.addEventListener("focus", showHint);
+    target.addEventListener("mouseleave", () => { if (hint) hint.textContent = defaultHint; });
+    target.addEventListener("blur", () => { if (hint) hint.textContent = defaultHint; });
+  });
 }
 
 function renderSummaryAnalytics(summary, comparisonSummary = null) {
@@ -1002,6 +1060,36 @@ async function boot() {
   const fromPick = document.getElementById("summaryFromPick");
   const toPick = document.getElementById("summaryToPick");
   const rangeApplyBtn = document.getElementById("summaryRangeApplyBtn");
+  const periodPicker = document.getElementById("summaryPeriodPicker");
+
+  if (periodPicker) {
+    periodPicker.dataset.periodValue = state.period === "month" ? "this_month" : "custom";
+    periodPicker.dataset.periodFrom = state.from || "";
+    periodPicker.dataset.periodTo = state.to || "";
+    const periodLabel = periodPicker.querySelector("[data-period-label]");
+    if (periodLabel) periodLabel.textContent = statePeriodText();
+    periodPicker.addEventListener("axelio:period-change", (event) => {
+      const detail = event.detail || {};
+      if (isDemoUiMode()) {
+        state.period = "month";
+        state.month = coerceDemoMonth(detail.month || state.month || currentMonth(), { context: "owner-summary" });
+      } else if (detail.mode === "month") {
+        state.period = "month";
+        state.month = detail.month || String(detail.from || currentMonth()).slice(0, 7);
+      } else if (detail.mode === "day") {
+        state.period = "day";
+        state.day = detail.day || detail.from || todayISO();
+      } else {
+        const selected = coerceDemoRange(detail.from || todayISO(), detail.to || detail.from || todayISO(), { context: "owner-summary" });
+        state.period = "range";
+        state.from = selected.from;
+        state.to = selected.to;
+      }
+      periodPicker.dataset.periodFrom = detail.from || state.from || "";
+      periodPicker.dataset.periodTo = detail.to || state.to || "";
+      loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+    });
+  }
 
   if (monthPick) {
     monthPick.value = state.month;

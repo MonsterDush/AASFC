@@ -32,8 +32,8 @@ const domBindingManifest = Array.from(
 const manifestHash = (values) => crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex");
 assert.equal(apiCallManifest.length, 21);
 assert.equal(manifestHash(apiCallManifest), "e36d841fea322b74293b11c64ec20dc5c955f0bcc5a68924b1ad188c19fd18d5");
-assert.equal(domBindingManifest.length, 62);
-assert.equal(manifestHash(domBindingManifest), "c593dd7a21c2e5be19bdbb0dbffa48c2066f69399e61fa196aab5181e9046add");
+assert.equal(domBindingManifest.length, 61);
+assert.equal(manifestHash(domBindingManifest), "a1537c6ac205b1cf046f3d97c0181c2413c0fa9c29afce4d7f2f314b991e2206");
 
 assert.ok(mainSource.split("\n").length < 1_920, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
@@ -45,8 +45,8 @@ assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-ov
 assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260906-names-scopes1/);
 assert.match(mainSource, /\/staff-shifts\/helpers\.js\?v=20260906-names-scopes1/);
 assert.match(mainSource, /import\s*\{[\s\S]*?\bfioInitials\b[\s\S]*?\}\s*from\s*["']\/staff-shifts\/helpers\.js\?v=20260906-names-scopes1["']/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260924-dashboardi18n1/);
-assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20260811-assurance1/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20261001-ui16/);
+assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20261001-ui16/);
 assert.match(stylesSource, /\.staff-shifts-shell\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
 assert.match(stylesSource, /\.staff-shifts-shell>\*\{min-width:0\}/);
 assert.match(stylesSource, /\.staff-shifts-page \.demo-banner\{[^}]*min-width:0[^}]*overflow:hidden/);

@@ -42,18 +42,23 @@
   --focusRingColor:rgba(22,75,138,.22);
   --focusRing:0 0 0 3px var(--focusRingColor);
 
-  /* Theme G (Cloud Dancer + Oxford) — LIGHT by default */
+  /* Axelio warm three-layer light palette. Structural depth is capped at L2. */
   color-scheme: light dark;
 
-  --bg:#F7F8FA;
-  --card:#FFFFFF;
-  --surface2:#EEF2F6;
+  --surface0:#FBFBFA;
+  --surface1:#F3F3F0;
+  --surface2:#E9E9E5;
+  --bg:var(--surface0);
+  --workspace:var(--surface1);
+  --card:var(--surface2);
 
-  --text:#0B1220;
-  --muted:#4B5563;
+  --text:#20201D;
+  --textSecondary:#5F5F58;
+  --muted:#686861;
 
-  --border:#D6DDE6;
-  --shadow:0 10px 24px rgba(11,18,32,.10);
+  --border:#D4D4CE;
+  --borderStrong:#8E8E86;
+  --shadow:0 1px 2px rgba(32,32,29,.06);
 
   --accent:#164B8A;
   --accentText:#FFFFFF;
@@ -70,27 +75,27 @@
   --barInset:rgba(255,255,255,.10);
 
 
-  --danger:#E5484D;
-  --dangerBg:rgba(229,72,77,.10);
-  --dangerBorder:rgba(229,72,77,.35);
-  --dangerText:#8A1F24;
+  --danger:#B42318;
+  --dangerBg:rgba(180,35,24,.09);
+  --dangerBorder:rgba(180,35,24,.28);
+  --dangerText:#B42318;
 
-  --warning:#F2A541;
-  --success:#20B486;
+  --warning:#835700;
+  --success:#13745A;
 
   /* semantic status surfaces */
   --statusWarningBg:rgba(255,184,77,.12);
   --statusWarningBgSoft:rgba(255,184,77,.10);
   --statusWarningBorder:rgba(255,184,77,.35);
-  --statusWarningText:#8A5A00;
+  --statusWarningText:#835700;
   --statusErrorBg:rgba(255,107,107,.12);
   --statusErrorBgSoft:rgba(255,107,107,.10);
   --statusErrorBorder:rgba(255,107,107,.30);
   --statusErrorBorderSoft:rgba(255,107,107,.25);
-  --statusErrorText:#8A1F24;
+  --statusErrorText:#B42318;
   --statusSuccessBg:rgba(32,180,134,.12);
   --statusSuccessBorder:rgba(32,180,134,.35);
-  --statusSuccessText:#0D6B51;
+  --statusSuccessText:#13745A;
 
   /* reusable translucent surfaces */
   --surfaceTint:rgba(255,255,255,.04);
@@ -100,9 +105,9 @@
   --dotPast:#9AA7B2;
   --dotInset:rgba(11,18,32,.10);
 
-  --inputBg:#EEF2F6;
-  --navBg:rgba(247,248,250,.78);
-  --toastBg:rgba(255,255,255,.88);
+  --inputBg:var(--surface2);
+  --navBg:rgba(251,251,250,.92);
+  --toastBg:rgba(243,243,240,.94);
 
   --shimmer:rgba(11,18,32,.07);
 }
@@ -110,20 +115,25 @@
 /* System dark (when user didn't force light) */
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) {
-    --bg:#090F1D;
-    --card:#0E1730;
-    --surface2:#0B1328;
+    --surface0:#182235;
+    --surface1:#111A2B;
+    --surface2:#0C1425;
+    --bg:var(--surface0);
+    --workspace:var(--surface1);
+    --card:var(--surface2);
 
     --text:#E8ECF5;
+    --textSecondary:#CCD4E5;
     --muted:#B3BDD6;
 
-    --border:#1C2C55;
+    --border:rgba(184,197,220,.14);
+    --borderStrong:#56657D;
     --shadow:0 10px 30px rgba(0,0,0,.35);
 
     --accent:#3C78C8;
     --accentText:#081022;
     --accentSoftBg:rgba(60,120,200,.18);
-    --accentSoftBorder:rgba(60,120,200,.45);
+    --accentSoftBorder:rgba(60,120,200,.34);
     --focusRingColor:rgba(60,120,200,.30);
 
     --accentA10:rgba(60,120,200,.10);
@@ -153,9 +163,9 @@
     --dotPast:#6C7A8B;
     --dotInset:rgba(255,255,255,.06);
 
-    --inputBg:rgba(0,0,0,.18);
-    --navBg:rgba(9,15,29,.72);
-    --toastBg:rgba(11,18,32,.68);
+    --inputBg:var(--surface2);
+    --navBg:rgba(24,34,53,.86);
+    --toastBg:rgba(12,20,37,.9);
 
     --shimmer:rgba(255,255,255,.10);
   }
@@ -163,20 +173,25 @@
 
 /* Forced dark */
 :root[data-theme="dark"]{
-  --bg:#090F1D;
-  --card:#0E1730;
-  --surface2:#0B1328;
+  --surface0:#182235;
+  --surface1:#111A2B;
+  --surface2:#0C1425;
+  --bg:var(--surface0);
+  --workspace:var(--surface1);
+  --card:var(--surface2);
 
   --text:#E8ECF5;
+  --textSecondary:#CCD4E5;
   --muted:#B3BDD6;
 
-  --border:#1C2C55;
+  --border:rgba(184,197,220,.14);
+  --borderStrong:#56657D;
   --shadow:0 10px 30px rgba(0,0,0,.35);
 
   --accent:#3C78C8;
   --accentText:#081022;
   --accentSoftBg:rgba(60,120,200,.18);
-  --accentSoftBorder:rgba(60,120,200,.45);
+  --accentSoftBorder:rgba(60,120,200,.34);
   --focusRingColor:rgba(60,120,200,.30);
 
   --accentA10:rgba(60,120,200,.10);
@@ -206,9 +221,9 @@
   --dotPast:#6C7A8B;
   --dotInset:rgba(255,255,255,.06);
 
-  --inputBg:rgba(0,0,0,.18);
-  --navBg:rgba(9,15,29,.72);
-  --toastBg:rgba(11,18,32,.68);
+  --inputBg:var(--surface2);
+  --navBg:rgba(24,34,53,.86);
+  --toastBg:rgba(12,20,37,.9);
 
   --shimmer:rgba(255,255,255,.10);
 }
@@ -218,14 +233,19 @@
 :root[data-theme="hookahplace"]{
   color-scheme: dark;
 
-  --bg:#070707;
+  --surface0:#070707;
+  --surface1:#0C0C0C;
+  --bg:var(--surface0);
+  --workspace:var(--surface1);
   --card:#111111;
   --surface2:#151515;
 
   --text:#F5F5F5;
+  --textSecondary:#D2D2D2;
   --muted:#B7B7B7;
 
   --border:#262626;
+  --borderStrong:#555555;
   --shadow:0 10px 30px rgba(0,0,0,.55);
 
   --accent:#E00000;

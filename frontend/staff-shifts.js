@@ -17,7 +17,7 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { intervalPositionIds, intervalPositionLabel, positionMatchesInterval, availableIntervalsForMember, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -142,8 +142,7 @@ await mountNav({ activeTab: "shifts", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
-  prev: document.getElementById("monthPrev"),
-  next: document.getElementById("monthNext"),
+  periodPicker: document.getElementById("staffShiftsPeriodPicker"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
   btnLegend: document.getElementById("btnLegend"),
@@ -616,6 +615,12 @@ function renderViewToggle() {
   const setActive = () => {
     view.month?.classList.toggle("active", calendarView === "month");
     view.week?.classList.toggle("active", calendarView === "week");
+    if (el.periodPicker) {
+      el.periodPicker.dataset.periodCustomMode = calendarView === "week" ? "range" : "month";
+      el.periodPicker.dataset.periodPresets = calendarView === "week"
+        ? "custom,previous_week,this_week"
+        : "custom,previous_month,this_month";
+    }
   };
 
   const goMonth = async () => {
@@ -935,6 +940,7 @@ async function loadMonth() {
   buildIndex();
   renderScheduleFilters();
   renderMonth();
+  syncCalendarPeriodPicker();
 
   // Keep a selected day panel (graph) on screen
   const monthPrefix = ym(curMonth);
@@ -957,7 +963,7 @@ async function loadWeek() {
   const ws = new Date(curWeekStart);
   const we = addDays(ws, 6);
 
-  el.monthLabel.textContent = nightShiftsEnabled ? `${weekTitle(ws)} · ${shiftSlotLabel(selectedShiftSlot)}` : weekTitle(ws);
+  syncCalendarPeriodPicker();
   el.grid.classList.add("is-week");
 
   const fromISO = ymd(ws);
@@ -1074,6 +1080,23 @@ const staffShiftCalendar = createStaffShiftCalendarController({
   openDay,
 });
 const { renderWeek, buildIndex, defaultSelectedDateForMonth, selectDate, monthTitle, formatDateRuNoG, filterForCalendar, shiftIsClosed, renderMonth } = staffShiftCalendar;
+
+function syncCalendarPeriodPicker() {
+  if (!el.periodPicker) return;
+  if (calendarView === "week") {
+    const start = curWeekStart || startOfWeek(new Date());
+    el.periodPicker.dataset.periodValue = "custom";
+    el.periodPicker.dataset.periodFrom = ymd(start);
+    el.periodPicker.dataset.periodTo = ymd(addDays(start, 6));
+    if (el.monthLabel) el.monthLabel.textContent = nightShiftsEnabled ? `${weekTitle(start)} · ${shiftSlotLabel(selectedShiftSlot)}` : weekTitle(start);
+    return;
+  }
+  const month = ym(curMonth);
+  el.periodPicker.dataset.periodValue = "custom";
+  el.periodPicker.dataset.periodFrom = `${month}-01`;
+  el.periodPicker.dataset.periodTo = `${month}-${pad2(new Date(curMonth.getFullYear(), curMonth.getMonth() + 1, 0).getDate())}`;
+  if (el.monthLabel) el.monthLabel.textContent = nightShiftsEnabled ? `${monthTitle(curMonth)} · ${shiftSlotLabel(selectedShiftSlot)}` : monthTitle(curMonth);
+}
 const staffShiftCommentRuntime = {
   get venueId() { return venueId; },
   get deepLinkShiftId() { return deepLinkShiftId; },
@@ -1854,29 +1877,22 @@ createStaffShiftExportController({
   filterForCalendar,
 });
 // navigation (month/week)
-el.prev.onclick = async () => {
+el.periodPicker?.addEventListener("axelio:period-change", async (event) => {
+  const detail = event.detail || {};
   if (calendarView === "week") {
-    if (!curWeekStart) curWeekStart = startOfWeek(new Date());
-    curWeekStart = addDays(curWeekStart, -7);
+    const from = String(detail.from || detail.day || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return;
+    curWeekStart = startOfWeek(new Date(`${from}T12:00:00`));
+    selectedDate = ymd(curWeekStart);
+    try { localStorage.setItem(LS_WEEK_START, ymd(curWeekStart)); } catch {}
     await loadWeek();
     return;
   }
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth.setDate(1);
+  const selectedMonth = String(detail.month || detail.from || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(selectedMonth)) return;
+  curMonth = new Date(`${selectedMonth}-01T12:00:00`);
   await loadMonth();
-};
-
-el.next.onclick = async () => {
-  if (calendarView === "week") {
-    if (!curWeekStart) curWeekStart = startOfWeek(new Date());
-    curWeekStart = addDays(curWeekStart, 7);
-    await loadWeek();
-    return;
-  }
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth.setDate(1);
-  await loadMonth();
-};
+});
 
 // boot
 await loadContext();

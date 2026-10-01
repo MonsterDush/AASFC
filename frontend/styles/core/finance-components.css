@@ -1,5 +1,5 @@
 /* -------- Revenue (Turnover) period toolbar -------- */
-.h2{font-size:26px;font-weight:800;letter-spacing:-0.02em}
+.h2{font-size:26px;font-weight:600;letter-spacing:-0.02em}
 @media (max-width:900px){.h2{font-size:22px}}
 
 .revenue-toolbar{
@@ -18,7 +18,7 @@
 .revenue-toolbar__label{
   color:var(--muted);
   font-size:13px;
-  font-weight:800;
+  font-weight:600;
 }
 .revenue-toolbar__actions{
   display:flex;
@@ -81,18 +81,18 @@
   gap:12px;
 }
 .finance-stat{display:grid;gap:8px;min-width:0}
-.finance-stat__label{color:var(--muted);font-size:13px;font-weight:800}
-.finance-stat__value{font-size:24px;font-weight:900;letter-spacing:-0.02em;min-width:0;word-break:break-word}
+.finance-stat__label{color:var(--muted);font-size:13px;font-weight:600}
+.finance-stat__value{font-size:24px;font-weight:600;letter-spacing:-0.02em;min-width:0;word-break:break-word}
 .finance-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .expense-list{display:grid;gap:10px}
 .expense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,0.02);min-width:0;overflow:hidden}
 .expense-row__main{min-width:0}
-.expense-row__title{font-weight:800}
+.expense-row__title{font-weight:600}
 .expense-row__side{display:grid;justify-items:end;align-content:start;min-width:120px}
-.expense-row__amount{font-size:20px;font-weight:900;white-space:nowrap}
+.expense-row__amount{font-size:20px;font-weight:600;white-space:nowrap}
 .expense-row__allocations{display:flex;gap:6px;flex-wrap:wrap}
 .finance-form{display:grid;gap:10px}
-.finance-form label:not(.chk):not(.checkline):not(.row){display:grid;gap:6px;font-size:13px;color:var(--muted);font-weight:700}
+.finance-form label:not(.chk):not(.checkline):not(.row){display:grid;gap:6px;font-size:13px;color:var(--muted);font-weight:600}
 .finance-form label.chk,
 .finance-form label.checkline{display:inline-grid;grid-template-columns:18px minmax(0,auto);align-items:start;gap:10px;max-width:100%}
 .finance-form label.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%}
@@ -101,18 +101,18 @@
 .finance-form > label.row,
 .finance-form > .chk,
 .finance-form > .checkline{justify-self:start;width:auto}
-.finance-form label.chk{font-size:13px;color:var(--text);font-weight:700}
+.finance-form label.chk{font-size:13px;color:var(--text);font-weight:600}
 .finance-form label.chk > input[type="checkbox"],
 .finance-form label.chk > input[type="radio"],
 .finance-form label.checkline > input[type="checkbox"],
 .finance-form label.checkline > input[type="radio"]{width:18px;min-width:18px;max-width:18px}
 .finance-form label.chk > span,
 .finance-form label.checkline > span{min-width:0;overflow-wrap:anywhere}
-.finance-form label.row{font-size:13px;color:var(--muted);font-weight:700}
+.finance-form label.row{font-size:13px;color:var(--muted);font-weight:600}
 .finance-form input,.finance-form select,.finance-form textarea{width:100%}
 .form-section{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.03)}
 .form-section__head{display:grid;gap:4px}
-.form-section__title{font-size:13px;font-weight:900;letter-spacing:.02em}
+.form-section__title{font-size:13px;font-weight:600;letter-spacing:.02em}
 .form-section__subtitle{font-size:12px;color:var(--muted);line-height:1.4}
 .form-section__grid{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .form-section__grid--3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -121,8 +121,8 @@
 .form-note--warn{border-color:var(--accentSoftBorder);background:rgba(255,255,255,0.03)}
 .form-note--info{border-color:rgba(137,180,255,.25);background:rgba(137,180,255,.08)}
 .pay-config-summary{display:grid;gap:6px;padding:12px;border-radius:14px;border:1px dashed var(--accentSoftBorder);background:var(--accentSoftBg)}
-.pay-config-summary__eyebrow{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.pay-config-summary__title{font-size:14px;font-weight:900;line-height:1.35}
+.pay-config-summary__eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pay-config-summary__title{font-size:14px;font-weight:600;line-height:1.35}
 .pay-config-summary__meta{font-size:12px;color:var(--muted);line-height:1.45}
 @media (max-width:900px){
   .finance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -170,7 +170,7 @@
 
 /* -------- Payroll -------- */
 .payroll-breakdown{border-top:1px dashed var(--border); padding-top:10px}
-.payroll-breakdown summary{cursor:pointer; color:var(--muted); font-weight:800}
+.payroll-breakdown summary{cursor:pointer; color:var(--muted); font-weight:600}
 .payroll-breakdown__body{display:grid; gap:8px}
 .payroll-breakdown__row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,0.02)}
 @media (max-width:760px){
@@ -220,7 +220,7 @@
 .notif-inline-state{min-height:18px;font-size:12px;line-height:1.35;}
 .notif-fields{margin-top:8px;transition:opacity .2s ease;}
 .notif-fields.is-dimmed{opacity:.55;}
-.notif-badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:800;letter-spacing:.04em;background:var(--surface2);white-space:nowrap;}
+.notif-badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:600;letter-spacing:.04em;background:var(--surface2);white-space:nowrap;}
 .notif-badge--ok{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);}
 .notif-badge--err{border-color:var(--statusErrorBorder);background:var(--statusErrorBg);}
 .notif-badge--wait{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);}
@@ -247,39 +247,39 @@
 
 /* pay component simulator */
 .pay-sim{display:grid;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.04);}
-.pay-sim__title{font-size:13px;font-weight:800;}
+.pay-sim__title{font-size:13px;font-weight:600;}
 .pay-sim__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
 .pay-sim__result{display:grid;gap:10px;padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.03);line-height:1.45;}
 .pay-sim__stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
 .pay-sim__stat{display:grid;gap:4px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.03);}
 .pay-sim__stat--accent{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);}
-.pay-sim__stat-label{font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
-.pay-sim__stat-value{font-size:14px;font-weight:900;line-height:1.25;}
+.pay-sim__stat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.pay-sim__stat-value{font-size:14px;font-weight:600;line-height:1.25;}
 .pay-sim__note{font-size:12px;color:var(--muted);line-height:1.5;}
 @media (max-width:760px){
   .pay-sim__grid,.pay-sim__stats{grid-template-columns:1fr;}
 }
 
 .payroll-breakdown__header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start;}
-.payroll-breakdown__eyebrow{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
-.payroll-breakdown__title{font-size:15px;font-weight:900;line-height:1.3;}
+.payroll-breakdown__eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.payroll-breakdown__title{font-size:15px;font-weight:600;line-height:1.3;}
 .payroll-breakdown__explain{font-size:12px;color:var(--muted);line-height:1.45;margin-top:4px;}
-.payroll-breakdown__amount{font-size:16px;font-weight:900;white-space:nowrap;}
+.payroll-breakdown__amount{font-size:16px;font-weight:600;white-space:nowrap;}
 .payroll-breakdown__badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
-.payroll-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:800;letter-spacing:.03em;background:var(--surface2);}
+.payroll-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:600;letter-spacing:.03em;background:var(--surface2);}
 .payroll-chip--ok{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);}
 .payroll-chip--warn{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);}
 .payroll-chip--muted{opacity:.92;}
 .payroll-breakdown__kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;}
 .payroll-breakdown__kv-item{display:grid;gap:4px;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);}
-.payroll-breakdown__kv-label{font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
-.payroll-breakdown__kv-value{font-size:13px;font-weight:800;line-height:1.35;}
+.payroll-breakdown__kv-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.payroll-breakdown__kv-value{font-size:13px;font-weight:600;line-height:1.35;}
 .payroll-breakdown__dayrows{display:grid;gap:8px;margin-top:10px;}
 .payroll-breakdown__dayrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.02);}
 .payroll-breakdown__dayrow-main{min-width:0;}
-.payroll-breakdown__dayrow-date{font-size:13px;font-weight:900;}
+.payroll-breakdown__dayrow-date{font-size:13px;font-weight:600;}
 .payroll-breakdown__dayrow-meta{font-size:12px;color:var(--muted);line-height:1.4;margin-top:3px;}
-.payroll-breakdown__dayrow-amount{font-size:13px;font-weight:900;white-space:nowrap;}
+.payroll-breakdown__dayrow-amount{font-size:13px;font-weight:600;white-space:nowrap;}
 @media (max-width:760px){
   .payroll-breakdown__header,.payroll-breakdown__dayrow,.payroll-breakdown__kv{grid-template-columns:1fr;}
   .payroll-breakdown__amount,.payroll-breakdown__dayrow-amount{white-space:normal;}

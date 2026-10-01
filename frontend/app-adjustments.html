@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/app-adjustments.css?v=20260726-polish9" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/app-adjustments.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -36,11 +36,9 @@
     <main class="app-adjustments-content">
     <section class="card app-adjustments-card">
       <div class="app-adjustments-toolbar">
-        <div class="app-adjustments-month">
-          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
-          <b id="monthLabel">…</b>
-          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
-        </div>
+        <button class="period-menu-trigger" id="adjustmentsPeriodPicker" type="button" data-period-picker data-period-stepper="month" data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false">
+          <span data-period-label id="monthLabel">Этот месяц</span>
+        </button>
         <div class="app-adjustments-actions">
           <label class="app-adjustments-filter">
             <span class="muted small">Тип операции</span>
@@ -85,6 +83,6 @@
     </div>
   </div>
 
-  <script type="module" src="/app-adjustments.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/app-adjustments.js?v=20261001-ui16"></script>
 </body>
 </html>

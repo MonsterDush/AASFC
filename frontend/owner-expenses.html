@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260810-financepolish1" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -55,31 +55,28 @@
 
     <div class="card finance-toolbar">
       <div class="screen-hero">
-        <div class="screen-hero__head">
-          <div>
+        <div class="finance-titlebar">
+          <div class="finance-titlebar__title">
             <b>Расходы</b>
-            <div class="muted mt-6">Расходы и черновики за выбранный период</div>
+            <button class="info-button" type="button" aria-label="О расходах" aria-expanded="false" data-info="Расходы и черновики заведения за выбранный период.">i</button>
           </div>
-          <div class="screen-hero__actions screen-hero__actions--adaptive">
+          <div class="finance-titlebar__actions">
+            <button class="period-menu-trigger" id="expensesPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
             <button class="btn primary" id="addExpenseBtn">Добавить расход</button>
           </div>
         </div>
 
         <div class="screen-hero__toolbar">
-          <div class="screen-hero__period">
-            <input class="finance-control" id="expensesMonthPick" type="month" aria-label="Месяц расходов" />
-          </div>
           <div class="expense-hero-total itemcard">
-            <div class="expense-hero-total__label">Признано в выбранном месяце</div>
+            <div class="block-title-with-info"><div class="expense-hero-total__label">Признано в выбранном месяце</div><button class="info-button" type="button" aria-label="О признанной сумме" aria-expanded="false" data-info="Фонд оплаты труда учитывается отдельно в сводке и не дублируется в этой сумме.">i</button></div>
             <div class="expense-hero-total__value" id="expensesTotalMinor">—</div>
             <div class="finance-metric-delta is-neutral" id="expensesTotalDelta">—</div>
-            <div class="muted">ФОТ учитывается отдельно в сводке и не дублируется здесь.</div>
           </div>
         </div>
 
         <details class="itemcard finance-comparison-card finance-comparison-disclosure">
           <summary class="finance-comparison-disclosure__summary">
-            <span><b>Сравнение расходов</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span><b>Сравнение расходов</b></span>
             <span class="badge">Настроить</span>
           </summary>
           <div class="finance-comparison-disclosure__body">
@@ -149,8 +146,7 @@
           <div class="expense-catalog-grid">
             <section class="expense-catalog-card">
               <div class="expense-catalog-card__copy">
-                <b>Категории расходов</b>
-                <span class="muted">Структура расходов для отчётов и сводки</span>
+                <div class="block-title-with-info"><b>Категории расходов</b><button class="info-button" type="button" data-info="Структура расходов для отчётов и сводки." aria-label="О категориях расходов">i</button></div>
               </div>
               <div class="expense-catalog-card__actions">
                 <button class="btn subtle finance-action-btn" id="openExpenseCategoriesBtn" type="button" data-nav-button>Открыть</button>
@@ -160,8 +156,7 @@
 
             <section class="expense-catalog-card">
               <div class="expense-catalog-card__copy">
-                <b>Поставщики</b>
-                <span class="muted">Контрагенты для новых и регулярных расходов</span>
+                <div class="block-title-with-info"><b>Поставщики</b><button class="info-button" type="button" data-info="Контрагенты для новых и регулярных расходов." aria-label="О поставщиках">i</button></div>
               </div>
               <div class="expense-catalog-card__actions">
                 <button class="btn subtle finance-action-btn" id="openSuppliersBtn" type="button" data-nav-button>Открыть</button>
@@ -171,24 +166,21 @@
 
             <section class="expense-catalog-card expense-catalog-card--compact">
               <div class="expense-catalog-card__copy">
-                <b>Способы оплаты</b>
-                <span class="muted">Кассы, счета и другие источники списания</span>
+                <div class="block-title-with-info"><b>Способы оплаты</b><button class="info-button" type="button" data-info="Кассы, счета и другие источники списания." aria-label="О способах оплаты">i</button></div>
               </div>
               <button class="btn subtle finance-action-btn" id="openPaymentMethodsBtn" type="button" data-nav-button>Открыть</button>
             </section>
 
             <section class="expense-catalog-card expense-catalog-card--compact">
               <div class="expense-catalog-card__copy">
-                <b>Регулярные расходы</b>
-                <span class="muted">Шаблоны повторяющихся платежей</span>
+                <div class="block-title-with-info"><b>Регулярные расходы</b><button class="info-button" type="button" data-info="Шаблоны повторяющихся платежей." aria-label="О регулярных расходах">i</button></div>
               </div>
               <button class="btn subtle finance-action-btn" id="openRecurringExpensesBtn" type="button" data-nav-button>Открыть</button>
             </section>
 
             <section class="expense-catalog-card expense-catalog-card--utility">
               <div class="expense-catalog-card__copy">
-                <b>Финансовые данные</b>
-                <span class="muted">Полный журнал операций и выгрузка расходов</span>
+                <div class="block-title-with-info"><b>Финансовые данные</b><button class="info-button" type="button" data-info="Полный журнал операций и выгрузка расходов." aria-label="О финансовых данных">i</button></div>
               </div>
               <div class="expense-catalog-card__actions">
                 <button class="btn subtle finance-action-btn" id="openLedgerBtn" type="button" data-nav-button>Финансовые движения</button>
@@ -219,8 +211,7 @@
 
       <div class="itemcard mt-12">
         <div class="section-head">
-          <div class="section-title"><b>Список расходов</b></div>
-          <div class="muted">Полная сумма документа и признание по месяцу показаны отдельно.</div>
+          <div class="block-title-with-info section-title"><b>Список расходов</b><button class="info-button" type="button" data-info="Полная сумма документа и признание по месяцу показаны отдельно." aria-label="О списке расходов">i</button></div>
         </div>
         <div id="expensesList" class="expense-list mt-12"></div>
       </div>
@@ -245,6 +236,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-expenses.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/owner-expenses.js?v=20261001-ui16"></script>
 </body>
 </html>

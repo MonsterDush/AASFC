@@ -1,7 +1,7 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
   getMyVenues, getMyVenuePermissions, getMe, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { hasOwnerDashboardAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260924-dashboardaccess1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,
@@ -40,7 +40,7 @@ const state = {
   venueId: "", month: "", scope: "venue", trendMetric: "revenue", layout: null, undoLayout: null,
   deviceKind: dashboardDeviceKind(), ownerVenues: [], monthData: null, previousData: null, dayData: null,
   economics: null, monthPlan: null, departmentPlan: null, payroll: null, reports: [], integrations: [],
-  integrationQuality: [], networkRows: [], financialValuesHidden: false, sourceErrors: [], loadRevision: 0,
+  integrationQuality: [], dayShifts: [], networkRows: [], financialValuesHidden: false, sourceErrors: [], loadRevision: 0,
   referenceDate: "",
 };
 
@@ -135,18 +135,53 @@ function dailySeries(field) {
     : [];
 }
 
+function financeDataAvailable(summary) {
+  if (state.financialValuesHidden) return true;
+  if (!summary) return false;
+  const fields = [
+    "revenue_minor", "expense_minor", "expense_without_payroll_minor", "payroll_minor",
+    "total_cost_minor", "adjustments_minor", "refunds_minor", "profit_minor",
+  ];
+  if (fields.some((field) => Number(summary?.[field] || 0) !== 0)) return true;
+  if ((summary.cost_structure || []).some((row) => Number(row?.amount_minor || 0) !== 0)) return true;
+  return (summary.daily_series || []).some((row) => fields.some((field) => Number(row?.[field] || 0) !== 0));
+}
+
+function emptyFinanceWidget(hint = "За выбранный период нет финансовых операций") {
+  return {
+    value: "Данных пока нет",
+    hint,
+    delta: { text: "Выберите другой период", tone: "is-neutral" },
+    series: [],
+    empty: true,
+  };
+}
+
 function widgetView(widgetId) {
   const month = state.monthData || {};
   const previous = state.previousData || {};
   const economics = state.economics || {};
   const plan = state.monthPlan || {};
   const dayContext = state.month === currentMonth() ? "Сегодня" : dashboardDateLabel(state.referenceDate, localeTag());
-  if (widgetId === "revenue_today") return { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: dayContext, tone: "is-neutral" }, series: [] };
-  if (widgetId === "revenue_month") return { value: formatMoneyMinor(month.revenue_minor), hint: "С начала выбранного месяца", delta: deltaView(month.revenue_minor, previous.revenue_minor), series: dailySeries("revenue_minor") };
-  if (widgetId === "profit_month") return { value: formatMoneyMinor(month.profit_minor), hint: "После расходов и ФОТ", delta: deltaView(month.profit_minor, previous.profit_minor), series: dailySeries("profit_minor") };
-  if (widgetId === "expenses_month") return { value: formatMoneyMinor(month.expense_without_payroll_minor), hint: "Подтверждённые, без ФОТ", delta: deltaView(month.expense_without_payroll_minor, previous.expense_without_payroll_minor, { direction: "down" }), series: dailySeries("expense_minor") };
-  if (widgetId === "payroll_month") return { value: formatMoneyMinor(month.payroll_minor), hint: "Начисления команды", delta: deltaView(month.payroll_minor, previous.payroll_minor, { direction: "down" }), series: dailySeries("payroll_minor") };
-  if (widgetId === "margin_month") return { value: formatPercentBps(month.margin_bps), hint: "Доля прибыли от выручки", delta: deltaView(month.margin_bps, previous.margin_bps, { money: false }), series: dailySeries("profit_minor") };
+  const hasMonthData = financeDataAvailable(month);
+  if (widgetId === "revenue_today") return financeDataAvailable(state.dayData)
+    ? { value: formatMoneyMinor(state.dayData?.revenue_minor), hint: "По закрытым отчётам за день", delta: { text: dayContext, tone: "is-neutral" }, series: [] }
+    : emptyFinanceWidget("За сегодня ещё нет закрытых отчётов");
+  if (widgetId === "revenue_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.revenue_minor), hint: "С начала выбранного месяца", delta: deltaView(month.revenue_minor, previous.revenue_minor), series: dailySeries("revenue_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "profit_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.profit_minor), hint: "После расходов и ФОТ", delta: deltaView(month.profit_minor, previous.profit_minor), series: dailySeries("profit_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "expenses_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.expense_without_payroll_minor), hint: "Подтверждённые, без ФОТ", delta: deltaView(month.expense_without_payroll_minor, previous.expense_without_payroll_minor, { direction: "down" }), series: dailySeries("expense_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "payroll_month") return hasMonthData
+    ? { value: formatMoneyMinor(month.payroll_minor), hint: "Начисления команды", delta: deltaView(month.payroll_minor, previous.payroll_minor, { direction: "down" }), series: dailySeries("payroll_minor") }
+    : emptyFinanceWidget();
+  if (widgetId === "margin_month") return hasMonthData
+    ? { value: formatPercentBps(month.margin_bps), hint: "Доля прибыли от выручки", delta: deltaView(month.margin_bps, previous.margin_bps, { money: false }), series: dailySeries("profit_minor") }
+    : emptyFinanceWidget();
   if (widgetId === "revenue_plan") {
     const target = Number(plan.revenue_plan_minor || 0);
     const actual = Number(month.revenue_minor || 0);
@@ -154,6 +189,7 @@ function widgetView(widgetId) {
     return { value: progress === null ? "План не задан" : formatPercentBps(progress), hint: target > 0 ? `${formatMoneyMinor(actual)} из ${formatMoneyMinor(target)}` : "Задайте план на месяц", delta: { text: target > 0 && actual >= target ? "План выполнен" : "План / факт", tone: actual >= target && target > 0 ? "is-good" : "is-neutral" }, series: dailySeries("revenue_minor") };
   }
   if (widgetId === "profit_forecast") {
+    if (!hasMonthData) return emptyFinanceWidget("Для прогноза нужны данные выбранного месяца");
     const elapsed = elapsedDays(state.month);
     const forecast = elapsed > 0 ? Math.round(Number(month.profit_minor || 0) / elapsed * daysInMonth(state.month)) : null;
     return { value: formatMoneyMinor(forecast), hint: state.month === currentMonth() ? `По темпу за ${elapsed} дн.` : "Фактический результат месяца", delta: deltaView(forecast, plan.profit_plan_minor), series: dailySeries("profit_minor") };
@@ -168,20 +204,24 @@ function widgetView(widgetId) {
   return { value: formatNumber(issueCount), hint: syncHint, delta: { text: failed ? "Есть критические ошибки" : issueCount ? "Нужно проверить" : "Синхронизация в норме", tone: failed ? "is-bad" : issueCount ? "is-neutral" : "is-good" }, series: [] };
 }
 
-function createSparkline(values) {
-  if (!Array.isArray(values) || values.length < 2) return null;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.classList.add("owner-dashboard-widget__sparkline");
-  svg.setAttribute("viewBox", "0 0 160 38");
-  svg.setAttribute("aria-hidden", "true");
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const points = values.map((value, index) => `${index / (values.length - 1) * 158 + 1},${36 - (value - min) / range * 32}`).join(" ");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", `M ${points.replaceAll(" ", " L ")}`);
-  svg.append(path);
-  return svg;
+function dashboardShiftPeople() {
+  const people = [];
+  const seen = new Set();
+  for (const shift of (state.dayShifts || [])) {
+    for (const assignment of (shift?.assignments || [])) {
+      const key = String(assignment?.member_user_id || assignment?.display_name || "").trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      people.push(String(
+        assignment?.display_name
+        || assignment?.short_name
+        || assignment?.full_name
+        || assignment?.tg_username
+        || `Сотрудник #${assignment?.member_user_id}`,
+      ));
+    }
+  }
+  return people;
 }
 
 function createWidgetCard(widgetId) {
@@ -190,6 +230,7 @@ function createWidgetCard(widgetId) {
   const size = state.layout.sizes[widgetId] || "normal";
   const card = document.createElement("a");
   card.className = `itemcard owner-dashboard-widget owner-dashboard-widget--${size}`;
+  card.classList.toggle("is-empty", Boolean(view.empty));
   card.href = hrefFor(definition.target);
   card.dataset.widgetId = widgetId;
   const label = document.createElement("div");
@@ -199,24 +240,45 @@ function createWidgetCard(widgetId) {
   label.textContent = historicalDay
     ? definition.title.replace("сегодня", `за ${dashboardDateLabel(state.referenceDate, localeTag())}`)
     : definition.title;
-  const value = document.createElement("div");
-  value.className = "owner-dashboard-widget__value";
-  value.textContent = view.value;
-  const sparkline = createSparkline(view.series);
-  const delta = document.createElement("div");
-  delta.className = `owner-dashboard-widget__delta ${view.delta.tone}`;
-  delta.textContent = view.delta.text;
-  const meta = document.createElement("div");
-  meta.className = "owner-dashboard-widget__meta";
-  const hint = document.createElement("span");
-  hint.textContent = view.hint;
+  const labelRow = document.createElement("div");
+  labelRow.className = "block-title-with-info";
+  const info = document.createElement("span");
+  info.className = "info-button";
+  info.setAttribute("role", "button");
+  info.setAttribute("tabindex", "0");
+  info.setAttribute("aria-label", `О показателе «${definition.title}»`);
+  info.setAttribute("aria-expanded", "false");
+  info.dataset.info = view.hint;
+  info.textContent = "i";
   const arrow = document.createElement("span");
   arrow.className = "owner-dashboard-widget__arrow";
   arrow.textContent = "→";
-  meta.append(hint, arrow);
-  card.append(label, value, delta);
-  if (sparkline && size === "wide") card.append(sparkline);
-  card.append(meta);
+  labelRow.append(label, info, arrow);
+  const value = document.createElement("div");
+  value.className = "owner-dashboard-widget__value";
+  value.textContent = view.value;
+  const delta = document.createElement("div");
+  delta.className = `owner-dashboard-widget__delta ${view.delta.tone}`;
+  delta.textContent = view.delta.text;
+  card.append(labelRow, value, delta);
+  if (widgetId === "shifts_today") {
+    const people = dashboardShiftPeople();
+    const peopleRow = document.createElement("div");
+    peopleRow.className = "owner-dashboard-widget__people";
+    people.slice(0, 4).forEach((name) => {
+      const person = document.createElement("span");
+      person.className = "owner-dashboard-widget__person";
+      person.textContent = name;
+      peopleRow.append(person);
+    });
+    if (people.length > 4) {
+      const rest = document.createElement("span");
+      rest.className = "owner-dashboard-widget__person owner-dashboard-widget__person--rest";
+      rest.textContent = `+${people.length - 4}`;
+      peopleRow.append(rest);
+    }
+    if (peopleRow.childElementCount) card.append(peopleRow);
+  }
   return card;
 }
 
@@ -345,16 +407,15 @@ function dashboardAlerts() {
 }
 
 function renderAttention() {
+  const section = document.getElementById("dashboardAttention");
   const list = document.getElementById("dashboardAttentionList");
   const count = document.getElementById("dashboardAttentionCount");
   const alerts = dashboardAlerts();
   if (count) count.textContent = String(alerts.length);
+  section?.classList.toggle("hidden", !alerts.length);
   if (!list) return;
   if (!alerts.length) {
-    const empty = document.createElement("div");
-    empty.className = "owner-dashboard-empty";
-    empty.textContent = "Критичных задач нет. Данные и смены выглядят нормально.";
-    list.replaceChildren(empty);
+    list.replaceChildren();
     return;
   }
   list.replaceChildren(...alerts.map((item) => {
@@ -389,7 +450,7 @@ function renderTrend() {
   if (!container || !legend) return;
   const rows = Array.isArray(state.monthData?.daily_series) ? state.monthData.daily_series : [];
   const values = rows.map((row) => Number(row?.[trendField()] || 0));
-  if (!rows.length) {
+  if (!rows.length || !financeDataAvailable(state.monthData)) {
     const empty = document.createElement("div");
     empty.className = "owner-dashboard-empty";
     empty.textContent = "Для графика пока нет закрытых отчётов за выбранный месяц.";
@@ -540,14 +601,16 @@ async function loadVenueDashboard(revision) {
     dailySeries: monthData?.daily_series,
     reports: Array.isArray(reports) ? reports : [],
   });
-  const [dayData, economics] = await Promise.all([
+  const [dayData, economics, dayShifts] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/finance/summary?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}`),
     optional(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(day)}`, "economics"),
+    optional(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}&staffing_state=staffed`, "day-shifts"),
   ]);
   if (revision !== state.loadRevision) return;
   state.referenceDate = day;
   state.monthData = monthData; state.previousData = previousData; state.dayData = dayData; state.economics = economics;
   state.monthPlan = monthPlan; state.departmentPlan = departmentPlan; state.payroll = payroll;
+  state.dayShifts = Array.isArray(dayShifts) ? dayShifts : [];
   state.reports = Array.isArray(reports) ? reports : []; state.integrations = Array.isArray(integrations) ? integrations : [];
   state.integrationQuality = await loadIntegrationQuality(state.integrations);
 }
@@ -581,14 +644,11 @@ async function loadNetworkDashboard(revision) {
   };
   state.integrations = successful.flatMap((row) => row.integrations || []);
   state.integrationQuality = successful.flatMap((row) => row.quality || []);
-  state.economics = null; state.payroll = null; state.reports = [];
+  state.economics = null; state.payroll = null; state.reports = []; state.dayShifts = [];
 }
 
 function renderAll() {
   renderWidgets(); renderAttention(); renderTrend(); renderOperations(); renderNetwork(); renderQuickActions();
-  const now = new Date();
-  const freshness = document.getElementById("dashboardFreshness");
-  if (freshness) freshness.textContent = `Обновлено ${now.toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" })}${state.sourceErrors.length ? ` · ${state.sourceErrors.length} источник(а) недоступно` : " · все источники доступны"}`;
 }
 
 async function loadDashboard() {
@@ -646,8 +706,20 @@ function bindConfigEvents() {
 
 function bindDashboardControls() {
   bindConfigEvents();
-  const monthPick = document.getElementById("dashboardMonthPick");
-  if (monthPick) { monthPick.value = state.month; monthPick.addEventListener("change", async (event) => { state.month = coerceDemoMonth(event.target.value || currentMonth(), { context: "owner-dashboard" }); event.target.value = state.month; document.getElementById("dashboardPeriodLabel").textContent = monthLabel(state.month); renderQuickActions(); await loadDashboard(); }); }
+  const periodPicker = document.getElementById("dashboardPeriodPicker");
+  if (periodPicker) {
+    periodPicker.dataset.periodValue = state.month === currentMonth()
+      ? "this_month"
+      : (state.month === previousMonth(currentMonth()) ? "previous_month" : "custom");
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      state.month = coerceDemoMonth(detail.month || String(detail.from || state.month || currentMonth()).slice(0, 7), { context: "owner-dashboard" });
+      const label = periodPicker.querySelector("[data-period-label]");
+      if (label) label.textContent = monthLabel(state.month);
+      renderQuickActions();
+      await loadDashboard();
+    });
+  }
   const scope = document.getElementById("dashboardScope");
   scope?.addEventListener("change", async (event) => { state.scope = event.target.value === "network" ? "network" : "venue"; await loadDashboard(); });
   document.getElementById("dashboardTrendSwitch")?.addEventListener("click", (event) => { const button = event.target.closest("[data-trend]"); if (!button) return; state.trendMetric = button.dataset.trend; document.querySelectorAll("#dashboardTrendSwitch button").forEach((item) => item.classList.toggle("active", item === button)); renderTrend(); });

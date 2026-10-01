@@ -1,5 +1,5 @@
 import { applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId,
-  setActiveVenueId, getMyVenues, getMyVenuePermissions, api, toast, confirmModal } from "/app.js?v=20260924-dashboardi18n1";
+  setActiveVenueId, getMyVenues, getMyVenuePermissions, api, toast, confirmModal } from "/app.js?v=20261001-ui16";
 import { hasPerm, permSetFromResponse, roleUpper } from "/permissions.js";
 
 const $ = (id) => document.getElementById(id);
@@ -149,10 +149,20 @@ async function boot() {
   $("departmentPick").innerHTML = departments.filter((dep) => dep.is_active !== false).map((dep) => `<option value="${dep.id}">${esc(dep.title)}</option>`).join("");
   if (params.get("department_id") && Array.from($("departmentPick").options).some((opt) => opt.value === params.get("department_id"))) $("departmentPick").value = params.get("department_id");
   $("monthPick").value = /^\d{4}-\d{2}$/.test(params.get("month") || "") ? params.get("month") : iso(new Date()).slice(0,7);
+  const periodPicker = $("departmentPlansPeriodPicker");
+  if (periodPicker) {
+    periodPicker.querySelector("[data-period-label]").textContent = $("monthPick").value;
+    periodPicker.addEventListener("axelio:period-change", async (event) => {
+      const detail = event.detail || {};
+      $("monthPick").value = detail.month || String(detail.from || "").slice(0, 7) || iso(new Date()).slice(0, 7);
+      periodPicker.querySelector("[data-period-label]").textContent = detail.label || $("monthPick").value;
+      await load();
+    });
+  }
   $("profilesLink").href = `/owner-pay-profiles.html?venue_id=${state.venueId}`;
   $("venuePlansLink").href = `/owner-economics-plans.html?venue_id=${state.venueId}`;
   $("weekInputs").innerHTML = weekdays.map((day, index) => `<label>${t(day)}<input id="weekday${index}" inputmode="decimal" placeholder="—" aria-label="${t(day)}, ₽" /></label>`).join("");
-  $("departmentPick").onchange = load; $("monthPick").onchange = load;
+  $("departmentPick").onchange = load;
   $("daysTab").onclick = () => setMode(true); $("monthTab").onclick = () => setMode(false);
   $("monthForm").onsubmit = (event) => { event.preventDefault(); run(async () => {
     await api(`${selected()}/month?month=${$("monthPick").value}`, {method:"PUT", body: {revenue_plan_minor: parseMoney($("monthValue").value)}});

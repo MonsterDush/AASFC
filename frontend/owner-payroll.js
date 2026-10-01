@@ -18,7 +18,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { tierBreakdown, tierDayBreakdown } from "/owner-pay-profile/percent-breakdown.js?v=20260906-tiers1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
@@ -427,6 +427,13 @@ function periodTitle() {
     : `сводка начислений за период ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}`;
 }
 
+function periodPickerLabel() {
+  if (state.periodMode !== "month") return `${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}`;
+  const value = new Date(`${state.month}-01T12:00:00`);
+  if (Number.isNaN(value.getTime())) return state.month;
+  return value.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" });
+}
+
 function renderShell() {
   root.innerHTML = `
     <div class="topbar payroll-topbar">
@@ -462,44 +469,27 @@ function renderShell() {
 
       <section class="card payroll-overview-card">
         <div class="screen-hero payroll-hero">
-          <div class="screen-hero__head">
-            <div>
+          <div class="finance-titlebar">
+            <div class="finance-titlebar__title">
               <b>Расчёт зарплаты</b>
-              <div class="page-caption mt-6">Начисления по активным профилям: ставки, проценты и KPI-бонусы по закрытым отчётам выбранного периода.</div>
+              <button class="info-button" type="button" data-info="Начисления по активным профилям: ставки, проценты и KPI-бонусы по закрытым отчётам выбранного периода." aria-label="О расчёте зарплаты">i</button>
             </div>
-            <div class="screen-hero__actions screen-hero__actions--adaptive payroll-hero__actions">
+            <div class="finance-titlebar__actions payroll-hero__actions">
               <button class="btn subtle small" id="openProfilesBtn" type="button" data-nav-button>Профили</button>
+              <button class="period-menu-trigger" id="payrollPeriodPicker" type="button" data-period-picker data-period-value="this_month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
               <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
               <button class="btn primary" id="btnCalculate">Рассчитать</button>
             </div>
           </div>
 
           <div class="payroll-period-grid">
-            <div class="itemcard payroll-period-card">
-              <div class="finance-period-card__label">Период начислений</div>
-              <div class="payroll-period-card__controls">
-                <div class="seg seg--period finance-period-segment" id="periodSeg">
-                  <button type="button" id="periodMonthBtn">Месяц</button>
-                  <button type="button" id="periodRangeBtn">Период</button>
-                </div>
-                <div id="monthControls" class="pickers">
-                  <input id="monthPick" class="finance-control" type="month" aria-label="Месяц начислений" />
-                </div>
-                <div id="rangeControls" class="range-pick hidden">
-                  <input id="rangeFrom" type="date" aria-label="Начало периода" />
-                  <input id="rangeTo" type="date" aria-label="Конец периода" />
-                  <button class="btn" id="rangeApply">Показать</button>
-                </div>
-              </div>
-            </div>
             <div class="itemcard finance-period-card payroll-run-card">
-              <div class="finance-period-card__label">Последний расчёт</div>
+              <div class="block-title-with-info"><div class="finance-period-card__label">Последний расчёт</div><button class="info-button" type="button" data-info="Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника." aria-label="О последнем расчёте">i</button></div>
               <div class="finance-period-card__value is-loading" id="runMeta" aria-busy="true">Загрузка…</div>
-              <div class="muted">Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника.</div>
             </div>
             <details class="itemcard payroll-comparison-card finance-comparison-disclosure">
               <summary class="finance-comparison-disclosure__summary">
-                <span><b>Сравнение начислений</b><span class="muted">Открыть настройки сравнения</span></span>
+                <span><b>Сравнение начислений</b></span>
                 <span class="badge">Настроить</span>
               </summary>
               <div class="finance-comparison-disclosure__body">
@@ -529,28 +519,24 @@ function renderShell() {
 
         <div class="finance-kpis payroll-kpis">
           <div class="itemcard finance-stat finance-stat--hero payroll-metric payroll-metric--total">
-            <div class="finance-stat__label">Фонд оплаты труда</div>
+            <div class="block-title-with-info"><div class="finance-stat__label">Фонд оплаты труда</div><button class="info-button" type="button" data-info="Итого начислено команде за выбранный период." aria-label="О фонде оплаты труда">i</button></div>
             <div class="finance-stat__value is-loading" id="totalAmount" aria-busy="true">Загрузка…</div>
             <div class="payroll-metric-delta" id="totalAmountDelta">—</div>
-            <div class="finance-stat__meta">Итого начислено команде за выбранный период.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
-            <div class="finance-stat__label">Сотрудников в расчёте</div>
+            <div class="block-title-with-info"><div class="finance-stat__label">Сотрудников в расчёте</div><button class="info-button" type="button" data-info="Участники, для которых сформированы строки начислений." aria-label="О сотрудниках в расчёте">i</button></div>
             <div class="finance-stat__value is-loading" id="linesCount" aria-busy="true">Загрузка…</div>
             <div class="payroll-metric-delta" id="linesCountDelta">—</div>
-            <div class="finance-stat__meta">Участники, для которых сформированы строки начислений.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
-            <div class="finance-stat__label">Среднее начисление</div>
+            <div class="block-title-with-info"><div class="finance-stat__label">Среднее начисление</div><button class="info-button" type="button" data-info="Средняя сумма на одного сотрудника в текущем расчёте." aria-label="О среднем начислении">i</button></div>
             <div class="finance-stat__value is-loading" id="averageAmount" aria-busy="true">Загрузка…</div>
             <div class="payroll-metric-delta" id="averageAmountDelta">—</div>
-            <div class="finance-stat__meta">Средняя сумма на одного сотрудника в текущем расчёте.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric payroll-metric--per-shift">
-            <div class="finance-stat__label">Среднее за смену</div>
+            <div class="block-title-with-info"><div class="finance-stat__label">Среднее за смену</div><button class="info-button" type="button" data-info="Взвешенное среднее по сотрудникам, у которых есть отработанные смены." aria-label="О среднем за смену">i</button></div>
             <div class="finance-stat__value is-loading" id="averagePerShift" aria-busy="true">Загрузка…</div>
             <div class="payroll-metric-delta" id="averagePerShiftDelta">—</div>
-            <div class="finance-stat__meta">Взвешенное среднее по сотрудникам, у которых есть отработанные смены.</div>
           </div>
         </div>
       </section>
@@ -638,15 +624,15 @@ function renderShell() {
       <section class="card section-card payroll-leaderboard-card" id="payrollLeaderboardCard">
         <div class="section-card__head payroll-leaderboard-head">
           <div class="section-card__title">
-            <b>Лидеры по начислению за смену</b>
-            <div class="muted" id="payrollLeaderboardSubtitle">Сравнение сотрудников с сопоставимой нагрузкой.</div>
+            <div class="block-title-with-info"><b>Лидеры по начислению за смену</b><button class="info-button" type="button" data-info="Сравнение сотрудников с сопоставимой нагрузкой. Это рейтинг начислений, а не личных продаж." aria-label="О рейтинге начислений">i</button></div>
+            <div class="muted hidden" id="payrollLeaderboardSubtitle">Сравнение сотрудников с сопоставимой нагрузкой.</div>
           </div>
           <span class="badge" id="payrollLeaderboardThreshold">минимум 3 смены</span>
         </div>
         <div id="payrollLeaderboard" class="payroll-leaderboard payroll-loading" aria-live="polite" aria-busy="true">
           <div class="payroll-leaderboard-skeleton skeleton"></div>
         </div>
-        <div class="payroll-leaderboard-note muted" id="payrollLeaderboardNote">
+        <div class="payroll-leaderboard-note muted hidden" id="payrollLeaderboardNote">
           Это рейтинг начислений, а не личных продаж: сумма может зависеть от оклада, ставок, KPI, премий и штрафов.
         </div>
       </section>
@@ -654,8 +640,7 @@ function renderShell() {
       <section class="card section-card payroll-lines-card">
         <div class="section-card__head">
           <div class="section-card__title">
-            <b>Начисления сотрудникам</b>
-            <div class="muted">Сумма, рабочая нагрузка и полный разбор компонентов профиля.</div>
+            <div class="block-title-with-info"><b>Начисления сотрудникам</b><button class="info-button" type="button" data-info="Сумма, рабочая нагрузка и полный разбор компонентов профиля." aria-label="О начислениях сотрудникам">i</button></div>
           </div>
         </div>
         <div id="linesList" class="payroll-lines payroll-loading" aria-live="polite" aria-busy="true">
@@ -933,26 +918,18 @@ async function generatePaymentDrafts() {
 function renderState() {
   const btnCalculate = document.getElementById("btnCalculate");
   const btnExport = document.getElementById("btnExport");
-  const monthPick = document.getElementById("monthPick");
-  const rangeFrom = document.getElementById("rangeFrom");
-  const rangeTo = document.getElementById("rangeTo");
+  const periodPicker = document.getElementById("payrollPeriodPicker");
   const backVenue = document.getElementById("backVenue");
   const openSummary = document.getElementById("openSummary");
   const openProfilesBtn = document.getElementById("openProfilesBtn");
-  const monthControls = document.getElementById("monthControls");
-  const rangeControls = document.getElementById("rangeControls");
-  const periodMonthBtn = document.getElementById("periodMonthBtn");
-  const periodRangeBtn = document.getElementById("periodRangeBtn");
   const subtitle = document.getElementById("subtitle");
 
   if (subtitle) subtitle.textContent = periodTitle();
-  if (monthPick) monthPick.value = state.month;
-  if (rangeFrom) rangeFrom.value = state.dateFrom;
-  if (rangeTo) rangeTo.value = state.dateTo;
-  setVisible(monthControls, state.periodMode === "month");
-  setVisible(rangeControls, !isDemoUiMode() && state.periodMode === "range");
-  periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
-  periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
+  if (periodPicker) {
+    periodPicker.dataset.periodFrom = state.dateFrom || "";
+    periodPicker.dataset.periodTo = state.dateTo || "";
+    periodPicker.querySelector("[data-period-label]").textContent = periodPickerLabel();
+  }
   syncComparisonControls();
 
   setVisible(btnCalculate, state.can.calculate && state.periodMode === "month");
@@ -1327,29 +1304,6 @@ async function onCalculate() {
   }
 }
 
-function setPeriodMode(next) {
-  state.periodMode = next === "range" ? "range" : "month";
-  renderState();
-}
-
-async function applyRangeFromControls() {
-  const nextFrom = String(document.getElementById("rangeFrom")?.value || "").trim();
-  const nextTo = String(document.getElementById("rangeTo")?.value || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(nextTo)) {
-    toast("Выбери даты периода", "err");
-    return;
-  }
-  state.dateFrom = nextFrom <= nextTo ? nextFrom : nextTo;
-  state.dateTo = nextTo >= nextFrom ? nextTo : nextFrom;
-  renderState();
-  if (isDemoUiMode()) {
-    setVisible(document.getElementById("periodRangeBtn"), false);
-    setVisible(document.getElementById("rangeControls"), false);
-  }
-
-  await load();
-}
-
 async function boot() {
   applyTelegramTheme();
   renderShell();
@@ -1427,39 +1381,30 @@ async function boot() {
   document.getElementById("payrollSavePaymentSettings")?.addEventListener("click", savePaymentSettings);
   document.getElementById("payrollGenerateDrafts")?.addEventListener("click", generatePaymentDrafts);
 
-  document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
-    if (state.periodMode === "month") return;
-    setPeriodMode("month");
-    await load();
-  });
-  document.getElementById("periodRangeBtn")?.addEventListener("click", async () => {
-    if (state.periodMode === "range") return;
-    if (isDemoUiMode()) return;
-    setPeriodMode("range");
-    await load();
-  });
-
-  document.getElementById("monthPick")?.addEventListener("change", async (e) => {
-    state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-payroll" });
-    if (!state.dateFrom || !state.dateTo) {
+  document.getElementById("payrollPeriodPicker")?.addEventListener("axelio:period-change", async (event) => {
+    const detail = event.detail || {};
+    if (detail.mode === "month") {
+      state.periodMode = "month";
+      state.month = coerceDemoMonth(detail.month || String(detail.from || "").slice(0, 7) || currentMonth(), { context: "owner-payroll" });
       state.dateFrom = monthStartIso(state.month);
       state.dateTo = monthEndIso(state.month);
+    } else {
+      const normalized = normalizeIsoRange(detail.from, detail.to);
+      if (!normalized) return;
+      if (isDemoUiMode()) {
+        const demoRange = coerceDemoRange(normalized.from, normalized.to, { context: "owner-payroll" });
+        state.periodMode = "month";
+        state.month = String(demoRange.from || currentMonth()).slice(0, 7);
+        state.dateFrom = monthStartIso(state.month);
+        state.dateTo = monthEndIso(state.month);
+      } else {
+        state.periodMode = "range";
+        state.dateFrom = normalized.from;
+        state.dateTo = normalized.to;
+      }
     }
     renderState();
     await Promise.all([load(), loadPaymentSettings()]);
-  });
-
-  document.getElementById("rangeApply")?.addEventListener("click", async () => {
-    if (isDemoUiMode()) {
-      const demoRange = coerceDemoRange(state.dateFrom, state.dateTo, { context: "owner-payroll" });
-      state.dateFrom = demoRange.from;
-      state.dateTo = demoRange.to;
-      state.periodMode = "month";
-      renderState();
-      await load();
-      return;
-    }
-    await applyRangeFromControls();
   });
   document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
     button.addEventListener("click", async () => {

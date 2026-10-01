@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -19,14 +19,15 @@
   <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
   <script src="/page-loader.js?v=20260823-navfix1"></script>
   <title>Axelio · Планы департаментов</title>
-  <link rel="stylesheet" href="/styles/pages/department-plans.css?v=20260911-planrecalc1" />
+  <link rel="stylesheet" href="/styles/pages/department-plans.css?v=20261001-ui16" />
 </head>
 <body class="department-plans-page">
   <main class="container">
     <div class="topbar"><div class="brand"><div class="logo"></div><div class="title"><b>Планы департаментов</b><div class="muted">Настройте выручку, от которой зависит процент сотрудников</div></div></div><div class="userpill" data-userpill>…</div></div>
     <div class="card dp-filters">
       <label>Департамент<select id="departmentPick" aria-label="Департамент"></select></label>
-      <label>Месяц<input id="monthPick" type="month" required /></label>
+      <button class="period-menu-trigger" id="departmentPlansPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
+      <input id="monthPick" type="hidden" />
       <a class="btn ghost" id="venuePlansLink" href="/owner-economics-plans.html">Планы заведения</a>
     </div>
     <p id="pageStatus" role="status" class="muted">Загрузка…</p>
@@ -77,6 +78,6 @@
       <div class="modal__body"></div>
     </div>
   </div>
-  <script type="module" src="/owner-department-plans.js?v=20260924-dashboardi18n1"></script>
+  <script type="module" src="/owner-department-plans.js?v=20261001-ui16"></script>
 </body>
 </html>

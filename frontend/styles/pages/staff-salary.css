@@ -1,6 +1,6 @@
 .staff-salary-page .staff-salary-shell,
 .staff-salary-content{display:grid;gap:14px}
-.salary-toolbar-card{display:grid;grid-template-columns:auto minmax(240px,1fr) auto;align-items:center;gap:12px;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 76%)}
+.salary-toolbar-card{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:center;gap:12px;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 76%)}
 .salary-period-modes,
 .salary-scope-switch{display:flex;gap:6px;padding:4px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
 .salary-period-modes .btn,
@@ -16,11 +16,12 @@
 .salary-summary-card .section-card__eyebrow,
 .salary-chart-card .section-card__eyebrow,
 .salary-days-card .section-card__eyebrow,
-.salary-all-card .section-card__eyebrow{margin-bottom:4px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.salary-all-card .section-card__eyebrow{margin-bottom:4px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .salary-summary-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
 .salary-summary-row{display:grid;gap:5px;padding:11px 12px;border:1px solid var(--border);border-radius:13px;background:var(--surfaceTintSoft)}
 .salary-summary-row b{font-size:17px;font-variant-numeric:tabular-nums}
 .salary-summary-row--total{grid-column:1/-1;border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.salary-summary-row--total > .muted{color:var(--text)}
 .salary-summary-row--total b{color:var(--accent);font-size:21px}
 .salary-source-hint{min-height:34px;margin-top:12px;line-height:1.45}
 .salary-summary-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
@@ -45,7 +46,7 @@
 .salary-venue-list > .salary-state{grid-column:1/-1}
 .salary-venue-card{min-width:0;padding:14px;background:var(--surfaceTintSoft)}
 .salary-venue-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.salary-status{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--muted);font-size:11px;font-weight:800;white-space:nowrap}
+.salary-status{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap}
 .salary-status--ready{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
 .salary-status--partial{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);color:var(--statusWarningText)}
 
@@ -56,6 +57,7 @@
 
 @media (max-width:780px){
   .salary-toolbar-card{grid-template-columns:1fr}
+  .salary-toolbar-card .period-menu-trigger{width:100%}
   .salary-period-modes,
   .salary-scope-switch{width:100%}
   .salary-sections{grid-template-columns:1fr}

@@ -15,7 +15,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -740,16 +740,26 @@ async function boot() {
   }
   syncComparisonControls();
 
-  const datePick = document.getElementById("economicsDatePick");
-  if (datePick) {
-    datePick.value = state.date;
-    datePick.onchange = async (e) => {
-      state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
+  const datePicker = document.getElementById("economicsDatePicker");
+  if (datePicker) {
+    datePicker.value = state.date;
+    const selectEconomicsDate = async (value) => {
+      state.date = coerceDemoDate(value || todayISO(), { context: "owner-day-economics" });
+      datePicker.value = state.date;
       const ledgerLink = document.getElementById("openLedgerBtn");
       if (ledgerLink) ledgerLink.href = buildLedgerLink();
       updateEconomicsSlotUrl();
       await loadEconomics();
     };
+    datePicker.addEventListener("change", () => selectEconomicsDate(datePicker.value));
+    for (const [buttonId, amount] of [["economicsPreviousDay", -1], ["economicsNextDay", 1]]) {
+      document.getElementById(buttonId)?.addEventListener("click", () => {
+        const current = new Date(`${state.date || todayISO()}T12:00:00`);
+        current.setDate(current.getDate() + amount);
+        const next = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+        selectEconomicsDate(next);
+      });
+    }
   }
 
   const manageBlock = document.getElementById("economicsManageBlock");

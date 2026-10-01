@@ -1,4 +1,4 @@
-export const DASHBOARD_LAYOUT_VERSION = 2;
+export const DASHBOARD_LAYOUT_VERSION = 3;
 
 export const DASHBOARD_WIDGET_IDS = Object.freeze([
   "revenue_today", "revenue_month", "profit_month", "expenses_month", "payroll_month", "margin_month",
@@ -10,8 +10,7 @@ export const DASHBOARD_ACTION_IDS = Object.freeze([
 ]);
 
 const DEFAULT_VISIBLE_WIDGETS = Object.freeze([
-  "revenue_today", "revenue_month", "profit_month", "expenses_month", "payroll_month", "margin_month",
-  "revenue_plan", "profit_forecast",
+  "revenue_month", "profit_month", "expenses_month", "payroll_month",
 ]);
 const DEFAULT_VISIBLE_ACTIONS = Object.freeze([
   "add_expense", "expenses", "summary", "turnover", "payroll", "report", "venue",

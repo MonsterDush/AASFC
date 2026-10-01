@@ -14,7 +14,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260924-dashboardi18n1";
+} from "/app.js?v=20261001-ui16";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -100,15 +100,7 @@ renderDemoStaffSalaryIntro();
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
-  periodMonthBtn: document.getElementById("periodMonthBtn"),
-  periodRangeBtn: document.getElementById("periodRangeBtn"),
-  monthControls: document.getElementById("monthControls"),
-  rangeControls: document.getElementById("rangeControls"),
-  rangeFrom: document.getElementById("rangeFrom"),
-  rangeTo: document.getElementById("rangeTo"),
-  rangeApply: document.getElementById("rangeApply"),
-  prev: document.getElementById("monthPrev"),
-  next: document.getElementById("monthNext"),
+  periodPicker: document.getElementById("salaryPeriodPicker"),
   sumSalary: document.getElementById("sumSalary"),
   sumTips: document.getElementById("sumTips"),
   sumPenalties: document.getElementById("sumPenalties"),
@@ -348,23 +340,15 @@ function getPeriodQuery() {
 
 function syncPeriodUi() {
   const isRangeMode = periodMode === "range" && !isDemoUiMode();
-
-  if (el.monthControls) {
-    el.monthControls.classList.toggle("hidden", isRangeMode);
+  const label = isRangeMode ? `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}` : monthTitle(curMonth);
+  if (el.periodPicker) {
+    el.periodPicker.dataset.periodValue = "custom";
+    el.periodPicker.dataset.periodFrom = isRangeMode ? rangeFrom : monthStartIso(curMonth);
+    el.periodPicker.dataset.periodTo = isRangeMode ? rangeTo : monthEndIso(curMonth);
+    el.periodPicker.dataset.periodCustomMode = isDemoUiMode() ? "month" : "range";
+    el.periodPicker.dataset.periodPresets = isDemoUiMode() ? "custom,previous_month,this_month" : "custom,today,yesterday,previous_week,previous_month,this_week,this_month,last_7,last_30,last_90,last_365";
   }
-
-  if (el.rangeControls) {
-    el.rangeControls.classList.toggle("hidden", !isRangeMode);
-  }
-
-  if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
-  if (el.periodRangeBtn) {
-    el.periodRangeBtn.disabled = isDemoUiMode() || periodMode === "range";
-    el.periodRangeBtn.classList.toggle("hidden", isDemoUiMode());
-  }
-  if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
-  if (el.rangeTo) el.rangeTo.value = rangeTo || "";
-  if (el.monthLabel) el.monthLabel.textContent = periodMode === "month" ? monthTitle(curMonth) : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
+  if (el.monthLabel) el.monthLabel.textContent = label;
   if (el.daysChartTitle) el.daysChartTitle.textContent = periodMode === "month" ? "График по дням" : "Период по дням";
   if (el.daysListTitle) el.daysListTitle.textContent = periodMode === "month" ? "По дням" : "Дни в диапазоне";
   if (el.daysListHint) el.daysListHint.textContent = periodMode === "month" ? "" : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
@@ -1223,52 +1207,25 @@ async function openDayModal(d) {
   }
 }
 
-el.prev?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-salary" })}-01T00:00:00`);
-  curMonth.setDate(1);
-  syncUrl();
-  await refresh();
-});
-el.next?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-salary" })}-01T00:00:00`);
-  curMonth.setDate(1);
-  syncUrl();
-  await refresh();
-});
-el.periodMonthBtn?.addEventListener("click", async () => {
-  periodMode = "month";
-  syncPeriodUi();
-  syncUrl();
-  await refresh();
-});
-el.periodRangeBtn?.addEventListener("click", async () => {
-  if (isDemoUiMode()) return;
-  periodMode = "range";
-  if (!rangeFrom || !rangeTo) {
+el.periodPicker?.addEventListener("axelio:period-change", async (event) => {
+  const detail = event.detail || {};
+  if (detail.mode === "month" || isDemoUiMode()) {
+    const selectedMonth = String(detail.month || detail.from || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(selectedMonth)) return;
+    const month = coerceDemoMonth(selectedMonth, { context: "staff-salary" });
+    curMonth = new Date(`${month}-01T12:00:00`);
+    periodMode = "month";
     rangeFrom = monthStartIso(curMonth);
     rangeTo = monthEndIso(curMonth);
+  } else {
+    const from = String(detail.from || "");
+    const to = String(detail.to || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return;
+    rangeFrom = from;
+    rangeTo = to;
+    periodMode = "range";
+    curMonth = new Date(`${from.slice(0, 7)}-01T12:00:00`);
   }
-  syncPeriodUi();
-  syncUrl();
-  await refresh();
-});
-el.rangeApply?.addEventListener("click", async () => {
-  if (isDemoUiMode()) return;
-  const from = String(el.rangeFrom?.value || "").trim();
-  const to = String(el.rangeTo?.value || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    toast("Укажи обе даты диапазона", "err");
-    return;
-  }
-  if (from > to) {
-    toast("Дата начала должна быть раньше даты окончания", "err");
-    return;
-  }
-  rangeFrom = from;
-  rangeTo = to;
-  periodMode = "range";
   syncPeriodUi();
   syncUrl();
   await refresh();

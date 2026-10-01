@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260924-dashboardi18n1" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20261001-ui16" />
   <script>
     (() => {
       try {
@@ -144,7 +144,7 @@
           </div>
         </div>
 
-        <div class="toggle mt-12">
+        <div class="toggle">
           <div class="toggle__label">
             <div class="toggle__title">Ночные смены</div>
             <div class="toggle__desc">Для круглосуточных заведений: график и отчёты будут разделяться на день и ночь.</div>
@@ -156,7 +156,7 @@
         </div>
         <div class="muted small mt-6" id="nightShiftsSaveHint"></div>
 
-        <div class="toggle mt-12">
+        <div class="toggle">
           <div class="toggle__label">
             <div class="toggle__title">Учитывать чаевые в отчёте</div>
             <div class="toggle__desc">Если выключено — поле чаевых в отчёте скрыто, суммы игнорируются.</div>
@@ -167,7 +167,7 @@
           </label>
         </div>
 
-        <div class="mt-12">
+        <div>
           <div class="muted mb-6">Режим распределения</div>
           <select id="tipsMode">
             <option value="EQUAL">Поровну</option>
@@ -217,7 +217,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260924-dashboardi18n1";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20261001-ui16";
     import { openBillingCheckout } from "/billing-checkout.js?v=20260930-robokassa1";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasOwnerDashboardAccess, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260924-dashboardaccess1";
 
@@ -851,7 +851,6 @@ const titleEl = document.getElementById("title");
           const isTrial = !!(billingInfo?.is_trial || perms?.is_trial);
           const trialUntil = billingInfo?.trial_until || perms?.trial_until || paidUntil;
           const planLabel = billingInfo?.plan?.label || "Axelio · 2990 ₽ / 30 дней";
-          const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
 
           let bannerHtml = "";
           if (isTrial && status === "ACTIVE") {
@@ -866,10 +865,6 @@ const titleEl = document.getElementById("title");
             billingTopNotice.classList.toggle("hidden", !bannerHtml);
           }
 
-          const lastTxHtml = txs.length
-            ? `<div class="mt-12"><div class="muted mb-6">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row billing-history-row"><div><b>${esc(formatDate(tx.created_at))}</b><div class="muted small">${esc(tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция"))}</div></div><div class="small">${tx.days_added ? `+${Number(tx.days_added) || 0} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
-            : `<div class="muted mt-12">Последние операции появятся здесь после первых оплат, ручных продлений или возвратов.</div>`;
-
           const promoRedemption = billingInfo?.promo_redemption || null;
           const pendingPromo = billingInfo?.pending_promo || null;
           const promoCanBeUsed = canUseBillingPromo();
@@ -882,16 +877,16 @@ const titleEl = document.getElementById("title");
             ? `<div class="itemcard mt-10" id="billingPromoPreviewBox"><b>${esc(promoPreview.summary || "Промокод применим")}</b><div class="muted mt-6">К оплате: ${formatMinor(promoPreview.amount_after_minor)} вместо ${formatMinor(promoPreview.price_before_minor)}${promoPreview.payment_required ? "" : ". Оплата не понадобится — доступ применится сразу."}</div></div>`
             : `<div id="billingPromoPreviewBox">${pendingPromo?.code ? `<div class="muted small mt-10">Есть незавершённый checkout с промокодом ${esc(pendingPromo.code)}. Он не считается использованием, пока оплата не подтверждена.</div>` : ""}</div>`;
           const promoHtml = promoCanBeUsed
-            ? `<div class="itemcard mt-12" id="billingPromoCard">
+            ? `<div class="itemcard billing-promo-card" id="billingPromoCard">
                 <b>Промокод</b>
-                <div class="muted mt-6">Проверка не использует промокод. Незавершённый платёж тоже не скрывает этот блок — промокод считается использованным только после успешной оплаты или бесплатного применения.</div>
+                <div class="muted mt-6" data-context-description>Проверка не использует промокод. Незавершённый платёж тоже не скрывает этот блок — промокод считается использованным только после успешной оплаты или бесплатного применения.</div>
                 <div class="row billing-promo-row gap-8 mt-10">
                   <input class="billing-promo-input" id="billingPromoCodeInput" type="text" placeholder="Введите промокод" value="${promoInputValue}" autocomplete="off" />
                   <button class="btn" id="billingPromoPreviewBtn" type="button">Проверить</button>
                 </div>
                 ${promoPreviewHtml}
               </div>`
-            : `<div class="muted mt-12" id="billingPromoUsedHint">Промокод уже использован для этого заведения${promoRedemption?.promo_code_value ? `: ${esc(promoRedemption.promo_code_value)}` : ""}.</div>`;
+            : `<div class="itemcard billing-promo-card" id="billingPromoCard"><b>Промокод</b><div class="muted mt-6" id="billingPromoUsedHint">Промокод уже использован для этого заведения${promoRedemption?.promo_code_value ? `: ${esc(promoRedemption.promo_code_value)}` : ""}.</div></div>`;
 
           if (billingCard) {
             billingCard.innerHTML = `
@@ -907,7 +902,6 @@ const titleEl = document.getElementById("title");
                     <div>
                       <b>${esc(planLabel)}</b>
                       <div class="muted mt-6">Статус: ${isTrial && status === "ACTIVE" ? "Пробный доступ" : (status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен"))}</div>
-                      <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       ${isTrial ? `<div class="muted mt-6">Пробный доступ до: ${esc(formatDate(trialUntil))}</div>` : `<div class="muted mt-6">Оплачено до: ${esc(formatDate(paidUntil))}</div>`}
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${esc(formatDate(graceUntil))}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${esc(formatDateTime(billingInfo.checkout_expires_at))}</div>` : ""}
                     </div>
@@ -919,10 +913,9 @@ const titleEl = document.getElementById("title");
                     </div>
                   </div>
                   ${reason ? `<div class="muted mt-12">${esc(reason)}</div>` : ""}
-                  ${promoHtml}
                   <div class="muted mt-12">Телефон поддержки: <a class="link" href="tel:+79856006599">+7 985 600-65-99</a></div>
-                  ${lastTxHtml}
                 </div>
+                ${promoHtml}
               </div>
             `;
           }
