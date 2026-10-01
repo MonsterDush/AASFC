@@ -304,7 +304,9 @@ def build_checkout_redirect_url(*, payment_url: str, fields: Mapping[str, str]) 
     if not base_url:
         raise ValueError("Robokassa payment URL is missing")
     separator = "&" if "?" in base_url else "?"
-    params = [(str(key), str(value)) for key, value in fields.items()]
+    params = [
+        (str(key), quote(str(value), safe="") if str(key) == "Receipt" else str(value)) for key, value in fields.items()
+    ]
     return f"{base_url}{separator}{urlencode(params)}"
 
 
@@ -348,4 +350,4 @@ def build_checkout_url(
         success_url2_method=success_url2_method,
         fail_url2_method=fail_url2_method,
     )
-    return f"{payment_url}?{urlencode(list(fields.items()))}"
+    return build_checkout_redirect_url(payment_url=payment_url, fields=fields)
