@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -71,7 +72,7 @@ from app.services.demo.session import DEMO_PERSONA_OWNER
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DEMO_FIXTURE_PATH = "app/demo/demo_fixture.json"
+DEFAULT_DEMO_FIXTURE_PATH = "app/demo/demo_fixture.json.gz"
 USER_REFERENCE_COLUMNS = {
     "accepted_user_id",
     "author_user_id",
@@ -131,8 +132,9 @@ def _resolve_fixture_path(fixture_path: str | None = None) -> Path:
             path.relative_to(BACKEND_ROOT)
         except ValueError as exc:
             raise ValueError("Custom DEMO fixture path must stay inside the backend directory") from exc
-    if path.suffix.lower() != ".json":
-        raise ValueError("DEMO fixture path must use the .json extension")
+    normalized_name = path.name.lower()
+    if not (normalized_name.endswith(".json") or normalized_name.endswith(".json.gz")):
+        raise ValueError("DEMO fixture path must use the .json or .json.gz extension")
     return path
 
 
@@ -659,7 +661,12 @@ def export_demo_fixture(db: Session, *, venue_id: int, fixture_path: str | None 
 
     path = _resolve_fixture_path(fixture_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    serialized = json.dumps(payload, ensure_ascii=False, indent=2)
+    if path.name.lower().endswith(".json.gz"):
+        with gzip.open(path, "wt", encoding="utf-8") as fixture_file:
+            fixture_file.write(serialized)
+    else:
+        path.write_text(serialized, encoding="utf-8")
     return DemoFixtureExportResult(
         fixture_path=str(path),
         venue_id=int(ctx["venue_id"]),
@@ -673,6 +680,9 @@ def load_demo_fixture(*, fixture_path: str | None = None) -> dict[str, Any]:
     path = _resolve_fixture_path(fixture_path)
     if not path.exists():
         raise FileNotFoundError(f"DEMO fixture not found: {path}")
+    if path.name.lower().endswith(".json.gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as fixture_file:
+            return json.load(fixture_file)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
