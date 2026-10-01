@@ -57,8 +57,8 @@ for (const [fileName, factoryName] of moduleContracts) {
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
   const cacheKey = fileName === "navigation.js"
-    ? "20261001-ui12"
-    : (fileName === "ui-preferences.js" ? "20261001-ui12" : "20260719-split1");
+    ? "20261001-ui13"
+    : (fileName === "ui-preferences.js" ? "20261001-ui13" : "20260719-split1");
   assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
@@ -160,7 +160,8 @@ for (const mobileMoreContract of [
   "const preferredMobileLinks = visibleLinks.filter((link) => link.mobilePrimary)",
   "const mobilePrimarySet = new Set(mobilePrimaryLinks)",
   "const overflowLinks = visibleLinks.filter((link) => !mobilePrimarySet.has(link))",
-  'button.setAttribute("aria-label", t("more"))',
+  "const activeOverflowLink = overflowLinks.find(isLinkActive)",
+  'button.setAttribute("aria-label", moreTitle)',
   'button.setAttribute("aria-haspopup", "menu")',
   'if (event.key === "Escape" && !menu.hidden)',
 ]) {
@@ -177,7 +178,7 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20261001-ui12["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20261001-ui13["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);

@@ -18,7 +18,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 import { tierBreakdown, tierDayBreakdown } from "/owner-pay-profile/percent-breakdown.js?v=20260906-tiers1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {

@@ -1,12 +1,9 @@
 import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20261001-appshell3";
-
 export function filterVisibleNavLinks(links = []) {
   return links.filter((link) => link?.allowed !== false);
 }
-
 export function createNavigation(context) {
   const { normalizePermList, permSetFromResponse, roleUpper, hasAnyPerm, hasPermPrefix, hasStaffDashboardExtras, t, cacheSystemRole, applyTheme, api, ensureLogin, getActiveVenueId, setActiveVenueId, getMe, getMyVenues, getMyVenuePermissions } = context;
-
   function escHtml(s) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -15,7 +12,6 @@ export function createNavigation(context) {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
-
   /**
    * Renders a venue switcher <select> into container (or returns null if 0/1 venues).
    * onChange receives (newVenueId).
@@ -26,41 +22,31 @@ export function createNavigation(context) {
       container.innerHTML = "";
       return null;
     }
-
     container.innerHTML = "";
-
     const wrap = document.createElement("div");
     wrap.className = "venue-switch";
-
     const label = document.createElement("span");
     label.className = "venue-switch__label";
     label.textContent = "Venue:";
-
     const sel = document.createElement("select");
     sel.className = "venue-switch__select";
-
     venues.forEach((v) => {
       const opt = document.createElement("option");
       opt.value = String(v.id);
       opt.textContent = v.name ? v.name : `Venue #${v.id}`;
       sel.appendChild(opt);
     });
-
     sel.value = String(activeVenueId || venues[0].id || "");
-
     sel.onchange = () => {
       const id = sel.value;
       setActiveVenueId(id);
       if (typeof onChange === "function") onChange(id);
     };
-
     wrap.appendChild(label);
     wrap.appendChild(sel);
     container.appendChild(wrap);
-
     return sel;
   }
-
   /**
    * Convenience: loads /me/venues, renders switcher, and keeps URL in sync via onChange.
    * If current page uses ?venue_id=, we update that param and reload.
@@ -68,10 +54,8 @@ export function createNavigation(context) {
   async function mountVenueSwitcher({ containerSelector = "#venueSwitcher", venues = null, onChange = null } = {}) {
     const el = document.querySelector(containerSelector);
     if (!el) return null;
-
     const v = venues || (await getMyVenues().catch(() => []));
     const active = getActiveVenueId() || (v[0] ? String(v[0].id) : "");
-
     return renderVenueSwitcher({
       container: el,
       venues: v,
@@ -85,10 +69,8 @@ export function createNavigation(context) {
         }),
     });
   }
-
   async function getVenueById(venueId) {
     if (!venueId) return null;
-
     // Берём из "моих заведений" (это доступно OWNER/STAFF)
     const list = await api("/me/venues?include_archived=true");
     const v = (list || []).find(x => String(x.id) === String(venueId));
@@ -98,13 +80,11 @@ export function createNavigation(context) {
   // Permissions + dynamic navigation (A2/A3)
   // ------------------------------
 
-
   function can(permCode, venuePerms) {
     if (!permCode) return false;
     const list = normalizePermList(venuePerms?.permissions || venuePerms);
     return list.includes(String(permCode));
   }
-
 
   function renderNavLinks({ container, links, activeTab }) {
     if (!container) return;
@@ -112,7 +92,11 @@ export function createNavigation(context) {
       container.__axelioNavCleanup();
     }
     container.innerHTML = "";
-
+    const currentPath = String(location.pathname || "").toLowerCase();
+    const isLinkActive = (link) => {
+      const linkPath = new URL(link.href, location.origin).pathname.toLowerCase();
+      return currentPath === linkPath || (!link.pathOnly && link.tab === activeTab);
+    };
     let currentSection = "";
     const appendLink = (parent, link, { menu = false, overflow = false } = {}) => {
       const a = document.createElement("a");
@@ -131,9 +115,7 @@ export function createNavigation(context) {
       if (menu) a.classList.add("nav-more__link");
       if (overflow && !menu) a.classList.add("nav-overflow-link");
       a.setAttribute("data-tab", link.tab);
-      const currentPath = String(location.pathname || "").toLowerCase();
-      const linkPath = new URL(link.href, location.origin).pathname.toLowerCase();
-      const isActive = currentPath === linkPath || (!link.pathOnly && link.tab === activeTab);
+      const isActive = isLinkActive(link);
       if (link.mobileActiveTab === activeTab) a.classList.add("mobile-active");
       if (isActive) {
         a.classList.add("active");
@@ -142,12 +124,10 @@ export function createNavigation(context) {
       parent.appendChild(a);
       return a;
     };
-
     const visibleLinks = filterVisibleNavLinks(links);
     const preferredMobileLinks = visibleLinks.filter((link) => link.mobilePrimary);
     const mobilePrimaryLinks = (preferredMobileLinks.length ? preferredMobileLinks : visibleLinks.filter((link) => link.mobile !== false)).slice(0, preferredMobileLinks.length ? 4 : 3);
     const mobilePrimarySet = new Set(mobilePrimaryLinks);
-
     visibleLinks.forEach((link) => {
       if (link.section && link.section !== currentSection) {
         const section = document.createElement("div");
@@ -160,27 +140,29 @@ export function createNavigation(context) {
         overflow: !mobilePrimarySet.has(link),
       });
     });
-
     const overflowLinks = visibleLinks.filter((link) => !mobilePrimarySet.has(link));
     if (!overflowLinks.length) return;
-
     const moreWrap = document.createElement("div");
     moreWrap.className = "nav-more";
-
     const menuId = `${container.id || "nav"}-more-menu`;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "nav-more__button";
     button.append(createAppNavIcon("more"));
-    button.title = t("more");
-    button.setAttribute("aria-label", t("more"));
+    const activeOverflowLink = overflowLinks.find(isLinkActive);
+    const moreTitle = activeOverflowLink?.title || t("more");
+    const moreLabel = document.createElement("span");
+    moreLabel.className = "app-nav-label";
+    moreLabel.textContent = moreTitle;
+    button.append(moreLabel);
+    button.title = moreTitle;
+    button.setAttribute("aria-label", moreTitle);
     button.setAttribute("aria-haspopup", "menu");
     button.setAttribute("aria-controls", menuId);
     button.setAttribute("aria-expanded", "false");
-    if (overflowLinks.some((link) => link.tab === activeTab)) {
+    if (activeOverflowLink) {
       button.classList.add("active");
     }
-
     const menu = document.createElement("div");
     menu.id = menuId;
     menu.className = "nav-more__menu";
@@ -190,7 +172,6 @@ export function createNavigation(context) {
       const menuLink = appendLink(menu, link, { menu: true });
       menuLink.setAttribute("role", "menuitem");
     });
-
     const closeMenu = ({ restoreFocus = false } = {}) => {
       menu.hidden = true;
       button.setAttribute("aria-expanded", "false");
@@ -204,7 +185,6 @@ export function createNavigation(context) {
         closeMenu({ restoreFocus: true });
       }
     };
-
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       const shouldOpen = menu.hidden;
@@ -220,11 +200,9 @@ export function createNavigation(context) {
       document.removeEventListener("click", onDocumentClick);
       document.removeEventListener("keydown", onDocumentKeydown);
     };
-
     moreWrap.append(button, menu);
     container.appendChild(moreWrap);
   }
-
   /**
    * Mounts a bottom nav with only allowed items.
    *
@@ -237,26 +215,21 @@ export function createNavigation(context) {
   async function mountNav({ activeTab = "dashboard", containerSelector = "#nav" } = {}) {
     const container = document.querySelector(containerSelector);
     if (!container) return { ok: false, reason: "NO_CONTAINER" };
-
     // Deep links: if venue_id is in URL, treat it as active venue (prevents missing owner navbar)
     try {
       const qv = new URLSearchParams(location.search).get("venue_id");
       if (qv) setActiveVenueId(qv);
     } catch {}
-
     await ensureLogin({ silent: true });
-
     let me = null;
     try { me = await getMe(); } catch {
       container.innerHTML = "";
       return { ok: false, reason: "NO_ME" };
     }
-
     // cache system role for gated features (themes, admin-only UI)
     cacheSystemRole(me?.system_role);
     // re-apply theme now that role is known (enables SUPER_ADMIN-only themes)
     applyTheme();
-
     // SUPER_ADMIN bottom nav
     if (me?.system_role === "SUPER_ADMIN") {
       renderNavLinks({
@@ -274,13 +247,10 @@ export function createNavigation(context) {
       mountAppShell({ container, t, setActiveVenueId });
       return { ok: true, me };
     }
-
     // Regular users (OWNER/STAFF)
     let venues = [];
     try { venues = await getMyVenues(); } catch { venues = []; }
-
     let activeVenueId = getActiveVenueId();
-
     // If user has venues but no active venue chosen yet, pick the first one automatically.
     // This prevents "2-tab navbar" on pages that require a venue context.
     try {
@@ -299,24 +269,19 @@ export function createNavigation(context) {
         setActiveVenueId(activeVenueId);
       }
     }
-
   // Determine permissions for active venue (best-effort)
   let isOwner = false;
   let canViewReports = false;
   let canShowStaffOverview = false;
   let permissionSet = new Set();
-
   const activeVenue = activeVenueId ? venues.find(v => String(v.id) === String(activeVenueId)) : null;
   const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || activeVenue?.my_role || "").toUpperCase();
-
   if (activeVenueId) {
     try {
       const permsResp = await getMyVenuePermissions(activeVenueId);
       const role = roleUpper(permsResp) || roleFromList;
       isOwner = role === "OWNER" || role === "VENUE_OWNER";
-
       permissionSet = permSetFromResponse(permsResp);
-
       // Report access means: user can open report pages / close shift / see report sections.
       canViewReports =
         isOwner ||
@@ -338,7 +303,6 @@ export function createNavigation(context) {
       canShowStaffOverview = false;
     }
   }
-
   const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
   const systemRole = String(me?.system_role || "").trim().toUpperCase();
   const isSystemAdmin = systemRole === "SUPER_ADMIN" || systemRole === "MODERATOR";
@@ -351,9 +315,7 @@ export function createNavigation(context) {
   const canViewPayroll = hasAccess(["PAYROLL_VIEW", "PAYROLL_CALCULATE"]);
   const canViewLedger = hasAccess(["FINANCE_LEDGER_VIEW", "REVENUE_VIEW", "EXPENSE_VIEW"]);
   const canViewDayEconomics = canViewRevenue || canViewExpenses;
-
     const links = [];
-
     if (activeVenueId) {
       if (isOwner) {      // Owner mobile nav stays compact; desktop exposes the full finance map.
         links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true, mobilePrimary: true, allowed: canViewVenue });
@@ -382,7 +344,6 @@ export function createNavigation(context) {
   // - If NO report access: Schedule + Salaries + Adjustments + Settings
   // - If HAS report access: Schedule + Finance + Reports + Settings
   links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts", icon: "schedule", section: t("quick_access_section") });
-
   if (canViewReports) {
     links.push({ title: canShowStaffOverview ? t("overview") : t("finance"), href: `${canShowStaffOverview ? "/app-dashboard.html" : "/staff-finance.html"}${qp}`, tab: canShowStaffOverview ? "overview" : "finance", desktop: false });
     links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report", icon: "report" });
@@ -390,7 +351,6 @@ export function createNavigation(context) {
     links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
     links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
   }
-
   links.push({ title: "⚙️", href: "/settings.html", tab: "settings", icon: "settings", className: "icon", section: t("account_section") });
       }
     } else {
@@ -398,18 +358,23 @@ export function createNavigation(context) {
       links.push({ title: t("manage_venues"), href: "/app-venues.html", tab: "app-venues" });
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     }
-
     const currentPath = String(location.pathname || "").toLowerCase();
     const currentLink = filterVisibleNavLinks(links).find((link) => new URL(link.href, location.origin).pathname.toLowerCase() === currentPath);
     const secondaryTabs = new Set(["summary", "expenses", "payroll", "ledger", "day", "schedule", "shifts", "report", "integrations", "plans", "salary", "adjustments", "finance", "overview"]);
-    const showBack = Boolean(currentLink && (currentLink.mobile === false || currentLink.subitem || secondaryTabs.has(currentLink.tab)));
+    const rootPaths = new Set(filterVisibleNavLinks(links)
+      .filter((link) => link.mobilePrimary)
+      .map((link) => new URL(link.href, location.origin).pathname.toLowerCase()));
+    rootPaths.add("/settings.html");
+    const showBack = Boolean(
+      currentLink
+        ? currentLink.mobile === false || currentLink.subitem || secondaryTabs.has(currentLink.tab)
+        : activeVenueId && !rootPaths.has(currentPath),
+    );
     const backHref = isOwner && activeVenueId ? `/owner-dashboard.html${qp}` : activeVenueId ? `/staff-shifts.html${qp}` : "/app-venues.html";
-
     renderNavLinks({ container, links, activeTab });
     mountAppShell({ container, venues, activeVenueId, isOwner, showBack, backHref, t, setActiveVenueId });
     return { ok: true, me, venues, activeVenueId };
   }
-
   // ------------------------------
   // Venue dropdown menu (topbar)
   // ------------------------------
@@ -417,31 +382,23 @@ export function createNavigation(context) {
     if (!venueId) throw new Error("NO_VENUE");
     return api(`/venues/${encodeURIComponent(venueId)}/leave`, { method: "POST" });
   }
-
   async function mountVenueMenu({ containerSelector = "#venueMenu", onVenueChanged = null } = {}) {
     const el = document.querySelector(containerSelector);
     if (!el) return null;
-
     let venues = [];
     try { venues = await getMyVenues(); } catch { venues = []; }
-
     // Always show, even if 0/1 venues
     const active = getActiveVenueId() || (venues[0] ? String(venues[0].id) : "");
     if (active) setActiveVenueId(active);
-
     el.innerHTML = "";
-
     const wrap = document.createElement("div");
     wrap.className = "venue-switch";
-
     const label = document.createElement("span");
     label.className = "venue-switch__label";
     label.textContent = t("venue") + ":";
-
     const sel = document.createElement("select");
     sel.className = "input min-w240";
     sel.setAttribute("aria-label", t("venue"));
-
     if (!venues.length) {
       const opt = document.createElement("option");
       opt.value = "";
@@ -455,28 +412,23 @@ export function createNavigation(context) {
         sel.appendChild(opt);
       }
     }
-
     // action items
     const optManage = document.createElement("option");
     optManage.value = "__manage__";
     optManage.textContent = "────────";
     optManage.disabled = true;
     sel.appendChild(optManage);
-
     const optManage2 = document.createElement("option");
     optManage2.value = "__manage2__";
     optManage2.textContent = t("manage_venues");
     sel.appendChild(optManage2);
-
     sel.value = active || (venues[0] ? String(venues[0].id) : "");
-
     sel.onchange = async () => {
       const val = sel.value;
       if (val === "__manage2__") {
         location.href = "/app-venues.html";
         return;
       }
-
       // normal venue switch
       setActiveVenueId(val);
       if (typeof onVenueChanged === "function") onVenueChanged(val);
@@ -486,7 +438,6 @@ export function createNavigation(context) {
         location.href = url.pathname + url.search;
       }
     };
-
     wrap.appendChild(label);
     wrap.appendChild(sel);
     el.appendChild(wrap);

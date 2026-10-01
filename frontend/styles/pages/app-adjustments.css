@@ -15,7 +15,7 @@
 .app-adjustment-row__main{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;min-width:0}
 .app-adjustment-row__copy{display:grid;gap:4px;min-width:0}
 .app-adjustment-row__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.app-adjustment-type{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:650;white-space:nowrap}
+.app-adjustment-type{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:600;white-space:nowrap}
 .app-adjustment-type--bonus{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
 .app-adjustment-type--penalty,
 .app-adjustment-type--writeoff{border-color:var(--dangerBorder);background:var(--dangerBg);color:var(--dangerText)}

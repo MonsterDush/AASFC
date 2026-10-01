@@ -29,7 +29,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   patchInviteDefaultPosition,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 
 import {
   roleUpper,

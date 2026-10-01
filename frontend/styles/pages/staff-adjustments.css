@@ -18,7 +18,7 @@
 .staff-adjustment-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--border)}
 .staff-adjustment-row__main{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;min-width:0}
 .staff-adjustment-row__copy{min-width:0}
-.staff-adjustment-type{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:650;white-space:nowrap}
+.staff-adjustment-type{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:600;white-space:nowrap}
 .staff-adjustment-type--bonus{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
 .staff-adjustment-type--penalty,
 .staff-adjustment-type--writeoff{border-color:var(--dangerBorder);background:var(--dangerBg);color:var(--dangerText)}

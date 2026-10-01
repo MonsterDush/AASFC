@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 import { roleUpper } from "/permissions.js";
 
 const state = { access: { canManage: false } };

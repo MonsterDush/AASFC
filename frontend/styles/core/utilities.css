@@ -1,6 +1,6 @@
 /* Empty / Error / Loading states */
 .state{border:1px solid var(--border);border-radius:var(--radius);background:var(--card);padding:16px;box-shadow:var(--shadow-sm)}
-.state__title{font-weight:650;font-size:var(--fs-3);line-height:var(--lh-2)}
+.state__title{font-weight:600;font-size:var(--fs-3);line-height:var(--lh-2)}
 .state__text{margin-top:6px;color:var(--textSoft);font-size:var(--fs-2);line-height:var(--lh-3)}
 .state__actions{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
 

@@ -13,7 +13,7 @@ import {
   updatePayProfile,
   deletePayProfile,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");

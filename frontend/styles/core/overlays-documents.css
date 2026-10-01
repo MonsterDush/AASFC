@@ -22,7 +22,7 @@
 .demo-tour-step{
   font-size:12px;
   line-height:1.2;
-  font-weight:650;
+  font-weight:600;
   color:var(--muted);
   margin-bottom:8px;
   text-transform:uppercase;
@@ -31,7 +31,7 @@
 .demo-tour-title{
   font-size:20px;
   line-height:1.2;
-  font-weight:650;
+  font-weight:600;
   color:var(--text);
   margin-bottom:8px;
 }
@@ -54,7 +54,7 @@
   min-height:40px;
   padding:0 14px;
   font-size:14px;
-  font-weight:650;
+  font-weight:600;
   line-height:1;
   cursor:pointer;
   color:var(--text);
@@ -113,7 +113,7 @@
   color:var(--text);
   border-radius:999px;
   padding:10px 12px;
-  font-weight:650;
+  font-weight:600;
   font-size:13px;
   cursor:pointer;
   min-width:0;

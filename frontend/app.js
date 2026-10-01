@@ -2,11 +2,11 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
-import { createNavigation } from "/app/navigation.js?v=20261001-ui12";
-import { createUiPreferences } from "/app/ui-preferences.js?v=20261001-ui12";
+import { createNavigation } from "/app/navigation.js?v=20261001-ui13";
+import { createUiPreferences } from "/app/ui-preferences.js?v=20261001-ui13";
 import { enableDemoMetrika, disableDemoMetrika, trackDemoMetrikaEvent } from "/app/demo-metrika.js?v=20260820-demo1";
-import "/app/context-help.js?v=20261001-ui12";
-import "/app/period-picker.js?v=20261001-ui12";
+import "/app/context-help.js?v=20261001-ui13";
+import "/app/period-picker.js?v=20261001-ui13";
 
 const uiPreferences = createUiPreferences();
 export const { getLang, setLang, t, wa, looksLikeTelegramWebApp, ensureTelegramWebAppLoaded, cacheSystemRole, getCachedSystemRole, isSuperAdminCached, getThemePref, setThemePref, applyTheme, applyTelegramTheme } = uiPreferences;

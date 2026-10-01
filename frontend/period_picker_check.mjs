@@ -38,6 +38,9 @@ const helpSource = fs.readFileSync(new URL("./app/context-help.js", import.meta.
 assert.match(helpSource, /Math\.min\(10000, Math\.max\(5000,/);
 assert.match(helpSource, /data-info/);
 assert.match(helpSource, /promoteContextDescriptions/);
+for (const selector of ["[data-context-description]", ".toggle__desc", ".card > p.muted"]) {
+  assert.ok(helpSource.includes(selector), `context help lost ${selector}`);
+}
 
 for (const file of [
   "app-adjustments.html",
@@ -66,7 +69,7 @@ const cssFiles = fs.readdirSync(new URL("./styles/core/", import.meta.url))
 for (const file of cssFiles) {
   const base = file.startsWith("../") ? new URL(`./styles/core/${file}`, import.meta.url) : new URL(`./styles/core/${file}`, import.meta.url);
   const source = fs.readFileSync(base, "utf8");
-  assert.doesNotMatch(source, /font-weight:\s*(?:8\d\d|9\d\d)/, `${file} contains an oversized font weight`);
+  assert.doesNotMatch(source, /font-weight:\s*(?:6[1-9]\d|[7-9]\d\d)/, `${file} contains a font weight above 600`);
 }
 
 console.log("period picker and contextual help checks passed");

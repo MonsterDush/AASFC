@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getStoredDemoUiState,
   coerceDemoMonth,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 
 import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 

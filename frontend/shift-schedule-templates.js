@@ -10,7 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueSettings,
-} from "/app.js?v=20261001-ui12";
+} from "/app.js?v=20261001-ui13";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
