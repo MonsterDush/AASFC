@@ -1,4 +1,4 @@
-import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20260930-appshell2";
+import { createAppNavIcon, mountAppShell } from "./app-shell.js?v=20261001-appshell3";
 
 export function filterVisibleNavLinks(links = []) {
   return links.filter((link) => link?.allowed !== false);
@@ -113,8 +113,6 @@ export function createNavigation(context) {
     }
     container.innerHTML = "";
 
-    const mobilePrimaryLinkCount = 3;
-    let mobileLinkIndex = 0;
     let currentSection = "";
     const appendLink = (parent, link, { menu = false, overflow = false } = {}) => {
       const a = document.createElement("a");
@@ -146,6 +144,9 @@ export function createNavigation(context) {
     };
 
     const visibleLinks = filterVisibleNavLinks(links);
+    const preferredMobileLinks = visibleLinks.filter((link) => link.mobilePrimary);
+    const mobilePrimaryLinks = (preferredMobileLinks.length ? preferredMobileLinks : visibleLinks.filter((link) => link.mobile !== false)).slice(0, preferredMobileLinks.length ? 4 : 3);
+    const mobilePrimarySet = new Set(mobilePrimaryLinks);
 
     visibleLinks.forEach((link) => {
       if (link.section && link.section !== currentSection) {
@@ -155,14 +156,12 @@ export function createNavigation(context) {
         container.appendChild(section);
         currentSection = link.section;
       }
-      const isMobileLink = link.mobile !== false;
       appendLink(container, link, {
-        overflow: isMobileLink && mobileLinkIndex >= mobilePrimaryLinkCount,
+        overflow: !mobilePrimarySet.has(link),
       });
-      if (isMobileLink) mobileLinkIndex += 1;
     });
 
-    const overflowLinks = visibleLinks.filter((link) => link.mobile !== false).slice(mobilePrimaryLinkCount);
+    const overflowLinks = visibleLinks.filter((link) => !mobilePrimarySet.has(link));
     if (!overflowLinks.length) return;
 
     const moreWrap = document.createElement("div");
@@ -172,7 +171,9 @@ export function createNavigation(context) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "nav-more__button";
-    button.textContent = t("more");
+    button.append(createAppNavIcon("more"));
+    button.title = t("more");
+    button.setAttribute("aria-label", t("more"));
     button.setAttribute("aria-haspopup", "menu");
     button.setAttribute("aria-controls", menuId);
     button.setAttribute("aria-expanded", "false");
@@ -355,16 +356,16 @@ export function createNavigation(context) {
 
     if (activeVenueId) {
       if (isOwner) {      // Owner mobile nav stays compact; desktop exposes the full finance map.
-        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true, allowed: canViewVenue });
-        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", pathOnly: true, mobileActiveTab: "dashboard", allowed: canViewOwnerDashboard });
+        links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue", icon: "venue", section: t("main_section"), pathOnly: true, mobilePrimary: true, allowed: canViewVenue });
+        links.push({ title: t("dashboard"), href: `/owner-dashboard.html${qp}`, tab: "dashboard", icon: "dashboard", pathOnly: true, mobilePrimary: true, mobileActiveTab: "dashboard", allowed: canViewOwnerDashboard });
         links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary", icon: "summary", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewSummary });
         links.push({ title: t("revenue"), href: `/owner-turnover.html${qp}`, tab: "summary", icon: "revenue", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewRevenue });
-        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", section: t("finance_section"), subitem: true, pathOnly: true, allowed: canViewExpenses });
+        links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses", icon: "expenses", section: t("finance_section"), subitem: true, pathOnly: true, mobilePrimary: true, allowed: canViewExpenses });
         links.push({ title: t("payroll"), href: `/owner-payroll.html${qp}`, tab: "summary", icon: "payroll", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewPayroll });
         links.push({ title: t("ledger"), href: `/owner-finance-ledger.html${qp}`, tab: "venue", icon: "ledger", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewLedger });
         links.push({ title: t("day_economics"), href: `/owner-day-economics.html${qp}`, tab: "summary", icon: "day", section: t("finance_section"), mobile: false, subitem: true, pathOnly: true, allowed: canViewDayEconomics });
         links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "schedule", icon: "schedule", section: t("quick_access_section"), mobile: false, pathOnly: true });
-        links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report", icon: "report", section: t("quick_access_section"), mobile: false, pathOnly: true, allowed: canViewReports });
+        links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report", icon: "report", section: t("quick_access_section"), mobilePrimary: true, pathOnly: true, allowed: canViewReports });
         links.push({ title: t("integrations"), href: `/owner-integrations.html${qp}`, tab: "integrations", icon: "integrations", mobile: false, pathOnly: true });
         links.push({ title: t("plans"), href: `/owner-economics-plans.html${qp}`, tab: "plans", icon: "plans", mobile: false, pathOnly: true });
         links.push({ title: t("settings"), href: "/settings.html", tab: "settings", icon: "settings", section: t("account_section"), pathOnly: true });
@@ -398,8 +399,14 @@ export function createNavigation(context) {
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     }
 
+    const currentPath = String(location.pathname || "").toLowerCase();
+    const currentLink = filterVisibleNavLinks(links).find((link) => new URL(link.href, location.origin).pathname.toLowerCase() === currentPath);
+    const secondaryTabs = new Set(["summary", "expenses", "payroll", "ledger", "day", "schedule", "shifts", "report", "integrations", "plans", "salary", "adjustments", "finance", "overview"]);
+    const showBack = Boolean(currentLink && (currentLink.mobile === false || currentLink.subitem || secondaryTabs.has(currentLink.tab)));
+    const backHref = isOwner && activeVenueId ? `/owner-dashboard.html${qp}` : activeVenueId ? `/staff-shifts.html${qp}` : "/app-venues.html";
+
     renderNavLinks({ container, links, activeTab });
-    mountAppShell({ container, venues, activeVenueId, isOwner, t, setActiveVenueId });
+    mountAppShell({ container, venues, activeVenueId, isOwner, showBack, backHref, t, setActiveVenueId });
     return { ok: true, me, venues, activeVenueId };
   }
 
@@ -485,6 +492,5 @@ export function createNavigation(context) {
     el.appendChild(wrap);
     return sel;
   }
-
   return { renderVenueSwitcher, mountVenueSwitcher, getVenueById, can, mountNav, leaveVenue, mountVenueMenu };
 }

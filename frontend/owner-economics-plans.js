@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20260930-ui5";
+} from "/app.js?v=20261001-ui12";
 import { roleUpper } from "/permissions.js";
 
 const state = {

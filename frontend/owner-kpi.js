@@ -11,7 +11,7 @@ import {
   createKpiMetric,
   updateKpiMetric,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260930-ui5";
+} from "/app.js?v=20261001-ui12";
 
 const root = document.getElementById("root");
 

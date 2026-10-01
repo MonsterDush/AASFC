@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260930-ui5" />
-  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260930-ui5" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui12" />
+  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20261001-ui12" />
   <script>
     (() => {
       try {
@@ -67,7 +67,15 @@
               <button type="button" id="economicsSlotDay">День</button>
               <button type="button" id="economicsSlotNight">Ночь</button>
             </div>
-            <button class="period-menu-trigger" id="economicsPeriodPicker" type="button" data-period-picker data-period-value="today" data-period-presets="custom,today,yesterday" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Сегодня</span></button>
+            <div class="economics-day-picker" aria-label="Выбор дня">
+              <button class="economics-day-picker__step" id="economicsPreviousDay" type="button" aria-label="Предыдущий день">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              </button>
+              <input class="economics-day-picker__input" id="economicsDatePicker" type="date" aria-label="Дата экономики дня" />
+              <button class="economics-day-picker__step" id="economicsNextDay" type="button" aria-label="Следующий день">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+              </button>
+            </div>
             <button class="btn" id="refreshEconomicsBtn">Обновить</button>
           </div>
         </div>
@@ -274,6 +282,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js?v=20260930-ui5"></script>
+  <script type="module" src="/owner-day-economics.js?v=20261001-ui12"></script>
 </body>
 </html>

@@ -43,14 +43,22 @@ for (const file of [
   "app-adjustments.html",
   "staff-adjustments.html",
   "staff-report.html",
-  "staff-salary.html",
   "staff-shifts.html",
-  "admin-demo-analytics.html",
 ]) {
   const source = fs.readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
   assert.match(source, /data-period-picker/, `${file} must use the shared period picker`);
-  assert.doesNotMatch(source, /id="month(?:Prev|Next)"/, `${file} must not render legacy month arrows`);
+  assert.match(source, /data-period-stepper="month"/, `${file} must keep month arrows around the period picker`);
 }
+
+for (const file of ["staff-salary.html", "admin-demo-analytics.html"]) {
+  const source = fs.readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+  assert.match(source, /data-period-picker/, `${file} must use the shared period picker`);
+}
+
+const dayEconomics = fs.readFileSync(new URL("./owner-day-economics.html", import.meta.url), "utf8");
+assert.match(dayEconomics, /id="economicsDatePicker" type="date"/);
+assert.match(dayEconomics, /id="economicsPreviousDay"/);
+assert.match(dayEconomics, /id="economicsNextDay"/);
 
 const cssFiles = fs.readdirSync(new URL("./styles/core/", import.meta.url))
   .filter((file) => file.endsWith(".css"))

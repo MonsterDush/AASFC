@@ -17,7 +17,14 @@
 
 .owner-day-economics-page .screen-hero__actions{align-items:center}
 .owner-day-economics-page .economics-date-picker{min-width:160px}
-.owner-day-economics-page .finance-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px}
+.economics-day-picker{display:grid!important;grid-template-columns:44px minmax(0,1fr) 44px;width:258px;max-width:100%;height:44px;overflow:hidden;border:1px solid var(--border);border-radius:13px;background:var(--surface2)}
+.economics-day-picker__input,.economics-day-picker__step{height:100%;border:0;background:transparent;color:var(--text);font:600 14px/1 var(--sans)}
+.economics-day-picker__input{min-width:0;width:100%;padding:0 10px;border-inline:1px solid var(--border);border-radius:0;color-scheme:light dark}
+.economics-day-picker__step{display:grid;place-items:center;width:44px;padding:0;cursor:pointer}
+.economics-day-picker__step svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.economics-day-picker:focus-within,.economics-day-picker:hover{border-color:var(--borderStrong)}
+.economics-day-picker__input:focus,.economics-day-picker__step:focus{outline:0;background:var(--accentSoftBg)}
+.owner-day-economics-page .finance-shortcuts{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
 .owner-day-economics-page .finance-kpis{align-items:stretch}
 .owner-day-economics-page .finance-stat{height:100%;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
 .owner-day-economics-page .finance-stat:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
@@ -84,6 +91,7 @@
 
 @media (max-width:767px){
   .owner-day-economics-page .finance-kpis--compact{grid-template-columns:1fr}
+  .owner-day-economics-page .finance-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 @media (max-width:560px){

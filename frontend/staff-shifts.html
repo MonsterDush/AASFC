@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260930-ui5" />
-  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260930-ui5" />
+  <link rel="stylesheet" href="/styles.css?v=20261001-ui12" />
+  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20261001-ui12" />
   <script>
     (() => {
       try {
@@ -53,7 +53,7 @@
 
     <section class="card staff-shifts-calendar-card">
       <div class="staff-shifts-toolbar">
-        <button class="period-menu-trigger" id="staffShiftsPeriodPicker" type="button" data-period-picker data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false">
+        <button class="period-menu-trigger" id="staffShiftsPeriodPicker" type="button" data-period-picker data-period-stepper="month" data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false">
           <span data-period-label id="monthLabel">Этот месяц</span>
         </button>
 
@@ -176,6 +176,6 @@
     </div>
 
   <div id="shiftsRoot" class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v=20260930-ui5"></script>
+  <script type="module" src="/staff-shifts.js?v=20261001-ui12"></script>
 </body>
 </html>

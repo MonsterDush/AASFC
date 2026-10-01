@@ -1,7 +1,7 @@
 import {
   applyTelegramTheme, mountCommonUI, ensureLogin, mountNav, getActiveVenueId, setActiveVenueId,
   getMyVenues, getMyVenuePermissions, getMe, api, toast, coerceDemoMonth,
-} from "/app.js?v=20260930-ui5";
+} from "/app.js?v=20261001-ui12";
 import { hasOwnerDashboardAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260924-dashboardaccess1";
 import {
   DASHBOARD_ACTION_IDS, applyDashboardPreset, dashboardDeviceKind, loadDashboardLayout,
@@ -40,7 +40,7 @@ const state = {
   venueId: "", month: "", scope: "venue", trendMetric: "revenue", layout: null, undoLayout: null,
   deviceKind: dashboardDeviceKind(), ownerVenues: [], monthData: null, previousData: null, dayData: null,
   economics: null, monthPlan: null, departmentPlan: null, payroll: null, reports: [], integrations: [],
-  integrationQuality: [], networkRows: [], financialValuesHidden: false, sourceErrors: [], loadRevision: 0,
+  integrationQuality: [], dayShifts: [], networkRows: [], financialValuesHidden: false, sourceErrors: [], loadRevision: 0,
   referenceDate: "",
 };
 
@@ -204,20 +204,24 @@ function widgetView(widgetId) {
   return { value: formatNumber(issueCount), hint: syncHint, delta: { text: failed ? "Есть критические ошибки" : issueCount ? "Нужно проверить" : "Синхронизация в норме", tone: failed ? "is-bad" : issueCount ? "is-neutral" : "is-good" }, series: [] };
 }
 
-function createSparkline(values) {
-  if (!Array.isArray(values) || values.length < 2) return null;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.classList.add("owner-dashboard-widget__sparkline");
-  svg.setAttribute("viewBox", "0 0 160 38");
-  svg.setAttribute("aria-hidden", "true");
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const points = values.map((value, index) => `${index / (values.length - 1) * 158 + 1},${36 - (value - min) / range * 32}`).join(" ");
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", `M ${points.replaceAll(" ", " L ")}`);
-  svg.append(path);
-  return svg;
+function dashboardShiftPeople() {
+  const people = [];
+  const seen = new Set();
+  for (const shift of (state.dayShifts || [])) {
+    for (const assignment of (shift?.assignments || [])) {
+      const key = String(assignment?.member_user_id || assignment?.display_name || "").trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      people.push(String(
+        assignment?.display_name
+        || assignment?.short_name
+        || assignment?.full_name
+        || assignment?.tg_username
+        || `Сотрудник #${assignment?.member_user_id}`,
+      ));
+    }
+  }
+  return people;
 }
 
 function createWidgetCard(widgetId) {
@@ -246,24 +250,35 @@ function createWidgetCard(widgetId) {
   info.setAttribute("aria-expanded", "false");
   info.dataset.info = view.hint;
   info.textContent = "i";
-  labelRow.append(label, info);
-  const value = document.createElement("div");
-  value.className = "owner-dashboard-widget__value";
-  value.textContent = view.value;
-  const sparkline = createSparkline(view.series);
-  const visual = document.createElement("div");
-  visual.className = "owner-dashboard-widget__visual";
-  if (sparkline && size === "wide") visual.append(sparkline);
-  const delta = document.createElement("div");
-  delta.className = `owner-dashboard-widget__delta ${view.delta.tone}`;
-  delta.textContent = view.delta.text;
-  const meta = document.createElement("div");
-  meta.className = "owner-dashboard-widget__meta";
   const arrow = document.createElement("span");
   arrow.className = "owner-dashboard-widget__arrow";
   arrow.textContent = "→";
-  meta.append(arrow);
-  card.append(labelRow, value, delta, visual, meta);
+  labelRow.append(label, info, arrow);
+  const value = document.createElement("div");
+  value.className = "owner-dashboard-widget__value";
+  value.textContent = view.value;
+  const delta = document.createElement("div");
+  delta.className = `owner-dashboard-widget__delta ${view.delta.tone}`;
+  delta.textContent = view.delta.text;
+  card.append(labelRow, value, delta);
+  if (widgetId === "shifts_today") {
+    const people = dashboardShiftPeople();
+    const peopleRow = document.createElement("div");
+    peopleRow.className = "owner-dashboard-widget__people";
+    people.slice(0, 4).forEach((name) => {
+      const person = document.createElement("span");
+      person.className = "owner-dashboard-widget__person";
+      person.textContent = name;
+      peopleRow.append(person);
+    });
+    if (people.length > 4) {
+      const rest = document.createElement("span");
+      rest.className = "owner-dashboard-widget__person owner-dashboard-widget__person--rest";
+      rest.textContent = `+${people.length - 4}`;
+      peopleRow.append(rest);
+    }
+    if (peopleRow.childElementCount) card.append(peopleRow);
+  }
   return card;
 }
 
@@ -586,14 +601,16 @@ async function loadVenueDashboard(revision) {
     dailySeries: monthData?.daily_series,
     reports: Array.isArray(reports) ? reports : [],
   });
-  const [dayData, economics] = await Promise.all([
+  const [dayData, economics, dayShifts] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/finance/summary?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}`),
     optional(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(day)}`, "economics"),
+    optional(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(day)}&date_to=${encodeURIComponent(day)}&staffing_state=staffed`, "day-shifts"),
   ]);
   if (revision !== state.loadRevision) return;
   state.referenceDate = day;
   state.monthData = monthData; state.previousData = previousData; state.dayData = dayData; state.economics = economics;
   state.monthPlan = monthPlan; state.departmentPlan = departmentPlan; state.payroll = payroll;
+  state.dayShifts = Array.isArray(dayShifts) ? dayShifts : [];
   state.reports = Array.isArray(reports) ? reports : []; state.integrations = Array.isArray(integrations) ? integrations : [];
   state.integrationQuality = await loadIntegrationQuality(state.integrations);
 }
@@ -627,7 +644,7 @@ async function loadNetworkDashboard(revision) {
   };
   state.integrations = successful.flatMap((row) => row.integrations || []);
   state.integrationQuality = successful.flatMap((row) => row.quality || []);
-  state.economics = null; state.payroll = null; state.reports = [];
+  state.economics = null; state.payroll = null; state.reports = []; state.dayShifts = [];
 }
 
 function renderAll() {

@@ -14,7 +14,8 @@
   gap:14px;
   min-width:0;
 }
-.staff-shifts-toolbar>.period-menu-trigger{width:100%}
+.staff-shifts-toolbar>.period-menu-trigger,
+.staff-shifts-toolbar>.period-stepper{width:100%}
 .staff-shifts-month-nav{
   display:grid;
   grid-template-columns:42px minmax(0,1fr) 42px;
@@ -79,6 +80,7 @@
     background:var(--surfaceTintSoft);
   }
   .staff-shifts-toolbar>.period-menu-trigger{flex:1 1 260px;min-width:220px;width:auto}
+  .staff-shifts-toolbar>.period-stepper{flex:1 1 260px;min-width:220px;width:auto}
   .staff-shifts-month-nav{
     flex:1 1 260px;
     min-width:220px;
@@ -99,6 +101,9 @@
   .staff-shifts-toolbar__row{display:contents}
   .staff-shifts-toolbar__row--scopes #calendarMode{margin-left:0}
   .staff-shifts-tool-button{min-height:40px;padding:9px 14px;font-size:13px}
+  .staff-shifts-tool-button,
+  .staff-shifts-toolbar .schedule-filter-dropdown{flex:0 0 116px;width:116px}
+  .staff-shifts-toolbar .schedule-filter-trigger{width:100%}
   .staff-shifts-toolbar__row .schedule-filter-trigger{height:40px;min-height:40px;font-size:13px}
   .staff-shifts-page #calGrid{margin-top:14px}
   .staff-shifts-page #calGrid .cal-head,
@@ -128,6 +133,8 @@
   .staff-shifts-label-wide{display:none}
   .staff-shifts-label-compact{display:inline}
   .staff-shifts-tool-button{min-height:36px;padding:7px 8px;font-size:11px}
+  .staff-shifts-tool-button,
+  .staff-shifts-toolbar .schedule-filter-dropdown{flex-basis:92px;width:92px}
   .staff-shifts-toolbar__row .schedule-filter-trigger{
     height:36px;
     min-height:36px;
@@ -162,6 +169,11 @@
   .staff-shifts-toolbar__row--planning .staff-shifts-tool-button{flex:1 1 0}
   .staff-shifts-toolbar__row--filters .staff-shifts-tool-button,
   .staff-shifts-toolbar__row--filters .schedule-filter-dropdown{flex:1 1 0}
+  .staff-shifts-toolbar__row--planning,
+  .staff-shifts-toolbar__row--filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .staff-shifts-toolbar__row--planning .staff-shifts-tool-button,
+  .staff-shifts-toolbar__row--filters .staff-shifts-tool-button,
+  .staff-shifts-toolbar__row--filters .schedule-filter-dropdown{width:100%}
   .staff-shifts-label-wide{display:none}
   .staff-shifts-label-compact{display:inline}
   .staff-shifts-tool-button{min-height:36px;padding:7px 9px;font-size:11px}

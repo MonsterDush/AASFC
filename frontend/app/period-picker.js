@@ -126,6 +126,44 @@ function dispatchSelection(trigger, detail) {
   closeMenu();
 }
 
+export function stepPeriodMonth(trigger, amount) {
+  if (!trigger || !Number.isFinite(Number(amount))) return null;
+  const language = document.documentElement.lang === "en" ? "en" : "ru";
+  const source = String(trigger.dataset.periodFrom || "").slice(0, 7);
+  const base = /^\d{4}-\d{2}$/.test(source)
+    ? new Date(`${source}-01T12:00:00`)
+    : new Date();
+  base.setMonth(base.getMonth() + Number(amount));
+  const range = monthRange(base);
+  const label = base.toLocaleDateString(language === "en" ? "en-US" : "ru-RU", {
+    month: "long",
+    year: "numeric",
+  });
+  const detail = { preset: "custom", mode: "month", ...range, label };
+  dispatchSelection(trigger, detail);
+  return detail;
+}
+
+function ensurePeriodStepper(trigger) {
+  if (!trigger || trigger.dataset.periodStepper !== "month" || trigger.closest(".period-stepper")) return;
+  const language = document.documentElement.lang === "en" ? "en" : "ru";
+  const wrapper = document.createElement("div");
+  wrapper.className = "period-stepper";
+  const makeButton = (amount, label, glyph) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "period-stepper__button";
+    button.dataset.periodStep = String(amount);
+    button.setAttribute("aria-label", label);
+    button.textContent = glyph;
+    return button;
+  };
+  const previous = makeButton(-1, language === "en" ? "Previous month" : "Предыдущий месяц", "‹");
+  const next = makeButton(1, language === "en" ? "Next month" : "Следующий месяц", "›");
+  trigger.parentElement?.insertBefore(wrapper, trigger);
+  wrapper.append(previous, trigger, next);
+}
+
 function positionMenu(menu, trigger) {
   const rect = trigger.getBoundingClientRect();
   const gutter = 10;
@@ -234,7 +272,17 @@ function openMenu(trigger) {
 export function installPeriodPickers() {
   if (typeof document === "undefined" || document.documentElement.dataset.periodPickerReady === "1") return;
   document.documentElement.dataset.periodPickerReady = "1";
+  document.querySelectorAll('[data-period-picker][data-period-stepper="month"]').forEach(ensurePeriodStepper);
   document.addEventListener("click", (event) => {
+    const stepButton = event.target.closest?.("[data-period-step]");
+    if (stepButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const stepper = stepButton.closest(".period-stepper");
+      const periodTrigger = stepper?.querySelector("[data-period-picker]");
+      stepPeriodMonth(periodTrigger, Number(stepButton.dataset.periodStep));
+      return;
+    }
     const trigger = event.target.closest?.("[data-period-picker]");
     if (trigger) {
       event.preventDefault();

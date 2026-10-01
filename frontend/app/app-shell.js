@@ -12,6 +12,8 @@ const NAV_ICON_PATHS = {
   integrations: ["M8 12h8", "M12 8v8", "M5 5h4v4H5z", "M15 15h4v4h-4z"],
   plans: ["M4 19V5", "M4 19h16", "M8 16v-5", "M12 16V8", "M16 16v-3"],
   settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M12 2v3", "M12 19v3", "M4.9 4.9 7 7", "M17 17l2.1 2.1", "M2 12h3", "M19 12h3", "M4.9 19.1 7 17", "M17 7l2.1-2.1"],
+  more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+  back: ["M15 18l-6-6 6-6", "M9 12h10"],
 };
 
 export function createAppNavIcon(name = "") {
@@ -41,6 +43,8 @@ export function mountAppShell({
   venues = [],
   activeVenueId = "",
   isOwner = false,
+  showBack = false,
+  backHref = "/app-venues.html",
   t,
   setActiveVenueId,
 } = {}) {
@@ -111,4 +115,31 @@ export function mountAppShell({
   }
 
   document.body.classList.add("app-shell-enabled");
+
+  document.querySelectorAll("[data-app-page-back]").forEach((node) => node.remove());
+  if (showBack) {
+    const topbar = document.querySelector(".topbar");
+    if (topbar) {
+      const button = document.createElement("button");
+      button.className = "app-page-back";
+      button.type = "button";
+      button.setAttribute("data-app-page-back", "");
+      button.setAttribute("aria-label", document.documentElement.lang === "en" ? "Back" : "Назад");
+      const label = document.createElement("span");
+      label.className = "app-page-back__label";
+      label.textContent = document.documentElement.lang === "en" ? "Back" : "Назад";
+      button.append(createAppNavIcon("back"), label);
+      button.addEventListener("click", () => {
+        let canGoBack = false;
+        try {
+          canGoBack = document.referrer
+            ? new URL(document.referrer).origin === location.origin && history.length > 1
+            : false;
+        } catch {}
+        if (canGoBack) history.back();
+        else location.href = backHref;
+      });
+      topbar.appendChild(button);
+    }
+  }
 }

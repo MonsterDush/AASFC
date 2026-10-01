@@ -55,10 +55,18 @@ export async function showContextHelp(trigger) {
 
 const DESCRIPTION_SELECTORS = [
   "[data-context-description]",
+  ".topbar .title > .muted:not([data-keep-visible])",
   ".section-card__title > .muted:not([id]):not([data-keep-visible])",
   ".section-card__head > div > .muted:not([id]):not([data-keep-visible])",
   ".screen-hero__head > div > .muted:not([id]):not([data-keep-visible])",
   ".section-head > div > .muted:not([id]):not([data-keep-visible])",
+  ".toggle__desc:not([data-keep-visible])",
+  ".catalog-intro:not([data-keep-visible])",
+  ".profile-form__hint:not([data-keep-visible])",
+  ".page-caption:not([data-keep-visible])",
+  ".help-copy.muted:not([data-keep-visible])",
+  ".demo-flow-card__head .muted:not([data-keep-visible])",
+  ".admin-billing-section .row > div > .muted:not([id]):not([data-keep-visible])",
   ".demo-analytics-section > .demo-analytics-note:not([id])",
   ".demo-analytics-header-main > .demo-analytics-note:not([id])",
   ".demo-analytics-stacktitle > .demo-analytics-note:not([id])",
@@ -75,20 +83,46 @@ export function promoteContextDescriptions(root = document) {
     if (description.dataset.contextHelpPromoted === "1" || !String(description.textContent || "").trim()) return;
     const parent = description.parentElement;
     if (!parent) return;
-    const nestedTitleRow = Array.from(parent.children).find((node) => node !== description && node.matches?.(".section-title,.block-title-with-info"));
-    const title = Array.from(parent.children).find((node) => node !== description && node.matches?.("b,strong,h1,h2,h3,h4"))
-      || nestedTitleRow?.querySelector("b,strong,h1,h2,h3,h4");
+    const scopes = [
+      parent,
+      description.closest(".toggle"),
+      description.closest(".section-card,.card,.itemcard,.screen-hero,.profile-card,.collapsible-card"),
+    ].filter((node, index, list) => node && list.indexOf(node) === index);
+    let nestedTitleRow = Array.from(parent.children).find((node) => node !== description && node.matches?.(".section-title,.block-title-with-info"));
+    let title = Array.from(parent.children).find((node) => node !== description && node.matches?.("b,strong,h1,h2,h3,h4,.toggle__title,summary"))
+      || nestedTitleRow?.querySelector("b,strong,h1,h2,h3,h4,.toggle__title,summary");
+    for (const scope of scopes) {
+      if (!nestedTitleRow) nestedTitleRow = scope.querySelector?.(".block-title-with-info,.section-title,.profile-section-head > div");
+      if (!title) title = nestedTitleRow?.querySelector?.("b,strong,h1,h2,h3,h4,.toggle__title,summary")
+        || scope.querySelector?.("b,strong,h1,h2,h3,h4,.toggle__title,summary");
+      if (title) break;
+    }
     if (!title) return;
 
     if (!description.id) {
       descriptionId += 1;
       description.id = `contextDescription${descriptionId}`;
     }
-    const titleRow = nestedTitleRow || document.createElement("div");
+    const titleIsRow = title.matches?.(".toggle__title,summary");
+    const titleRow = titleIsRow ? title : (nestedTitleRow || document.createElement("div"));
     titleRow.classList.add("block-title-with-info");
-    if (!nestedTitleRow) {
-      parent.insertBefore(titleRow, title);
+    if (!nestedTitleRow && !titleIsRow) {
+      title.parentElement?.insertBefore(titleRow, title);
       titleRow.appendChild(title);
+    }
+
+    const existingButton = titleRow.querySelector?.(":scope > .info-button");
+    if (existingButton) {
+      const existingSourceSelector = String(existingButton.dataset.infoSource || "").trim();
+      const existingSource = existingSourceSelector ? document.querySelector(existingSourceSelector) : null;
+      if (existingSource && existingSource !== description) {
+        existingSource.textContent = `${String(existingSource.textContent || "").trim()} ${String(description.textContent || "").trim()}`.trim();
+      } else if (!existingSource) {
+        existingButton.dataset.info = `${String(existingButton.dataset.info || "").trim()} ${String(description.textContent || "").trim()}`.trim();
+      }
+      description.hidden = true;
+      description.dataset.contextHelpPromoted = "1";
+      return;
     }
 
     const button = document.createElement("button");

@@ -8,7 +8,7 @@ import {
   mountNav,
   setActiveVenueId,
   toast,
-} from "/app.js?v=20260930-ui5";
+} from "/app.js?v=20261001-ui12";
 
 applyTelegramTheme();
 mountCommonUI("venue");

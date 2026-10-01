@@ -5280,5 +5280,10 @@
   "Несохранённые поля останутся в этой вкладке": "Unsaved fields will remain in this tab",
   "Черновик восстановлен в этой вкладке": "Draft restored in this tab",
   "Черновик сохранён в этой вкладке": "Draft saved in this tab",
-  "Не удалось сохранить черновик в этой вкладке": "Failed to save the draft in this tab"
+  "Не удалось сохранить черновик в этой вкладке": "Failed to save the draft in this tab",
+  "Выбор дня": "Choose a day",
+  "Предыдущий день": "Previous day",
+  "Дата экономики дня": "Daily economics date",
+  "Следующий день": "Next day",
+  "Группировка выручки": "Revenue grouping"
 }

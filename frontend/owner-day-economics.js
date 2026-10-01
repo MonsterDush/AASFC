@@ -15,7 +15,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260930-ui5";
+} from "/app.js?v=20261001-ui12";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -740,22 +740,26 @@ async function boot() {
   }
   syncComparisonControls();
 
-  const periodPicker = document.getElementById("economicsPeriodPicker");
-  if (periodPicker) {
-    periodPicker.dataset.periodFrom = state.date;
-    periodPicker.dataset.periodTo = state.date;
-    periodPicker.querySelector("[data-period-label]").textContent = state.date;
-    periodPicker.addEventListener("axelio:period-change", async (event) => {
-      const detail = event.detail || {};
-      state.date = coerceDemoDate(detail.day || detail.from || todayISO(), { context: "owner-day-economics" });
-      periodPicker.dataset.periodFrom = state.date;
-      periodPicker.dataset.periodTo = state.date;
-      periodPicker.querySelector("[data-period-label]").textContent = detail.label || state.date;
+  const datePicker = document.getElementById("economicsDatePicker");
+  if (datePicker) {
+    datePicker.value = state.date;
+    const selectEconomicsDate = async (value) => {
+      state.date = coerceDemoDate(value || todayISO(), { context: "owner-day-economics" });
+      datePicker.value = state.date;
       const ledgerLink = document.getElementById("openLedgerBtn");
       if (ledgerLink) ledgerLink.href = buildLedgerLink();
       updateEconomicsSlotUrl();
       await loadEconomics();
-    });
+    };
+    datePicker.addEventListener("change", () => selectEconomicsDate(datePicker.value));
+    for (const [buttonId, amount] of [["economicsPreviousDay", -1], ["economicsNextDay", 1]]) {
+      document.getElementById(buttonId)?.addEventListener("click", () => {
+        const current = new Date(`${state.date || todayISO()}T12:00:00`);
+        current.setDate(current.getDate() + amount);
+        const next = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+        selectEconomicsDate(next);
+      });
+    }
   }
 
   const manageBlock = document.getElementById("economicsManageBlock");
