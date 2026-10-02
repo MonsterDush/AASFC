@@ -19,9 +19,9 @@ body.app-shell-enabled :is(.muted,.page-caption,.finance-stat__meta,.hero-summar
 .period-menu__option{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:44px;padding:9px 12px;border:0;border-radius:11px;background:transparent;color:var(--text);font:500 16px/1.25 var(--sans);text-align:left;cursor:pointer}
 .period-menu__option:hover{background:var(--workspace)}
 .period-menu__check{font-size:20px;font-weight:600}
-.period-menu__custom{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;border-top:1px solid var(--border)}
+.period-menu__custom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;border-top:1px solid var(--border)}
 .period-menu__custom[hidden]{display:none}
-.period-menu__custom .btn{grid-column:1/-1}
+.period-menu__custom .btn,.period-menu__custom input[type="month"]{grid-column:1/-1}.period-menu__custom input{min-width:0;max-width:100%}
 .finance-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .finance-titlebar__title{display:flex;align-items:center;gap:8px;min-width:0;font-size:18px}
 .finance-titlebar__actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
@@ -34,3 +34,4 @@ body.app-shell-enabled :is(.muted,.page-caption,.finance-stat__meta,.hero-summar
 .period-stepper__button{display:grid;place-items:center;width:42px;min-width:42px;height:42px;padding:0;border:1px solid var(--border);border-radius:12px;background:var(--surface2);color:var(--text);font:600 20px/1 var(--sans);cursor:pointer}
 .period-stepper__button:hover{border-color:var(--borderStrong);background:var(--workspace)}
 @media (max-width:767px){.finance-titlebar{align-items:stretch}.finance-titlebar__actions{display:grid;grid-template-columns:minmax(0,1fr) auto;width:100%}.period-menu-trigger{min-width:0;width:100%}.app-page-back{width:40px;min-width:40px;padding:0}.app-page-back__label{display:none}}
+@media (max-width:560px){.period-menu__custom{grid-template-columns:minmax(0,1fr)}.owner-day-economics-page .finance-titlebar__actions,.owner-economics-plans-page .finance-titlebar__actions{grid-template-columns:minmax(0,1fr)}.owner-day-economics-page .economics-day-picker,.owner-economics-plans-page #plansDatePick{width:100%}}

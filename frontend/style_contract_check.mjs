@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleVersion = "20261002-ui17";
+const globalStyleVersion = "20261002-ui18";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -145,7 +145,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-day-economics.html", "/owner-day-economics.js?v=20261001-ui16"],
   ["owner-department-plans.html", "/owner-department-plans.js?v=20261001-ui16"],
   ["owner-dashboard.html", "/owner-dashboard.js?v=20261001-ui16"],
-  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20261001-ui16"],
+  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20261002-period1"],
   ["owner-economics-rules.html", "/owner-economics-rules.js?v=20261001-ui16"],
   ["owner-expense-categories.html", "/owner-expense-categories.js?v=20261001-ui16"],
   ["owner-expenses.html", "/owner-expenses.js?v=20261001-ui16"],
@@ -155,7 +155,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-kpi.html", "/owner-kpi.js?v=20261001-ui16"],
   ["owner-pay-profile.html", "/owner-pay-profile.js?v=20261001-ui16"],
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20261001-ui16"],
-  ["owner-payroll.html", "/owner-payroll.js?v=20261001-ui16"],
+  ["owner-payroll.html", "/owner-payroll.js?v=20261002-period1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20261001-ui16"],
   ["owner-quickresto.html", "/owner-quickresto.js?v=20261001-ui16"],
   ["owner-quickresto-import-history.html", "/owner-quickresto-import-history.js?v=20261001-ui16"],

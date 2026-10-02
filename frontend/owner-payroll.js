@@ -1,3 +1,4 @@
+import * as periodPicker from "/app/period-picker.js?v=20261002-period1";
 import {
   applyTelegramTheme,
   ensureLogin,
@@ -476,7 +477,7 @@ function renderShell() {
             </div>
             <div class="finance-titlebar__actions payroll-hero__actions">
               <button class="btn subtle small" id="openProfilesBtn" type="button" data-nav-button>Профили</button>
-              <button class="period-menu-trigger" id="payrollPeriodPicker" type="button" data-period-picker data-period-value="this_month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
+              <button class="period-menu-trigger" id="payrollPeriodPicker" type="button" data-period-picker data-period-stepper="month" data-period-value="this_month" aria-haspopup="menu" aria-expanded="false"><span data-period-label>Этот месяц</span></button>
               <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
               <button class="btn primary" id="btnCalculate">Рассчитать</button>
             </div>
@@ -1307,6 +1308,7 @@ async function onCalculate() {
 async function boot() {
   applyTelegramTheme();
   renderShell();
+  periodPicker.installPeriodPickers();
   await ensureLogin({ silent: true });
 
   state.venueId = parseVenueId();

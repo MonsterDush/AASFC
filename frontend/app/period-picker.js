@@ -107,9 +107,10 @@ export function periodPresetLabel(key, language = "ru") {
   return COPY[locale][key] || COPY[locale].custom;
 }
 
-function closeMenu() {
+function closeMenu(restoreFocus = false) {
   document.querySelector("[data-period-menu-popover]")?.remove();
   activeTrigger?.setAttribute("aria-expanded", "false");
+  if (restoreFocus) activeTrigger?.focus({ preventScroll: true });
   activeTrigger = null;
 }
 
@@ -123,7 +124,7 @@ function dispatchSelection(trigger, detail) {
     bubbles: true,
     detail: { ...detail, label },
   }));
-  closeMenu();
+  closeMenu(true);
 }
 
 export function stepPeriodMonth(trigger, amount) {
@@ -164,23 +165,40 @@ function ensurePeriodStepper(trigger) {
   wrapper.append(previous, trigger, next);
 }
 
-function positionMenu(menu, trigger) {
-  const rect = trigger.getBoundingClientRect();
+export function periodMenuLayout(rect, menuSize, viewport) {
   const gutter = 10;
-  const maxLeft = Math.max(gutter, window.innerWidth - menu.offsetWidth - gutter);
-  const left = Math.min(Math.max(gutter, rect.right - menu.offsetWidth), maxLeft);
-  const spaceBelow = window.innerHeight - rect.bottom - gutter;
-  const top = spaceBelow >= Math.min(menu.offsetHeight, 520)
-    ? rect.bottom + 8
-    : Math.max(gutter, rect.top - Math.min(menu.offsetHeight, 520) - 8);
+  const minTop = (viewport.top || 0) + gutter;
+  const bottom = (viewport.top || 0) + viewport.height - gutter;
+  const maxHeight = Math.max(0, viewport.height - gutter * 2);
+  const spaceBelow = Math.min(maxHeight, Math.max(0, bottom - rect.bottom - 8));
+  const spaceAbove = Math.min(maxHeight, Math.max(0, rect.top - minTop - 8));
+  const below = spaceBelow >= Math.min(menuSize.height, 520) || spaceBelow >= spaceAbove;
+  const height = (below ? spaceBelow : spaceAbove) || maxHeight;
+  const renderedHeight = Math.min(menuSize.height, height);
+  const top = Math.max(minTop, Math.min(bottom - renderedHeight,
+    below ? rect.bottom + 8 : rect.top - renderedHeight - 8));
+  const minLeft = (viewport.left || 0) + gutter;
+  const maxLeft = Math.max(minLeft, minLeft + viewport.width - menuSize.width - gutter * 2);
+  const left = Math.min(Math.max(minLeft, rect.right - menuSize.width), maxLeft);
+  return { left, top, maxHeight: height };
+}
+
+function positionMenu(menu, trigger) {
+  const visual = window.visualViewport;
+  const layout = periodMenuLayout(trigger.getBoundingClientRect(),
+    { width: menu.offsetWidth, height: menu.scrollHeight },
+    { width: visual?.width || window.innerWidth, height: visual?.height || window.innerHeight,
+      top: visual?.offsetTop || 0, left: visual?.offsetLeft || 0 });
+  const { left, top, maxHeight } = layout;
   menu.style.setProperty("--period-menu-left", `${Math.round(left)}px`);
   menu.style.setProperty("--period-menu-top", `${Math.round(top)}px`);
-  menu.style.setProperty("--period-menu-max-height", `${Math.max(260, window.innerHeight - top - gutter)}px`);
+  menu.style.setProperty("--period-menu-max-height", `${Math.floor(maxHeight)}px`);
 }
 
 function openMenu(trigger) {
   closeMenu();
   activeTrigger = trigger;
+  trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-expanded", "true");
   const language = document.documentElement.lang === "en" ? "en" : "ru";
   const copy = COPY[language];
@@ -196,7 +214,8 @@ function openMenu(trigger) {
   const menu = document.createElement("div");
   menu.className = "period-menu";
   menu.setAttribute("data-period-menu-popover", "");
-  menu.setAttribute("role", "menu");
+  menu.setAttribute("role", "dialog");
+  menu.setAttribute("aria-label", copy.custom);
 
   PRESET_GROUPS.forEach((group, groupIndex) => {
     const section = document.createElement("div");
@@ -206,8 +225,7 @@ function openMenu(trigger) {
       button.type = "button";
       button.className = "period-menu__option";
       button.dataset.periodPreset = key;
-      button.setAttribute("role", "menuitemradio");
-      button.setAttribute("aria-checked", String(selected === key));
+      button.setAttribute("aria-pressed", String(selected === key));
       button.innerHTML = `<span>${copy[key]}</span><span class="period-menu__check" aria-hidden="true">${selected === key ? "✓" : ""}</span>`;
       section.appendChild(button);
     });
@@ -270,9 +288,11 @@ function openMenu(trigger) {
 }
 
 export function installPeriodPickers() {
-  if (typeof document === "undefined" || document.documentElement.dataset.periodPickerReady === "1") return;
-  document.documentElement.dataset.periodPickerReady = "1";
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('[data-period-picker]').forEach((trigger) => trigger.setAttribute("aria-haspopup", "dialog"));
   document.querySelectorAll('[data-period-picker][data-period-stepper="month"]').forEach(ensurePeriodStepper);
+  if (document.documentElement.dataset.periodPickerReady === "1") return;
+  document.documentElement.dataset.periodPickerReady = "1";
   document.addEventListener("click", (event) => {
     const stepButton = event.target.closest?.("[data-period-step]");
     if (stepButton) {
@@ -294,10 +314,17 @@ export function installPeriodPickers() {
     if (!event.target.closest?.("[data-period-menu-popover]")) closeMenu();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeMenu();
+    if (event.key === "Escape") closeMenu(true);
   });
-  window.addEventListener("resize", closeMenu);
-  window.addEventListener("scroll", closeMenu, true);
+  const repositionMenu = (event) => {
+    const menu = document.querySelector("[data-period-menu-popover]");
+    if (!menu || !activeTrigger || (event?.target instanceof Node && menu.contains(event.target))) return;
+    positionMenu(menu, activeTrigger);
+  };
+  window.addEventListener("resize", repositionMenu);
+  window.addEventListener("scroll", repositionMenu, true);
+  window.visualViewport?.addEventListener("resize", repositionMenu);
+  window.visualViewport?.addEventListener("scroll", repositionMenu);
 }
 
 if (typeof document !== "undefined") installPeriodPickers();
