@@ -61,7 +61,7 @@
 .payroll-metric{height:100%;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
 .payroll-metric:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
 .payroll-metric--total{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--surface2) 76%)}
-.payroll-metric--total .finance-stat__value{color:var(--accent)}
+.payroll-metric--total .finance-stat__value{color:var(--accentInk)}
 .payroll-metric--per-shift{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--surface2),var(--accentSoftBg) 115%)}
 .owner-payroll-page :is(.finance-stat__value,.finance-period-card__value).is-loading{position:relative;min-height:1.25em;overflow:hidden;color:transparent}
 .owner-payroll-page :is(.finance-stat__value,.finance-period-card__value).is-loading::after{content:"";position:absolute;inset:4px 18% 4px 0;border-radius:999px;background:linear-gradient(90deg,var(--shimmer),var(--surfaceTintStrong),var(--shimmer));animation:shimmer 1.1s infinite}

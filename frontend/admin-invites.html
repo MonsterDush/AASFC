@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
-  <link rel="stylesheet" href="/styles/pages/invites.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles.css?v=20261002-ui17" />
+  <link rel="stylesheet" href="/styles/pages/invites.css?v=20261002-ui17" />
   <script>
     (() => {
       try {
@@ -37,7 +37,7 @@
       <div class="itemcard mt-12">
         <b>Выберите заведение</b>
         <div class="row mt-10">
-          <select class="invite-venue-select" id="venueSelect"></select>
+          <select class="invite-venue-select" id="venueSelect" aria-label="Заведение"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
         </div>
         <div class="muted" id="venueMeta"></div>
@@ -47,26 +47,26 @@
         <b>Создать приглашение</b>
         <div class="invite-grid">
           <div>
-            <label class="muted">Способ приглашения</label>
+            <label class="muted" for="inviteChannel">Способ приглашения</label>
             <select id="inviteChannel">
               <option value="TELEGRAM">Telegram</option>
               <option value="PHONE">Телефон</option>
             </select>
           </div>
           <div id="tgWrap">
-            <label class="muted">Ник в Telegram</label>
+            <label class="muted" for="tg">Ник в Telegram</label>
             <input id="tg" placeholder="@username" />
           </div>
           <div class="hidden" id="phoneWrap">
-            <label class="muted">Телефон</label>
+            <label class="muted" for="phone">Телефон</label>
             <input id="phone" placeholder="+7 999 123-45-67" />
           </div>
           <div>
-            <label class="muted">Имя или заметка</label>
+            <label class="muted" for="contactLabel">Имя или заметка</label>
             <input id="contactLabel" placeholder="Иван / Бармен" />
           </div>
           <div>
-            <label class="muted">Роль</label>
+            <label class="muted" for="role">Роль</label>
             <select id="role">
               <option value="STAFF">Персонал</option>
               <option value="OWNER">Владелец</option>

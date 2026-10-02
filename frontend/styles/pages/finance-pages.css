@@ -8,7 +8,7 @@ select.finance-control--wide{min-width:170px}
 .owner-economics-plans-page .plans-department-entry:hover{border-color:var(--accent);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
 .owner-economics-plans-page .plans-department-entry:focus-visible{outline:3px solid var(--accentSoftBorder);outline-offset:2px}
 .owner-economics-plans-page .plans-department-entry__copy{display:grid;gap:5px;min-width:0;padding-left:4px}
-.owner-economics-plans-page .plans-department-entry__eyebrow{color:var(--accent);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.owner-economics-plans-page .plans-department-entry__eyebrow{color:var(--accentInk);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
 .owner-economics-plans-page .plans-department-entry__title{font-size:20px;font-weight:600;line-height:1.25}
 .owner-economics-plans-page .plans-department-entry__description{max-width:760px;color:var(--muted);font-size:13px;font-weight:600;line-height:1.5}
 .owner-economics-plans-page .plans-department-entry__action{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:10px 15px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accent);color:var(--accentText);font-size:13px;font-weight:600;white-space:nowrap}
@@ -44,6 +44,7 @@ select.finance-control--wide{min-width:170px}
 
 .owner-turnover-page .revenue-trend-card,.owner-turnover-page .revenue-structure-card{min-width:0;background:linear-gradient(145deg,var(--card),var(--surface2))}
 .owner-turnover-page .revenue-mode-segment{flex:0 0 260px;width:260px}
+.owner-turnover-page .finance-titlebar__actions{align-items:stretch}
 .owner-turnover-page .revenue-current-strip{display:grid;grid-template-columns:minmax(140px,.7fr) minmax(140px,1fr) auto minmax(220px,1.3fr);align-items:center;gap:16px;min-width:0;padding:11px 14px}
 .owner-turnover-page .revenue-current-strip .hero-summary-card__value{font-size:22px;white-space:nowrap}
 .owner-turnover-page .revenue-current-strip .finance-metric-delta{text-align:right}
@@ -293,7 +294,7 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-chart-focus__values{display:grid;gap:3px}
 .owner-summary-page .summary-chart-focus__value{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
 .owner-summary-page .summary-chart-focus__action{justify-self:start}
-.owner-summary-page .summary-chart-focus a{color:var(--accent);font-weight:600;text-decoration:none}
+.owner-summary-page .summary-chart-focus a{color:var(--accentInk);font-weight:600;text-decoration:none}
 .owner-summary-page .summary-chart-focus a:hover{text-decoration:underline}
 .owner-summary-page .summary-chart-empty{display:grid;grid-column:1/-1;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
 .owner-summary-page .summary-cost-structure{display:grid;align-content:center;gap:10px;min-width:0;height:100%}
@@ -314,7 +315,7 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-donut-center b{color:var(--text);font-size:13px;line-height:1.2}
 .owner-summary-page .summary-donut-legend{display:grid;gap:2px;min-width:0}
 .owner-summary-page .summary-donut-legend__row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0;padding:4px 6px;border-radius:9px;color:var(--text);font-size:11px;text-decoration:none}
-.owner-summary-page a.summary-donut-legend__row:hover,.owner-summary-page a.summary-donut-legend__row:focus{background:var(--surfaceTintSoft);color:var(--accent);outline:none}
+.owner-summary-page a.summary-donut-legend__row:hover,.owner-summary-page a.summary-donut-legend__row:focus{background:var(--surfaceTintSoft);color:var(--accentInk);outline:none}
 .owner-summary-page .summary-donut-swatch{width:10px;height:10px;border-radius:3px}
 .owner-summary-page .summary-donut-legend__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .owner-summary-page .summary-donut-legend__row b{font-size:11px;white-space:nowrap}

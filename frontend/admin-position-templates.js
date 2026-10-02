@@ -110,7 +110,7 @@ function renderPermissionChecklist(selectedCodes = []) {
             ${item.description ? `<div class="tpl-perm-desc">${esc(item.description)}</div>` : ''}
           </div>
           <label class="switch">
-            <input type="checkbox" data-perm-code="${esc(item.code)}" data-perm-group="${esc(group.key)}" ${selected.has(String(item.code).toUpperCase()) ? 'checked' : ''}>
+            <input type="checkbox" aria-label="${esc(item.title)}" data-perm-code="${esc(item.code)}" data-perm-group="${esc(group.key)}" ${selected.has(String(item.code).toUpperCase()) ? 'checked' : ''}>
             <span class="slider"></span>
           </label>
         </div>
@@ -166,10 +166,10 @@ function renderEditor() {
         </div>
         ${!isNew ? '<button class="btn subtle" id="btnResetEditor" type="button">Новый</button>' : ''}
       </div>
-      <div class="tpl-field mt-12"><span>Код шаблона</span><input id="tplCode" class="input" placeholder="например shift_manager" value="${esc(item.code || '')}"></div>
-      <div class="tpl-field mt-10"><span>Название шаблона</span><input id="tplTitle" class="input" placeholder="Например, Администратор зала" value="${esc(item.title || '')}"></div>
-      <div class="tpl-field mt-10"><span>Описание</span><textarea id="tplDescription" class="input" rows="3" placeholder="Коротко опиши, для какой роли этот шаблон">${esc(item.description || '')}</textarea></div>
-      <div class="tpl-field mt-10"><span>Порядок сортировки</span><input id="tplSortOrder" class="input" type="number" min="0" step="1" value="${esc(item.sort_order ?? '')}"></div>
+      <div class="tpl-field mt-12"><label for="tplCode">Код шаблона</label><input id="tplCode" class="input" placeholder="например shift_manager" value="${esc(item.code || '')}"></div>
+      <div class="tpl-field mt-10"><label for="tplTitle">Название шаблона</label><input id="tplTitle" class="input" placeholder="Например, Администратор зала" value="${esc(item.title || '')}"></div>
+      <div class="tpl-field mt-10"><label for="tplDescription">Описание</label><textarea id="tplDescription" class="input" rows="3" placeholder="Коротко опиши, для какой роли этот шаблон">${esc(item.description || '')}</textarea></div>
+      <div class="tpl-field mt-10"><label for="tplSortOrder">Порядок сортировки</label><input id="tplSortOrder" class="input" type="number" min="0" step="1" value="${esc(item.sort_order ?? '')}"></div>
       <label class="checkline mt-10"><input id="tplActive" type="checkbox" ${item.is_active !== false ? 'checked' : ''}><span>Шаблон активен и доступен владельцам</span></label>
       <div class="mt-12">${renderPermissionChecklist(item.permission_codes || [])}</div>
       <div class="row gap-8 mt-12 tpl-savebar"><button class="btn primary" id="btnSaveTemplate" type="button">${isNew ? 'Создать шаблон' : 'Сохранить изменения'}</button></div>

@@ -1141,27 +1141,57 @@ async function settlePage(page) {
 
 async function assertAccessibility(page, label) {
   await page.addScriptTag({ content: axeSource });
-  const violations = await page.evaluate(async () => {
-    const result = await window.axe.run(document, {
-      runOnly: {
-        type: "tag",
-        values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"],
-      },
-      resultTypes: ["violations"],
-    });
-    return result.violations
-      .filter((violation) => ["critical", "serious"].includes(violation.impact))
-      .map((violation) => ({
-        id: violation.id,
-        impact: violation.impact,
-        nodes: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")),
-      }));
-  });
-  assert.deepEqual(
-    violations,
-    [],
-    `${label}: critical or serious WCAG violations`,
+  const originalTheme = await page.locator("html").getAttribute("data-theme");
+  const originalScheme = await page.evaluate(() =>
+    matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
   );
+  const animationGuard = await page.addStyleTag({
+    content:
+      "*,*::before,*::after{transition:none!important;animation:none!important}",
+  });
+  try {
+    for (const theme of ["light", "dark", "system", "hookahplace"]) {
+      await page.emulateMedia({
+        colorScheme: theme === "light" ? "light" : "dark",
+      });
+      const violations = await page.evaluate(async (theme) => {
+        if (theme === "system")
+          document.documentElement.removeAttribute("data-theme");
+        else document.documentElement.setAttribute("data-theme", theme);
+        const result = await window.axe.run(document, {
+          runOnly: {
+            type: "tag",
+            values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"],
+          },
+          resultTypes: ["violations"],
+        });
+        return result.violations
+          .filter((violation) =>
+            ["critical", "serious"].includes(violation.impact),
+          )
+          .map((violation) => ({
+            id: violation.id,
+            impact: violation.impact,
+            nodes: violation.nodes
+              .slice(0, 5)
+              .map((node) => node.target.join(" ")),
+          }));
+      }, theme);
+      assert.deepEqual(
+        violations,
+        [],
+        `${label} (${theme}): critical or serious WCAG violations`,
+      );
+    }
+  } finally {
+    await page.evaluate((theme) => {
+      if (theme === null)
+        document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", theme);
+    }, originalTheme);
+    await page.emulateMedia({ colorScheme: originalScheme });
+    await animationGuard.evaluate((element) => element.remove());
+  }
 }
 
 async function measurePerformance(page) {

@@ -16,7 +16,7 @@
 a.btn{color:var(--text);text-decoration:none}
 a.btn.primary{color:var(--accentText)}
 
-a.link{color:var(--accent);text-decoration:none;font-weight:600}
+a.link{color:var(--accentInk);text-decoration:none;font-weight:600}
 
 :where(.btn,a.link,.nav a,.seg button,summary,.badge.as-link,.form-radio-chip):focus-visible{
   outline:2px solid var(--accent);

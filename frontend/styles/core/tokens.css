@@ -54,13 +54,14 @@
 
   --text:#20201D;
   --textSecondary:#5F5F58;
-  --muted:#686861;
+  --muted:#62625C;
 
   --border:#D4D4CE;
   --borderStrong:#8E8E86;
   --shadow:0 1px 2px rgba(32,32,29,.06);
 
   --accent:#164B8A;
+  --accentInk:var(--accent);
   --accentText:#FFFFFF;
   --accentSoftBg:rgba(22,75,138,.10);
   --accentSoftBorder:rgba(22,75,138,.28);
@@ -95,7 +96,7 @@
   --statusErrorText:#B42318;
   --statusSuccessBg:rgba(32,180,134,.12);
   --statusSuccessBorder:rgba(32,180,134,.35);
-  --statusSuccessText:#13745A;
+  --statusSuccessText:#10654E;
 
   /* reusable translucent surfaces */
   --surfaceTint:rgba(255,255,255,.04);
@@ -131,7 +132,8 @@
     --shadow:0 10px 30px rgba(0,0,0,.35);
 
     --accent:#3C78C8;
-    --accentText:#081022;
+    --accentInk:#7AA8E8;
+    --accentText:#000000;
     --accentSoftBg:rgba(60,120,200,.18);
     --accentSoftBorder:rgba(60,120,200,.34);
     --focusRingColor:rgba(60,120,200,.30);
@@ -189,7 +191,8 @@
   --shadow:0 10px 30px rgba(0,0,0,.35);
 
   --accent:#3C78C8;
-  --accentText:#081022;
+  --accentInk:#7AA8E8;
+  --accentText:#000000;
   --accentSoftBg:rgba(60,120,200,.18);
   --accentSoftBorder:rgba(60,120,200,.34);
   --focusRingColor:rgba(60,120,200,.30);
@@ -249,6 +252,7 @@
   --shadow:0 10px 30px rgba(0,0,0,.55);
 
   --accent:#E00000;
+  --accentInk:#FF7878;
   --accentText:#FFFFFF;
   --accentSoftBg:rgba(224,0,0,.14);
   --accentSoftBorder:rgba(224,0,0,.40);
