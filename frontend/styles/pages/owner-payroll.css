@@ -123,6 +123,7 @@
 @media (max-width:760px){
   .payroll-hero__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
   .payroll-hero__actions .period-menu-trigger{grid-column:1/-1}
+  .payroll-hero__actions>.period-stepper{grid-column:1/-1;width:100%}
   .payroll-kpis{grid-template-columns:1fr}
   .payroll-metric--total{grid-column:auto}
   .payroll-period-card__controls,

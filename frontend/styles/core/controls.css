@@ -37,6 +37,8 @@ input:not([type="checkbox"]):not([type="radio"]),select,textarea{
   transition:border-color .16s ease, box-shadow .16s ease, background .16s ease, transform .16s ease;
 }
 input[type="text"],input[type="search"],input[type="number"],input[type="date"],input[type="month"],input[type="tel"],input[type="password"],input[type="email"]{min-width:min(220px,100%)}
+input[type="date"],input[type="month"]{min-width:0;appearance:none;-webkit-appearance:none}
+input::-webkit-date-and-time-value{min-height:22px;line-height:22px;text-align:left;overflow:hidden;text-overflow:ellipsis}input::-webkit-datetime-edit{padding:0}
 select{
   min-width:min(180px,100%);
   appearance:none;

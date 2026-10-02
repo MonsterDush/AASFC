@@ -1231,6 +1231,51 @@ async function assertPageQuality(page, budgetName, label = budgetName) {
   return { ...performance, dimensions };
 }
 
+async function verifyPayrollPeriodPicker(page, label) {
+  const trigger = page.locator("#payrollPeriodPicker");
+  await trigger.click();
+  const menu = page.locator("[data-period-menu-popover]");
+  await menu.waitFor({ state: "visible" });
+  await menu.locator('[data-period-preset="custom"]').click();
+  await menu.locator("[data-period-from]").fill("2026-10-01");
+  await menu.locator("[data-period-to]").fill("2026-10-07");
+  await menu.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  assert.equal(
+    await menu.count(),
+    1,
+    `${label}: scrolling or resizing must not close the period menu`,
+  );
+  await assertNoHorizontalOverflow(page, `${label} custom period`);
+  await assertAccessibility(page, `${label} custom period`);
+  const response = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname.endsWith("/payroll") &&
+      url.searchParams.get("date_from") === "2026-10-01" &&
+      url.searchParams.get("date_to") === "2026-10-07"
+    );
+  });
+  await menu.locator("[data-period-apply]").click();
+  assert.equal(
+    (await response).status(),
+    200,
+    `${label}: selected range must load payroll`,
+  );
+  assert.equal(await trigger.getAttribute("data-period-from"), "2026-10-01");
+  assert.equal(await trigger.getAttribute("data-period-to"), "2026-10-07");
+  await page.locator('[data-period-step="1"]').click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#payrollPeriodPicker")?.dataset.periodFrom ===
+      "2026-11-01",
+  );
+  await settlePage(page);
+}
+
 async function verifyNamesAndIntervalScopes(page, venueId, viewport) {
   const prefix = `/venues/${venueId}`;
   const suffix = `${viewport.name}-${Date.now()}`;
@@ -1892,6 +1937,7 @@ async function ownerScenarios(browser, viewport) {
         `${label} payroll`,
       ),
     });
+    await verifyPayrollPeriodPicker(page, `${label} payroll`);
 
     await page.goto(`${frontendBase}/settings.html?venue_id=${venueId}`, {
       waitUntil: "domcontentloaded",

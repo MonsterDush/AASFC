@@ -1,3 +1,4 @@
+import "/app/period-picker.js?v=20261002-period1";
 import {
   applyTelegramTheme,
   mountCommonUI,
