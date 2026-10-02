@@ -393,7 +393,7 @@ function renderRevenueTrend(summary, comparisonSummary, error = null) {
       <span>${esc(fmtCompactMoneyMinor(geometry.minValue))}</span>
     </div>
     <div class="revenue-trend-visual">
-      <svg class="revenue-trend-svg" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="Выручка по дням текущего и сравниваемого периода">
+      <svg class="revenue-trend-svg" viewBox="0 0 720 200" preserveAspectRatio="none" role="group" aria-label="Выручка по дням текущего и сравниваемого периода">
         ${gridLines}${marks}${hitTargets}
       </svg>
       <div class="revenue-trend-ticks" aria-hidden="true">${ticks}</div>

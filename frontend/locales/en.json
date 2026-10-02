@@ -25,6 +25,8 @@
   "О динамике выручки": "About the revenue trend",
   "О движении денег": "About cash flow",
   "О журнале финансовых движений": "About the financial ledger",
+  "О журнале и фильтрах финансовых движений": "About the financial ledger and filters",
+  "Приходы, списания, корректировки и внутренние переводы по данным журнала. Период применяется ко всей странице. Остальные фильтры — к журналу, показателям и графикам.": "Inflows, outflows, adjustments, and internal transfers from the ledger. The period applies to the entire page. The other filters apply to ledger entries, metrics, and charts.",
   "О категориях расходов": "About expense categories",
   "О маржинальности": "About margin",
   "О начислениях сотрудникам": "About employee payroll",
@@ -5285,5 +5287,10 @@
   "Предыдущий день": "Previous day",
   "Дата экономики дня": "Daily economics date",
   "Следующий день": "Next day",
-  "Группировка выручки": "Revenue grouping"
+  "Группировка выручки": "Revenue grouping",
+  "Тип промокода": "Promo code type",
+  "Статус подписки": "Subscription status",
+  "Сортировка": "Sort order",
+  "Статус проблемы": "Issue status",
+  "Способ назначения владельца": "Owner assignment method"
 }

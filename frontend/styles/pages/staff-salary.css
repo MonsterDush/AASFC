@@ -22,7 +22,7 @@
 .salary-summary-row b{font-size:17px;font-variant-numeric:tabular-nums}
 .salary-summary-row--total{grid-column:1/-1;border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
 .salary-summary-row--total > .muted{color:var(--text)}
-.salary-summary-row--total b{color:var(--accent);font-size:21px}
+.salary-summary-row--total b{color:var(--accentInk);font-size:21px}
 .salary-source-hint{min-height:34px;margin-top:12px;line-height:1.45}
 .salary-summary-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
 .salary-payroll-action{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -47,7 +47,7 @@
 .salary-venue-card{min-width:0;padding:14px;background:var(--surfaceTintSoft)}
 .salary-venue-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .salary-status{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap}
-.salary-status--ready{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
+.salary-status--ready{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accentInk)}
 .salary-status--partial{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);color:var(--statusWarningText)}
 
 @media (min-width:640px){

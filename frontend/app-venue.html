@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
-  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles.css?v=20261002-ui17" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20261002-ui17" />
   <script>
     (() => {
       try {
@@ -150,7 +150,7 @@
             <div class="toggle__desc">Для круглосуточных заведений: график и отчёты будут разделяться на день и ночь.</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="nightShiftsEnabled" />
+            <input type="checkbox" id="nightShiftsEnabled" aria-label="Ночные смены" />
             <span class="slider"></span>
           </label>
         </div>
@@ -162,14 +162,14 @@
             <div class="toggle__desc">Если выключено — поле чаевых в отчёте скрыто, суммы игнорируются.</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="tipsEnabled" />
+            <input type="checkbox" id="tipsEnabled" aria-label="Учитывать чаевые в отчёте" />
             <span class="slider"></span>
           </label>
         </div>
 
         <div>
-          <div class="muted mb-6">Режим распределения</div>
-          <select id="tipsMode">
+          <div class="muted mb-6" id="tipsModeLabel">Режим распределения</div>
+          <select id="tipsMode" aria-labelledby="tipsModeLabel">
             <option value="EQUAL">Поровну</option>
             <option value="WEIGHTED_BY_POSITION">По должностям</option>
           </select>

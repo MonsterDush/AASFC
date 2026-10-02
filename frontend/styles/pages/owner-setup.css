@@ -24,7 +24,7 @@
 .setup-step__top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .setup-step__title,.setup-editor__title{font-weight:600}
 .setup-status{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:5px 9px;border:1px solid transparent;border-radius:999px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}
-.setup-status--available{background:var(--accentSoftBg);border-color:var(--accentSoftBorder);color:var(--accent)}
+.setup-status--available{background:var(--accentSoftBg);border-color:var(--accentSoftBorder);color:var(--accentInk)}
 .setup-status--completed{background:var(--statusSuccessBg);border-color:var(--statusSuccessBorder);color:var(--statusSuccessText)}
 .setup-status--skipped{background:var(--statusWarningBg);border-color:var(--statusWarningBorder);color:var(--statusWarningText)}
 .setup-status--attention{background:var(--statusErrorBg);border-color:var(--statusErrorBorder);color:var(--statusErrorText)}

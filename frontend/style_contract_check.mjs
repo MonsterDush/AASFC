@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleVersion = "20261001-ui16";
+const globalStyleVersion = "20261002-ui17";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -100,6 +100,9 @@ const extractedPageStyles = new Map([
 const pageStyleCacheKeyOverrides = new Map(
   Array.from(extractedPageStyles.keys(), (fileName) => [fileName, globalStyleVersion]),
 );
+for (const fileName of ["owner-dashboard.html", "owner-turnover.html", "staff-report.html"]) {
+  pageStyleCacheKeyOverrides.set(fileName, "20261002-layout1");
+}
 const inlineFreePages = [
   "admin-position-templates.html",
   "app-dashboard.html",
@@ -136,7 +139,7 @@ const inlineFreePages = [
   "staff-adjustments.html",
 ];
 const inlineFreeEntrypoints = new Map([
-  ["admin-position-templates.html", "/admin-position-templates.js?v=20261001-ui16"],
+  ["admin-position-templates.html", "/admin-position-templates.js?v=20261002-a11y1"],
   ["app-adjustments.html", "/app-adjustments.js?v=20261001-ui16"],
   ["owner-departments.html", "/owner-departments.js?v=20261001-ui16"],
   ["owner-day-economics.html", "/owner-day-economics.js?v=20261001-ui16"],
@@ -161,7 +164,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-setup.html", "/owner-setup.js?v=20261001-ui16"],
   ["owner-summary.html", "/owner-summary.js?v=20261001-ui16"],
   ["owner-suppliers.html", "/owner-suppliers.js?v=20261001-ui16"],
-  ["owner-turnover.html", "/owner-turnover.js?v=20261001-ui16"],
+  ["owner-turnover.html", "/owner-turnover.js?v=20261002-layout1"],
   ["shift-intervals.html", "/shift-intervals.js?v=20261001-ui16"],
   ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20261001-ui16"],
   ["staff-adjustments.html", "/staff-adjustments.js?v=20261001-ui16"],

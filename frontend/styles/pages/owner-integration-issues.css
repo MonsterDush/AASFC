@@ -14,7 +14,7 @@
 .integration-issues-filter-field{display:grid;gap:4px;min-width:150px}
 .integration-issues-filter-field>span{color:var(--muted);font-size:10px;font-weight:600}
 .integration-issues-filter-field :is(select,input){width:100%;min-width:0}
-.integration-issues-filter .btn.active{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
+.integration-issues-filter .btn.active{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accentInk)}
 .integration-issues-list,.integration-issue-shifts{display:grid;gap:9px}
 .integration-issues-empty{padding:16px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted)}
 .integration-issues-empty[data-status="error"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
@@ -32,7 +32,7 @@
 .integration-issue-status:is([data-status="OPEN"],[data-status="FAILED"]){border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
 .integration-issue-status:is([data-status="BLOCKED"],[data-status="READY"]){border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft);color:var(--statusWarningText)}
 .integration-issue-status[data-status="RETRY_PENDING"]{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft);color:var(--statusWarningText)}
-.integration-issue-status[data-status="PROCESSING"]{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
+.integration-issue-status[data-status="PROCESSING"]{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accentInk)}
 .integration-issue-status[data-status="RESOLVED"]{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBgSoft);color:var(--statusSuccessText)}
 .integration-issues-more{justify-self:center}
 .integration-issue-drawer-open{overflow:hidden}
@@ -95,7 +95,7 @@
 .integration-issue-allocation-share span{font-size:12px;font-weight:600}
 .integration-issue-allocation-row [data-remove-issue-allocation]{min-width:38px;padding-inline:0;font-size:20px}
 .integration-issue-guide{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
-.integration-issue-guide-link{width:max-content;max-width:100%;color:var(--accent);font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.integration-issue-guide-link{width:max-content;max-width:100%;color:var(--accentInk);font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .integration-issue-scope-editor{display:grid;gap:12px}
 .integration-issue-scope-group{min-width:0;margin:0;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
 .integration-issue-scope-group legend{padding:0 5px;font-size:12px;font-weight:600}

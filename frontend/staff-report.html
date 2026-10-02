@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
-  <link rel="stylesheet" href="/styles/pages/staff-report.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles.css?v=20261002-ui17" />
+  <link rel="stylesheet" href="/styles/pages/staff-report.css?v=20261002-layout1" />
   <script>
     (() => {
       try {
@@ -26,7 +26,10 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b id="title">Отчёты</b>
+          <div class="block-title-with-info">
+            <b id="title">Отчёты</b>
+            <button class="info-button" type="button" aria-label="Как открыть отчёт" aria-expanded="false" data-info="Нажмите на день, чтобы открыть или заполнить отчёт.">i</button>
+          </div>
           <div class="muted" id="subtitle">отчёты по сменам и дням</div>
         </div>
       </div>
@@ -39,12 +42,9 @@
         <button class="period-menu-trigger" id="staffReportPeriodPicker" type="button" data-period-picker data-period-stepper="month" data-period-value="this_month" data-period-presets="custom,previous_month,this_month" data-period-custom-mode="month" aria-haspopup="menu" aria-expanded="false">
           <span data-period-label id="monthLabel">Этот месяц</span>
         </button>
-        <div class="staff-report-toolbar__aside">
-          <div id="reportSlotToggle" class="shift-toggle hidden" aria-label="Слот отчёта">
-            <button type="button" id="reportSlotDay">День</button>
-            <button type="button" id="reportSlotNight">Ночь</button>
-          </div>
-          <button class="info-button" type="button" aria-label="Как открыть отчёт" aria-expanded="false" data-info="Нажмите на день, чтобы открыть или заполнить отчёт.">i</button>
+        <div id="reportSlotToggle" class="shift-toggle hidden" aria-label="Слот отчёта">
+          <button type="button" id="reportSlotDay">День</button>
+          <button type="button" id="reportSlotNight">Ночь</button>
         </div>
       </div>
 

@@ -286,7 +286,6 @@
 .admin-venues-page .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
 .admin-venues-page .card{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:10px 12px;margin:10px 0}
 .admin-venues-page .row{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
-.admin-venues-page .muted{opacity:.7}
 .admin-venues-page .btn{cursor:pointer}
 .admin-venues-page input[type="text"],.admin-venues-page input[type="search"],.admin-venues-page select{min-width:180px}
 .admin-venues-page .skeleton{border-radius:12px;height:64px;background:rgba(0,0,0,.06);margin:10px 0}

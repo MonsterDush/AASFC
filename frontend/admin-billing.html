@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261001-ui16" />
-  <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20261001-ui16" />
+  <link rel="stylesheet" href="/styles.css?v=20261002-ui17" />
+  <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20261002-ui17" />
   <script>
     (() => {
       try {
@@ -59,7 +59,7 @@
       <div class="toolbar billing-promo-form">
         <input id="promoCodeInput" type="text" placeholder="Код, например START500" />
         <input id="promoTitleInput" type="text" placeholder="Название / заметка" />
-        <select id="promoKindSelect">
+        <select id="promoKindSelect" aria-label="Тип промокода">
           <option value="PERCENT">Скидка, %</option>
           <option value="FIXED_MINOR">Скидка, ₽</option>
           <option value="FREE_DAYS">Бесплатные дни</option>
@@ -74,13 +74,13 @@
 
     <section class="card admin-billing-section">
       <div class="toolbar billing-filters">
-        <select id="statusFilter">
+        <select id="statusFilter" aria-label="Статус подписки">
           <option value="">Все статусы</option>
           <option value="ACTIVE">ACTIVE</option>
           <option value="GRACE">GRACE</option>
           <option value="SUSPENDED">SUSPENDED</option>
         </select>
-        <select id="txTypeFilter">
+        <select id="txTypeFilter" aria-label="Тип операции">
           <option value="">Все типы операций</option>
           <option value="PAYMENT">PAYMENT</option>
           <option value="EXTEND">EXTEND</option>
@@ -91,7 +91,7 @@
         <input id="search" type="search" placeholder="Поиск по заведению / invoice / комментарию" />
         <label class="row gap-8"><input id="dueSoon" type="checkbox" /> <span>Скоро заканчивается</span></label>
         <label class="row gap-8"><input id="overdue" type="checkbox" /> <span>Просроченные</span></label>
-        <select id="sortBy">
+        <select id="sortBy" aria-label="Сортировка">
           <option value="paid_until_asc">Сначала истекающие</option>
           <option value="paid_until_desc">Сначала дальние</option>
           <option value="last_payment_desc">Свежие оплаты</option>
@@ -130,7 +130,7 @@
             <div class="muted">Критичные и предупреждающие billing-кейсы.</div>
           </div>
           <div class="row gap-8">
-            <select id="issueStatusFilter">
+            <select id="issueStatusFilter" aria-label="Статус проблемы">
               <option value="OPEN">Открытые</option>
               <option value="RESOLVED">Решённые</option>
               <option value="IGNORED">Игнорируемые</option>

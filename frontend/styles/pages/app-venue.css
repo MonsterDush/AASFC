@@ -14,7 +14,7 @@
 .venue-integrations-entry{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:13px 15px;text-align:left;background:var(--accent)}
 .venue-integrations-entry>span:first-child{display:grid;gap:2px;min-width:0}
 .venue-integrations-entry b,.venue-integrations-entry small{overflow-wrap:anywhere}
-.venue-integrations-entry small{font-size:11px;font-weight:600;opacity:.82}
+.venue-integrations-entry small{font-size:11px;font-weight:600}
 .venue-integrations-entry>span:last-child{font-size:20px;line-height:1}
 .venue-settings-card .toggle{align-items:flex-start}
 .venue-settings-card :is(#nightShiftsSaveHint,#tipsSaveHint):empty{display:none}

@@ -314,7 +314,7 @@
   padding:1px 5px;
   border-radius:7px;
   background:var(--accentSoftBg);
-  color:var(--accent);
+  color:var(--accentInk);
   font-weight:600;
 }
 .staff-shifts-page .comment__actions{display:flex;justify-content:flex-end;margin-top:7px}
@@ -323,7 +323,7 @@
   border:0;
   padding:2px 0;
   background:transparent;
-  color:var(--accent);
+  color:var(--accentInk);
   font:inherit;
   font-size:12px;
   font-weight:600;
